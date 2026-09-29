@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
+exports.ErrorException = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
 class PHPError extends Error {
     phpCode;
     phpFile;
@@ -15,10 +15,24 @@ class PHPError extends Error {
         this.phpLine = line;
         this.phpTrace = trace;
         this.previous = previous;
-        // Clean JavaScript stack trace to replace internal JS paths with [INTERNAL]
         if (this.stack) {
             this.stack = PHPError.virtualizeJSStack(this.stack, file, line, trace);
         }
+    }
+    getMessage() {
+        return this.message;
+    }
+    getCode() {
+        return this.phpCode;
+    }
+    getFile() {
+        return this.phpFile;
+    }
+    getLine() {
+        return this.phpLine;
+    }
+    getPrevious() {
+        return this.previous;
     }
     static virtualizeJSStack(jsStack, phpFile, phpLine, phpTrace) {
         const lines = jsStack.split("\n");
@@ -61,4 +75,15 @@ exports.PHPNotice = PHPNotice;
 class PHPWarning extends PHPError {
 }
 exports.PHPWarning = PHPWarning;
+class ErrorException extends PHPError {
+    severity;
+    constructor(message = "", code = 0, severity = 1, file = "[INTERNAL]", line = 0, previous = null) {
+        super(message, code, file, line, [], previous);
+        this.severity = severity;
+    }
+    getSeverity() {
+        return this.severity;
+    }
+}
+exports.ErrorException = ErrorException;
 //# sourceMappingURL=PHPError.js.map

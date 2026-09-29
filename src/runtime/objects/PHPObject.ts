@@ -1,4 +1,5 @@
 import type { PHPContext } from "../../PHPContext";
+import { PHPFatalError } from "../errors/PHPError";
 
 export interface PHPParameterMetadata {
   name: string;
@@ -90,7 +91,7 @@ export class PHPObject {
     if (__callMeta?.fn) {
       return await __callMeta.fn.call(this, ctx, name, args);
     }
-    throw new Error(`Call to undefined method ${this.phpClass.name}::${name}()`);
+    throw new PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
   }
 
   public async toString(ctx: PHPContext): Promise<string> {

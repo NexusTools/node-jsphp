@@ -1,14 +1,8 @@
-export interface UnitEnum {
-    name: string;
-}
-export interface BackedEnum extends UnitEnum {
-    value: string | number;
-}
-export declare class PHPEnum implements BackedEnum {
-    name: string;
-    value: string | number;
-    constructor(name: string, value: string | number);
-    static cases(enumClass: any): UnitEnum[];
-    static from(enumClass: any, value: string | number): BackedEnum;
-    static tryFrom(enumClass: any, value: string | number): BackedEnum | null;
+import { PHPClass, PHPObject } from "../objects/PHPObject";
+export declare class PHPEnum extends PHPObject {
+    readonly name: string;
+    readonly value?: any;
+    constructor(enumClass: PHPClass, name: string, value?: any);
+    static from(enumClass: PHPClass, value: any): PHPEnum;
+    static tryFrom(enumClass: PHPClass, value: any): PHPEnum | null;
 }

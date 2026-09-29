@@ -1,8 +1,8 @@
 node_modules/
 tests/cache/
 *.zip
+wordpress-test/
 wordpress/
 coverage/
 .cache/
-tests/latest.zip
 .idea/

@@ -11,11 +11,14 @@ export declare class PHPEngine {
     constants: Map<string, any>;
     functions: Map<string, Function>;
     classes: Map<string, any>;
+    internalVars: Map<string, any>;
     private compiledCache;
     private watcher?;
     private transpiler;
     private cacheDir?;
     constructor(options?: PHPEngineOptions);
+    getInternalVar(name: string): any;
+    setInternalVar(name: string, value: any): void;
     getConstant(name: string): any;
     private registerCoreFunctions;
     registerExtension(extension: PHPExtension): void;

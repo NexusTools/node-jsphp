@@ -127,6 +127,7 @@ if ( ! defined( 'ABSPATH' ) ) {
       },
     });
 
+    getCtx.setInternalVar("hasServerResponseHandler", true);
     await getCtx.require(installPhpPath);
 
     // Parse installer HTML form with Cheerio
@@ -162,6 +163,7 @@ if ( ! defined( 'ABSPATH' ) ) {
       },
     });
 
+    postCtx.setInternalVar("hasServerResponseHandler", true);
     await postCtx.require(installPhpPath);
 
     const $post = cheerio.load(postOutput || "<html><body><h1>Success!</h1><p>WordPress has been installed.</p></body></html>");
@@ -184,6 +186,7 @@ if ( ! defined( 'ABSPATH' ) ) {
       },
     });
 
+    homeCtx.setInternalVar("hasServerResponseHandler", true);
     const indexPhpPath = path.join(wpDir, "index.php");
     await homeCtx.require(indexPhpPath);
 
@@ -210,6 +213,7 @@ if ( ! defined( 'ABSPATH' ) ) {
       },
     });
 
+    adminCtx.setInternalVar("hasServerResponseHandler", true);
     const adminIndexPhpPath = path.join(wpDir, "wp-admin", "index.php");
     await adminCtx.require(adminIndexPhpPath);
 

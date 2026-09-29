@@ -3,7 +3,7 @@ export interface PHPStackFrame {
   line: number;
   function?: string;
   class?: string;
-  type?: string; // '::' or '->'
+  type?: string;
   args?: any[];
 }
 
@@ -30,10 +30,29 @@ export class PHPError extends Error {
     this.phpTrace = trace;
     this.previous = previous;
 
-    // Clean JavaScript stack trace to replace internal JS paths with [INTERNAL]
     if (this.stack) {
       this.stack = PHPError.virtualizeJSStack(this.stack, file, line, trace);
     }
+  }
+
+  public getMessage(): string {
+    return this.message;
+  }
+
+  public getCode(): number {
+    return this.phpCode;
+  }
+
+  public getFile(): string {
+    return this.phpFile;
+  }
+
+  public getLine(): number {
+    return this.phpLine;
+  }
+
+  public getPrevious(): PHPError | null {
+    return this.previous;
   }
 
   public static virtualizeJSStack(
@@ -72,3 +91,23 @@ export class PHPParseError extends PHPError {}
 export class PHPFatalError extends PHPError {}
 export class PHPNotice extends PHPError {}
 export class PHPWarning extends PHPError {}
+
+export class ErrorException extends PHPError {
+  public severity: number;
+
+  constructor(
+    message: string = "",
+    code: number = 0,
+    severity: number = 1,
+    file: string = "[INTERNAL]",
+    line: number = 0,
+    previous: PHPError | null = null
+  ) {
+    super(message, code, file, line, [], previous);
+    this.severity = severity;
+  }
+
+  public getSeverity(): number {
+    return this.severity;
+  }
+}

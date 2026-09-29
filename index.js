@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
+exports.unwrapPHPValue = exports.wrapJSValue = exports.NodeJSService = exports.NodeJSObject = exports.NodeJSExtension = exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.runFPM = exports.runHTTPServer = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.ErrorException = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
 var PHPEngine_1 = require("./src/PHPEngine");
 Object.defineProperty(exports, "PHPEngine", { enumerable: true, get: function () { return PHPEngine_1.PHPEngine; } });
 var PHPContext_1 = require("./src/PHPContext");
@@ -13,6 +13,9 @@ Object.defineProperty(exports, "PHPException", { enumerable: true, get: function
 Object.defineProperty(exports, "PHPTypeError", { enumerable: true, get: function () { return PHPError_1.PHPTypeError; } });
 Object.defineProperty(exports, "PHPParseError", { enumerable: true, get: function () { return PHPError_1.PHPParseError; } });
 Object.defineProperty(exports, "PHPFatalError", { enumerable: true, get: function () { return PHPError_1.PHPFatalError; } });
+Object.defineProperty(exports, "PHPNotice", { enumerable: true, get: function () { return PHPError_1.PHPNotice; } });
+Object.defineProperty(exports, "PHPWarning", { enumerable: true, get: function () { return PHPError_1.PHPWarning; } });
+Object.defineProperty(exports, "ErrorException", { enumerable: true, get: function () { return PHPError_1.ErrorException; } });
 var PHPObject_1 = require("./src/runtime/objects/PHPObject");
 Object.defineProperty(exports, "PHPObject", { enumerable: true, get: function () { return PHPObject_1.PHPObject; } });
 Object.defineProperty(exports, "PHPClass", { enumerable: true, get: function () { return PHPObject_1.PHPClass; } });
@@ -26,6 +29,10 @@ var ASTOptimizer_1 = require("./src/parser/ASTOptimizer");
 Object.defineProperty(exports, "ASTOptimizer", { enumerable: true, get: function () { return ASTOptimizer_1.ASTOptimizer; } });
 var JSTranspiler_1 = require("./src/parser/JSTranspiler");
 Object.defineProperty(exports, "JSTranspiler", { enumerable: true, get: function () { return JSTranspiler_1.JSTranspiler; } });
+var php_http_server_1 = require("./src/cli/php-http-server");
+Object.defineProperty(exports, "runHTTPServer", { enumerable: true, get: function () { return php_http_server_1.runHTTPServer; } });
+var php_fpm_1 = require("./src/cli/php-fpm");
+Object.defineProperty(exports, "runFPM", { enumerable: true, get: function () { return php_fpm_1.runFPM; } });
 var Reflection_1 = require("./src/runtime/reflection/Reflection");
 Object.defineProperty(exports, "defineFunction", { enumerable: true, get: function () { return Reflection_1.defineFunction; } });
 Object.defineProperty(exports, "Reflection", { enumerable: true, get: function () { return Reflection_1.Reflection; } });
@@ -35,4 +42,10 @@ Object.defineProperty(exports, "ReflectionProperty", { enumerable: true, get: fu
 Object.defineProperty(exports, "ReflectionFunction", { enumerable: true, get: function () { return Reflection_1.ReflectionFunction; } });
 Object.defineProperty(exports, "ReflectionParameter", { enumerable: true, get: function () { return Reflection_1.ReflectionParameter; } });
 Object.defineProperty(exports, "ReflectionType", { enumerable: true, get: function () { return Reflection_1.ReflectionType; } });
+var nodejs_1 = require("./src/extensions/nodejs/nodejs");
+Object.defineProperty(exports, "NodeJSExtension", { enumerable: true, get: function () { return nodejs_1.NodeJSExtension; } });
+Object.defineProperty(exports, "NodeJSObject", { enumerable: true, get: function () { return nodejs_1.NodeJSObject; } });
+Object.defineProperty(exports, "NodeJSService", { enumerable: true, get: function () { return nodejs_1.NodeJSService; } });
+Object.defineProperty(exports, "wrapJSValue", { enumerable: true, get: function () { return nodejs_1.wrapJSValue; } });
+Object.defineProperty(exports, "unwrapPHPValue", { enumerable: true, get: function () { return nodejs_1.unwrapPHPValue; } });
 //# sourceMappingURL=index.js.map

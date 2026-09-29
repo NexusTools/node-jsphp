@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPObject = exports.PHPClass = void 0;
+const PHPError_1 = require("../errors/PHPError");
 class PHPClass {
     name;
     parentClass;
@@ -59,7 +60,7 @@ class PHPObject {
         if (__callMeta?.fn) {
             return await __callMeta.fn.call(this, ctx, name, args);
         }
-        throw new Error(`Call to undefined method ${this.phpClass.name}::${name}()`);
+        throw new PHPError_1.PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
     }
     async toString(ctx) {
         const __toStringMeta = this.phpClass.methods.get("__tostring");

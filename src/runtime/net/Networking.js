@@ -36,7 +36,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.NetworkingRuntime = void 0;
 const dns = __importStar(require("dns/promises"));
 const os = __importStar(require("os"));
+const PHPError_1 = require("../errors/PHPError");
 class NetworkingRuntime {
+    static checkServerOutputHandler(ctx, funcName) {
+        const hasHandler = ctx.getInternalVar("hasServerResponseHandler") || ctx.internalVars.has("serverOutputHandler");
+        if (!hasHandler) {
+            throw new PHPError_1.PHPWarning(`Cannot modify header information - ${funcName}() is not supported in CLI mode unless a server response handler is provided`);
+        }
+    }
     static gethostname() {
         return os.hostname();
     }
@@ -104,7 +111,6 @@ class NetworkingRuntime {
                 fragment: u.hash ? u.hash.substring(1) : undefined,
             };
             if (component !== -1) {
-                // PHP URL component constants mapping
                 switch (component) {
                     case 0: return parsed.scheme;
                     case 1: return parsed.host;
@@ -133,25 +139,55 @@ class NetworkingRuntime {
         return params.toString().replace(/&/g, argSeparator);
     }
     static header(ctx, headerStr, replace = true, httpResponseCode) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "header");
         if (httpResponseCode) {
-            ctx.superglobals.SERVER["HTTP_RESPONSE_CODE"] = httpResponseCode;
+            ctx.response.statusCode = httpResponseCode;
         }
-        if (!ctx.superglobals.SERVER["RESPONSE_HEADERS"]) {
-            ctx.superglobals.SERVER["RESPONSE_HEADERS"] = {};
+        if (headerStr.startsWith("HTTP/")) {
+            const parts = headerStr.split(" ");
+            if (parts.length >= 2) {
+                const code = parseInt(parts[1], 10);
+                if (!isNaN(code))
+                    ctx.response.statusCode = code;
+            }
+            return;
         }
         const colonIdx = headerStr.indexOf(":");
         if (colonIdx !== -1) {
-            const name = headerStr.substring(0, colonIdx).trim().toLowerCase();
+            const name = headerStr.substring(0, colonIdx).trim();
             const val = headerStr.substring(colonIdx + 1).trim();
-            ctx.superglobals.SERVER["RESPONSE_HEADERS"][name] = val;
+            ctx.response.setHeader(name, val, replace);
         }
     }
+    static setcookie(ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httponly = false) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "setcookie");
+        ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, false);
+        return true;
+    }
+    static setrawcookie(ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httponly = false) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "setrawcookie");
+        ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, true);
+        return true;
+    }
+    static header_remove(ctx, name) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "header_remove");
+        ctx.response.removeHeader(name);
+    }
+    static headers_list(ctx) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "headers_list");
+        return ctx.response.getHeadersList();
+    }
+    static headers_sent(ctx) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "headers_sent");
+        return ctx.response.headersSent;
+    }
     static http_response_code(ctx, responseCode) {
+        NetworkingRuntime.checkServerOutputHandler(ctx, "http_response_code");
         if (responseCode !== undefined) {
-            ctx.superglobals.SERVER["HTTP_RESPONSE_CODE"] = responseCode;
+            ctx.response.statusCode = responseCode;
             return responseCode;
         }
-        return ctx.superglobals.SERVER["HTTP_RESPONSE_CODE"] || 200;
+        return ctx.response.statusCode;
     }
 }
 exports.NetworkingRuntime = NetworkingRuntime;

@@ -203,16 +203,20 @@ async function executeFCGIRequest(
     },
   });
 
+  ctx.setInternalVar("hasServerResponseHandler", true);
+
   await ctx.require(scriptPath);
 
-  // Default headers if none explicitly emitted by PHP
-  let finalBuf: Buffer;
-  if (outputText.startsWith("Status:") || outputText.startsWith("HTTP/") || outputText.includes("Content-Type:")) {
-    finalBuf = Buffer.from(outputText, "utf8");
-  } else {
-    const defaultHeaders = "Status: 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
-    finalBuf = Buffer.from(defaultHeaders + outputText, "utf8");
+  const headersList = ctx.response.getHeadersList();
+  if (!headersList.some((h) => h.toLowerCase().startsWith("status:"))) {
+    headersList.unshift(`Status: ${ctx.response.statusCode}`);
   }
+  if (!headersList.some((h) => h.toLowerCase().startsWith("content-type:"))) {
+    headersList.push("Content-Type: text/html; charset=utf-8");
+  }
+
+  const headerBlock = headersList.join("\r\n") + "\r\n\r\n";
+  const finalBuf = Buffer.from(headerBlock + outputText, "utf8");
 
   writeRecord(socket, FCGI_STDOUT, req.requestId, finalBuf);
   writeRecord(socket, FCGI_STDOUT, req.requestId, Buffer.alloc(0)); // EOF

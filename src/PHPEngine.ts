@@ -18,6 +18,7 @@ import { StreamRuntime, PHPStreamContext } from "./runtime/streams/Streams";
 import { ExecRuntime } from "./runtime/exec/Exec";
 import { PHPFiber, PHPFiberError, PHPFiberExit } from "./runtime/fibers/Fiber";
 import { PHPEnum } from "./runtime/enums/Enum";
+import { ErrorException } from "./runtime/errors/PHPError";
 import {
   ReflectionClass,
   ReflectionMethod,
@@ -53,6 +54,7 @@ export class PHPEngine {
   public constants: Map<string, any> = new Map();
   public functions: Map<string, Function> = new Map();
   public classes: Map<string, any> = new Map();
+  public internalVars: Map<string, any> = new Map();
   private compiledCache: Map<string, Function> = new Map();
   private watcher?: chokidar.FSWatcher;
   private transpiler: JSTranspiler;
@@ -68,6 +70,24 @@ export class PHPEngine {
     this.constants.set("PHP_OS", process.platform === "win32" ? "WINNT" : "Linux");
     this.constants.set("DIRECTORY_SEPARATOR", path.sep);
     this.constants.set("PATH_SEPARATOR", process.platform === "win32" ? ";" : ":");
+
+    // PHP Error Level Constants
+    this.constants.set("E_ERROR", 1);
+    this.constants.set("E_WARNING", 2);
+    this.constants.set("E_PARSE", 4);
+    this.constants.set("E_NOTICE", 8);
+    this.constants.set("E_CORE_ERROR", 16);
+    this.constants.set("E_CORE_WARNING", 32);
+    this.constants.set("E_COMPILE_ERROR", 64);
+    this.constants.set("E_COMPILE_WARNING", 128);
+    this.constants.set("E_USER_ERROR", 256);
+    this.constants.set("E_USER_WARNING", 512);
+    this.constants.set("E_USER_NOTICE", 1024);
+    this.constants.set("E_STRICT", 2048);
+    this.constants.set("E_RECOVERABLE_ERROR", 4096);
+    this.constants.set("E_DEPRECATED", 8192);
+    this.constants.set("E_USER_DEPRECATED", 16384);
+    this.constants.set("E_ALL", 32767);
 
     if (options.constants) {
       for (const [key, val] of Object.entries(options.constants)) {
@@ -100,6 +120,14 @@ export class PHPEngine {
     }
   }
 
+  public getInternalVar(name: string): any {
+    return this.internalVars.get(name);
+  }
+
+  public setInternalVar(name: string, value: any): void {
+    this.internalVars.set(name, value);
+  }
+
   public getConstant(name: string): any {
     if (this.constants.has(name)) return this.constants.get(name);
     if (this.constants.has(name.toUpperCase())) return this.constants.get(name.toUpperCase());
@@ -129,7 +157,32 @@ export class PHPEngine {
       return this.getConstant(name);
     });
 
-    // Output buffering
+    // Error handling
+    this.functions.set("set_error_handler", (ctx: PHPContext, handler: any, levels = 32767) => {
+      return ctx.setErrorHandler(handler, levels);
+    });
+    this.functions.set("restore_error_handler", (ctx: PHPContext) => {
+      return ctx.restoreErrorHandler();
+    });
+    this.functions.set("trigger_error", async (ctx: PHPContext, message: string, level = 1024) => {
+      return await ctx.triggerError(message, level);
+    });
+    this.functions.set("user_error", async (ctx: PHPContext, message: string, level = 1024) => {
+      return await ctx.triggerError(message, level);
+    });
+    this.functions.set("error_reporting", (ctx: PHPContext, level?: number) => {
+      const prev = ctx.errorReportingLevel;
+      if (level !== undefined) {
+        ctx.errorReportingLevel = level;
+      }
+      return prev;
+    });
+
+    // Output buffering & flush
+    this.functions.set("flush", (ctx: PHPContext) => {
+      ctx.flushHeaders();
+      return true;
+    });
     this.functions.set("ob_start", (ctx: PHPContext) => ctx.outputBuffer.start());
     this.functions.set("ob_get_clean", (ctx: PHPContext) => ctx.outputBuffer.getClean());
     this.functions.set("ob_get_contents", (ctx: PHPContext) => ctx.outputBuffer.getContents());
@@ -218,7 +271,7 @@ export class PHPEngine {
     this.functions.set("sys_get_temp_dir", () => FileSystemRuntime.sys_get_temp_dir());
     this.functions.set("scandir", async (ctx: PHPContext, path: string) => await FileSystemRuntime.scandir(path));
 
-    // Networking
+    // Networking & Headers
     this.functions.set("gethostname", () => NetworkingRuntime.gethostname());
     this.functions.set("gethostbyname", async (ctx: PHPContext, name: string) => await NetworkingRuntime.gethostbyname(name));
     this.functions.set("gethostbyaddr", async (ctx: PHPContext, ip: string) => await NetworkingRuntime.gethostbyaddr(ip));
@@ -226,7 +279,12 @@ export class PHPEngine {
     this.functions.set("long2ip", (ctx: PHPContext, num: number) => NetworkingRuntime.long2ip(num));
     this.functions.set("parse_url", (ctx: PHPContext, url: string, comp = -1) => NetworkingRuntime.parse_url(url, comp));
     this.functions.set("http_build_query", (ctx: PHPContext, data: any, prefix = "", sep = "&") => NetworkingRuntime.http_build_query(data, prefix, sep));
-    this.functions.set("header", (ctx: PHPContext, header: string, replace = true, code?: number) => NetworkingRuntime.header(ctx, header, replace, code));
+    this.functions.set("header", (ctx: PHPContext, headerStr: string, replace = true, code?: number) => NetworkingRuntime.header(ctx, headerStr, replace, code));
+    this.functions.set("setcookie", (ctx: PHPContext, name: string, val = "", exp = 0, p = "", d = "", sec = false, httpOnly = false) => NetworkingRuntime.setcookie(ctx, name, val, exp, p, d, sec, httpOnly));
+    this.functions.set("setrawcookie", (ctx: PHPContext, name: string, val = "", exp = 0, p = "", d = "", sec = false, httpOnly = false) => NetworkingRuntime.setrawcookie(ctx, name, val, exp, p, d, sec, httpOnly));
+    this.functions.set("header_remove", (ctx: PHPContext, name?: string) => NetworkingRuntime.header_remove(ctx, name));
+    this.functions.set("headers_list", (ctx: PHPContext) => NetworkingRuntime.headers_list(ctx));
+    this.functions.set("headers_sent", (ctx: PHPContext) => NetworkingRuntime.headers_sent(ctx));
     this.functions.set("http_response_code", (ctx: PHPContext, code?: number) => NetworkingRuntime.http_response_code(ctx, code));
 
     // Math
@@ -287,6 +345,7 @@ export class PHPEngine {
     this.classes.set("reflectiontype", ReflectionType);
     this.classes.set("fiber", PHPFiber);
     this.classes.set("enum", PHPEnum);
+    this.classes.set("errorexception", ErrorException);
   }
 
   public registerExtension(extension: PHPExtension): void {
@@ -339,6 +398,7 @@ export class PHPEngine {
     const optimizerCtx: OptimizerContext = {
       enabledExtensions: new Set(this.extensions.keys()),
       constants: this.constants,
+      functions: this.functions,
     };
 
     const transpilation = this.transpiler.transpile(code, filepath, {

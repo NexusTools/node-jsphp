@@ -200,6 +200,8 @@ export class JSTranspiler {
         this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 1);
         code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}} catch (__err) {\n`;
         if (node.catches && node.catches.length > 0) {
+          const catchVar = node.catches[0].variable?.name?.name || node.catches[0].variable?.name || node.catches[0].variable || "e";
+          code += `${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);\n`;
           const catchBody: string[] = [];
           this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, catchBody, mapGen!, filepath, 1);
           code += catchBody.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
@@ -207,6 +209,11 @@ export class JSTranspiler {
           code += `${pad}}`;
         }
         return code;
+      }
+
+      case "throw": {
+        const expr = this.transpileExpr(node.what || node.expression || node.expr, filepath);
+        return `${pad}throw ${expr};`;
       }
 
       case "return": {
@@ -399,6 +406,19 @@ export class JSTranspiler {
         return `(${left} ${op} ${right})`;
       }
       case "call": {
+        if (node.what?.kind === "propertylookup") {
+          const obj = this.transpileExpr(node.what.what, filepath);
+          const method = JSON.stringify(node.what.offset?.name || node.what.offset?.value || node.what.offset || "method");
+          const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
+          return `(await ctx.callMethod(${obj}, ${method}, [${args.join(", ")}]))`;
+        }
+        if (node.what?.kind === "nullsafepropertylookup") {
+          const obj = this.transpileExpr(node.what.what, filepath);
+          const method = JSON.stringify(node.what.offset?.name || node.what.offset?.value || node.what.offset || "method");
+          const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
+          return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.callMethod(__o, ${method}, [${args.join(", ")}]) : null; })())`;
+        }
+
         const name = (node.what?.name || node.what?.value || "func").toString();
         const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
 

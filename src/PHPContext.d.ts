@@ -8,19 +8,45 @@ export interface PHPContextOptions {
     stdout?: Writable | ((data: string) => void);
     stderr?: Writable | ((data: string) => void);
     superglobals?: SuperglobalsOptions;
+    errorReporting?: number;
+}
+export declare class PHPResponse {
+    statusCode: number;
+    headers: {
+        name: string;
+        value: string;
+    }[];
+    headersSent: boolean;
+    setHeader(name: string, value: string, replace?: boolean): void;
+    removeHeader(name?: string): void;
+    getHeader(name: string): string | undefined;
+    getHeadersList(): string[];
+    setCookie(name: string, value?: string, expires?: number, path?: string, domain?: string, secure?: boolean, httponly?: boolean, raw?: boolean): void;
 }
 export declare class PHPContext {
     engine: PHPEngine;
     cwd: string;
     env: Record<string, string>;
     vars: Record<string, any>;
+    internalVars: Map<string, any>;
     superglobals: Superglobals;
     outputBuffer: OutputBufferStack;
+    response: PHPResponse;
+    errorHandlerStack: any[];
+    errorReportingLevel: number;
     includedFiles: Set<string>;
     private stdout;
     private stderr;
     outputText: string;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
+    setErrorHandler(handler: any, levels?: number): any;
+    restoreErrorHandler(): boolean;
+    triggerError(message: string, level?: number, file?: string, line?: number): Promise<boolean>;
+    getInternalVar(name: string): any;
+    setInternalVar(name: string, value: any): void;
+    get responseHeaders(): Record<string, string>;
+    get statusCode(): number;
+    flushHeaders(): void;
     echo(data: any): Promise<void>;
     private writeStdout;
     getConstant(name: string): any;

@@ -1,36 +1,27 @@
-export interface UnitEnum {
-  name: string;
-}
+import { PHPClass, PHPObject } from "../objects/PHPObject";
+import { PHPFatalError } from "../errors/PHPError";
 
-export interface BackedEnum extends UnitEnum {
-  value: string | number;
-}
+export class PHPEnum extends PHPObject {
+  public readonly name: string;
+  public readonly value?: any;
 
-export class PHPEnum implements BackedEnum {
-  public name: string;
-  public value: string | number;
-
-  constructor(name: string, value: string | number) {
+  constructor(enumClass: PHPClass, name: string, value?: any) {
+    super(enumClass);
     this.name = name;
     this.value = value;
   }
 
-  public static cases(enumClass: any): UnitEnum[] {
-    if (enumClass && enumClass.cases) {
-      return enumClass.cases;
+  public static from(enumClass: PHPClass, value: any): PHPEnum {
+    const cases = Array.from(enumClass.constants.entries());
+    for (const [caseName, caseVal] of cases) {
+      if (caseVal === value) {
+        return new PHPEnum(enumClass, caseName, caseVal);
+      }
     }
-    return [];
+    throw new PHPFatalError(`ValueError: ${value} is not a valid backing value for enum ${enumClass.name}`);
   }
 
-  public static from(enumClass: any, value: string | number): BackedEnum {
-    const found = (enumClass.cases || []).find((c: BackedEnum) => c.value === value);
-    if (!found) {
-      throw new Error(`ValueError: ${value} is not a valid backing value for enum ${enumClass.name}`);
-    }
-    return found;
-  }
-
-  public static tryFrom(enumClass: any, value: string | number): BackedEnum | null {
+  public static tryFrom(enumClass: PHPClass, value: any): PHPEnum | null {
     try {
       return PHPEnum.from(enumClass, value);
     } catch {

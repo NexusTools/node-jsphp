@@ -4,7 +4,7 @@ import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/superglobals/Superglobals";
 import { OutputBufferStack } from "./runtime/output/OutputBuffer";
-import { PHPError, PHPFatalError } from "./runtime/errors/PHPError";
+import { PHPError, PHPFatalError, PHPWarning, PHPNotice } from "./runtime/errors/PHPError";
 import { PHPObject, PHPClass } from "./runtime/objects/PHPObject";
 
 export interface PHPContextOptions {
@@ -13,6 +13,75 @@ export interface PHPContextOptions {
   stdout?: Writable | ((data: string) => void);
   stderr?: Writable | ((data: string) => void);
   superglobals?: SuperglobalsOptions;
+  errorReporting?: number;
+}
+
+export class PHPResponse {
+  public statusCode: number = 200;
+  public headers: { name: string; value: string }[] = [];
+  public headersSent: boolean = false;
+
+  public setHeader(name: string, value: string, replace = true): void {
+    if (this.headersSent) {
+      return;
+    }
+    if (replace) {
+      this.headers = this.headers.filter((h) => h.name.toLowerCase() !== name.toLowerCase());
+    }
+    this.headers.push({ name, value });
+
+    if (name.toLowerCase() === "location" && this.statusCode === 200) {
+      this.statusCode = 302;
+    }
+  }
+
+  public removeHeader(name?: string): void {
+    if (this.headersSent) {
+      return;
+    }
+    if (!name) {
+      this.headers = [];
+      return;
+    }
+    this.headers = this.headers.filter((h) => h.name.toLowerCase() !== name.toLowerCase());
+  }
+
+  public getHeader(name: string): string | undefined {
+    const found = this.headers.filter((h) => h.name.toLowerCase() === name.toLowerCase());
+    return found.length > 0 ? found[found.length - 1].value : undefined;
+  }
+
+  public getHeadersList(): string[] {
+    return this.headers.map((h) => `${h.name}: ${h.value}`);
+  }
+
+  public setCookie(
+    name: string,
+    value: string = "",
+    expires: number = 0,
+    path: string = "",
+    domain: string = "",
+    secure: boolean = false,
+    httponly: boolean = false,
+    raw: boolean = false
+  ): void {
+    if (this.headersSent) {
+      return;
+    }
+    const encodedName = raw ? name : encodeURIComponent(name);
+    const encodedValue = raw ? value : encodeURIComponent(value);
+    let cookieStr = `${encodedName}=${encodedValue}`;
+
+    if (expires > 0) {
+      cookieStr += `; expires=${new Date(expires * 1000).toUTCString()}`;
+    }
+    if (path) cookieStr += `; path=${path}`;
+    if (domain) cookieStr += `; domain=${domain}`;
+    if (secure) cookieStr += `; secure`;
+    if (httponly) cookieStr += `; HttpOnly`;
+
+    this.setHeader("Set-Cookie", cookieStr, false);
+  }
 }
 
 export class PHPContext {
@@ -20,8 +89,12 @@ export class PHPContext {
   public cwd: string;
   public env: Record<string, string>;
   public vars: Record<string, any> = {};
+  public internalVars: Map<string, any> = new Map();
   public superglobals: Superglobals;
   public outputBuffer: OutputBufferStack;
+  public response: PHPResponse;
+  public errorHandlerStack: any[] = [];
+  public errorReportingLevel: number = 32767; // E_ALL
   public includedFiles: Set<string> = new Set();
   private stdout: Writable | ((data: string) => void);
   private stderr: Writable | ((data: string) => void);
@@ -35,6 +108,86 @@ export class PHPContext {
     this.stderr = options.stderr || ((data: string) => { console.error(data); });
     this.superglobals = new Superglobals({ ...options.superglobals, env: this.env });
     this.outputBuffer = new OutputBufferStack();
+    this.response = new PHPResponse();
+    if (options.errorReporting !== undefined) {
+      this.errorReportingLevel = options.errorReporting;
+    }
+  }
+
+  public setErrorHandler(handler: any, levels = 32767): any {
+    const prev = this.errorHandlerStack.length > 0 ? this.errorHandlerStack[this.errorHandlerStack.length - 1] : null;
+    this.errorHandlerStack.push({ handler, levels });
+    return prev ? prev.handler : null;
+  }
+
+  public restoreErrorHandler(): boolean {
+    if (this.errorHandlerStack.length > 0) {
+      this.errorHandlerStack.pop();
+    }
+    return true;
+  }
+
+  public async triggerError(message: string, level = 1024, file = "[INTERNAL]", line = 0): Promise<boolean> {
+    if ((this.errorReportingLevel & level) === 0) {
+      return false; // Suppressed
+    }
+
+    if (this.errorHandlerStack.length > 0) {
+      const top = this.errorHandlerStack[this.errorHandlerStack.length - 1];
+      if ((top.levels & level) !== 0) {
+        const handler = top.handler;
+        let res: any;
+        if (typeof handler === "function") {
+          res = await handler(this, level, message, file, line);
+        } else if (typeof handler === "string") {
+          res = await this.callFunction(handler, [level, message, file, line]);
+        }
+        if (res !== false) {
+          return true; // Handled
+        }
+      }
+    }
+
+    // Default error handling
+    if (level === 1 || level === 256 || level === 4 || level === 64) {
+      throw new PHPFatalError(`Fatal error: ${message} in ${file} on line ${line}`);
+    } else {
+      const typeStr = (level === 2 || level === 512) ? "Warning" : "Notice";
+      await this.echo(`PHP ${typeStr}: ${message} in ${file} on line ${line}\n`);
+      return true;
+    }
+  }
+
+  public getInternalVar(name: string): any {
+    if (this.internalVars.has(name)) {
+      return this.internalVars.get(name);
+    }
+    return this.engine.getInternalVar(name);
+  }
+
+  public setInternalVar(name: string, value: any): void {
+    this.internalVars.set(name, value);
+  }
+
+  public get responseHeaders(): Record<string, string> {
+    const res: Record<string, string> = {};
+    for (const h of this.response.headers) {
+      res[h.name.toLowerCase()] = h.value;
+    }
+    return res;
+  }
+
+  public get statusCode(): number {
+    return this.response.statusCode;
+  }
+
+  public flushHeaders(): void {
+    if (this.response.headersSent) return;
+    this.response.headersSent = true;
+    const onFlush = this.getInternalVar("onFlushHeaders");
+    if (typeof onFlush === "function") {
+      onFlush(this.response.statusCode, this.response.headers);
+    }
   }
 
   public async echo(data: any): Promise<void> {
@@ -42,6 +195,9 @@ export class PHPContext {
     if (this.outputBuffer.isActive()) {
       this.outputBuffer.write(str);
     } else {
+      if (str.length > 0) {
+        this.flushHeaders();
+      }
       this.writeStdout(str);
     }
   }

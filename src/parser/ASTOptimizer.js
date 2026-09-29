@@ -47,7 +47,7 @@ class ASTOptimizer {
                 ast[key] = ASTOptimizer.optimize(ast[key], ctx);
             }
         }
-        // 2. Optimize Call expressions: extension_loaded & defined & constant
+        // 2. Optimize Call expressions: extension_loaded & defined & constant & function_exists
         if (ast.kind === "call" && ast.what) {
             const funcName = (ast.what.name || ast.what.value || "").toString().toLowerCase();
             // extension_loaded("ext")
@@ -78,6 +78,16 @@ class ASTOptimizer {
                     }
                     if (ctx.constants.has(cName.toUpperCase())) {
                         return ASTOptimizer.literalNode(ctx.constants.get(cName.toUpperCase()), ast.loc);
+                    }
+                }
+            }
+            // function_exists("func_name")
+            if (funcName === "function_exists" && ast.arguments && ast.arguments.length === 1) {
+                const arg = ast.arguments[0];
+                if (arg.kind === "string") {
+                    const fnName = arg.value.toLowerCase();
+                    if (ctx.functions && ctx.functions.has(fnName)) {
+                        return { kind: "boolean", value: true, loc: ast.loc };
                     }
                 }
             }
