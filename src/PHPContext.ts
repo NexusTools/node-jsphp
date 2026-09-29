@@ -4,7 +4,7 @@ import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/superglobals/Superglobals";
 import { OutputBufferStack } from "./runtime/output/OutputBuffer";
-import { PHPError, PHPFatalError, PHPWarning, PHPNotice } from "./runtime/errors/PHPError";
+import { PHPError, PHPFatalError, PHPWarning, PHPNotice, PHPExit } from "./runtime/errors/PHPError";
 import { PHPObject, PHPClass } from "./runtime/objects/PHPObject";
 
 export interface PHPContextOptions {
@@ -273,7 +273,7 @@ export class PHPContext {
     if (fn) {
       return await fn.apply(this, [this, ...args]);
     }
-    return false;
+    throw new PHPFatalError(`Call to undefined function ${name}()`);
   }
 
   public async createObject(className: string, args: any[] = []): Promise<any> {
@@ -291,8 +291,15 @@ export class PHPContext {
   }
 
   public async eval(code: string, filepath: string = "eval"): Promise<any> {
-    const compiledFunc = await this.engine.compileCode(code, filepath);
-    return await compiledFunc(this);
+    try {
+      const compiledFunc = await this.engine.compileCode(code, filepath);
+      return await compiledFunc(this);
+    } catch (err: any) {
+      if (err instanceof PHPExit || err?.name === "PHPExit") {
+        return err.status;
+      }
+      throw err;
+    }
   }
 
   private async fileExists(filepath: string): Promise<boolean> {
@@ -309,7 +316,7 @@ export class PHPContext {
       ? filepath
       : path.resolve(this.cwd, filepath);
     if (!(await this.fileExists(resolvedPath))) {
-      await this.echo(`Warning: include(${filepath}): Failed to open stream\n`);
+      await this.triggerError(`include(${filepath}): Failed to open stream: No such file or directory`, 2);
       return false;
     }
     const compiledFunc = await this.engine.compileFile(resolvedPath);
@@ -322,6 +329,10 @@ export class PHPContext {
       : path.resolve(this.cwd, filepath);
     if (this.includedFiles.has(resolvedPath)) {
       return true;
+    }
+    if (!(await this.fileExists(resolvedPath))) {
+      await this.triggerError(`include_once(${filepath}): Failed to open stream: No such file or directory`, 2);
+      return false;
     }
     this.includedFiles.add(resolvedPath);
     return await this.include(resolvedPath);
@@ -344,6 +355,9 @@ export class PHPContext {
       : path.resolve(this.cwd, filepath);
     if (this.includedFiles.has(resolvedPath)) {
       return true;
+    }
+    if (!(await this.fileExists(resolvedPath))) {
+      throw new PHPFatalError(`Fatal error: require_once(${filepath}): Failed opening required '${filepath}'`);
     }
     this.includedFiles.add(resolvedPath);
     return await this.require(resolvedPath);

@@ -17,7 +17,7 @@ import { StreamRuntime, PHPStreamContext } from "./runtime/streams/Streams";
 import { ExecRuntime } from "./runtime/exec/Exec";
 import { PHPFiber, PHPFiberError, PHPFiberExit } from "./runtime/fibers/Fiber";
 import { PHPEnum } from "./runtime/enums/Enum";
-import { ErrorException } from "./runtime/errors/PHPError";
+import { ErrorException, PHPFatalError } from "./runtime/errors/PHPError";
 import {
   ReflectionClass,
   ReflectionMethod,
@@ -128,6 +128,7 @@ export class PHPEngine {
   }
 
   public getConstant(name: string): any {
+    if (!name || typeof name !== "string") return undefined;
     if (this.constants.has(name)) return this.constants.get(name);
     if (this.constants.has(name.toUpperCase())) return this.constants.get(name.toUpperCase());
     if (this.constants.has(name.toLowerCase())) return this.constants.get(name.toLowerCase());
@@ -136,24 +137,85 @@ export class PHPEngine {
 
   private registerCoreFunctions(): void {
     // Core definition & state
-    this.functions.set("define", (ctx: PHPContext, name: string, value: any) => {
+    this.functions.set("define", async (ctx: PHPContext, name: string, value: any) => {
+      if (this.constants.has(name) || this.constants.has(name.toUpperCase())) {
+        await ctx.triggerError(`Constant ${name} already defined`, 2);
+        return false;
+      }
       this.constants.set(name, value);
       return true;
     });
     this.functions.set("defined", (ctx: PHPContext, name: string) => {
+      if (!name || typeof name !== "string") return false;
       return this.constants.has(name) || this.constants.has(name.toUpperCase());
     });
     this.functions.set("extension_loaded", (ctx: PHPContext, name: string) => {
+      if (!name || typeof name !== "string") return false;
       return this.extensions.has(name.toLowerCase());
     });
     this.functions.set("function_exists", (ctx: PHPContext, name: string) => {
+      if (!name || typeof name !== "string") return false;
       return this.functions.has(name.toLowerCase());
     });
     this.functions.set("class_exists", (ctx: PHPContext, name: string) => {
+      if (!name || typeof name !== "string") return false;
       return this.classes.has(name.toLowerCase());
     });
     this.functions.set("constant", (ctx: PHPContext, name: string) => {
       return this.getConstant(name);
+    });
+    this.functions.set("assert", (ctx: PHPContext, assertion: any, description?: string) => {
+      if (!assertion) {
+        if (description) {
+          throw new PHPFatalError(`Assertion failed: ${description}`);
+        }
+        return false;
+      }
+      return true;
+    });
+    this.functions.set("is_callable", (ctx: PHPContext, v: any) => {
+      if (typeof v === "function") return true;
+      if (typeof v === "string") return this.functions.has(v.toLowerCase());
+      if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string") {
+        const cls = this.classes.get(v[0].toLowerCase());
+        return Boolean(cls && cls.methods && cls.methods.has(v[1].toLowerCase()));
+      }
+      return false;
+    });
+    this.functions.set("is_iterable", (ctx: PHPContext, v: any) => {
+      return Array.isArray(v) || (v && typeof v === "object");
+    });
+    this.functions.set("is_countable", (ctx: PHPContext, v: any) => {
+      return Array.isArray(v) || typeof v === "string";
+    });
+    this.functions.set("is_resource", (ctx: PHPContext, v: any) => {
+      return v && typeof v === "object" && Boolean(v.isResource);
+    });
+    this.functions.set("version_compare", (ctx: PHPContext, v1: string, v2: string, op?: string) => {
+      return StringRuntime.version_compare(v1, v2, op);
+    });
+    this.functions.set("ini_get", (ctx: PHPContext, option: string) => {
+      const opt = (option || "").toLowerCase();
+      if (opt === "display_errors") return "1";
+      if (opt === "memory_limit") return "512M";
+      if (opt === "max_execution_time") return "30";
+      if (opt === "post_max_size") return "64M";
+      if (opt === "upload_max_filesize") return "64M";
+      if (opt === "date.timezone") return "UTC";
+      return "";
+    });
+    this.functions.set("ini_set", (ctx: PHPContext, option: string, value: any) => {
+      return "";
+    });
+    this.functions.set("register_shutdown_function", (ctx: PHPContext, callback: any, ...args: any[]) => {
+      ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
+      return true;
+    });
+    this.functions.set("register_tick_function", (ctx: PHPContext, callback: any, ...args: any[]) => {
+      return true;
+    });
+    this.functions.set("unregister_tick_function", (ctx: PHPContext, callback: any) => {
+      return true;
     });
 
     // Error handling
@@ -199,6 +261,18 @@ export class PHPEngine {
     this.functions.set("strstr", (ctx: PHPContext, haystack: string, needle: string, before = false) => StringRuntime.strstr(haystack, needle, before));
     this.functions.set("str_replace", (ctx: PHPContext, search: any, replace: any, subject: any) => StringRuntime.str_replace(search, replace, subject));
     this.functions.set("str_ireplace", (ctx: PHPContext, search: any, replace: any, subject: any) => StringRuntime.str_ireplace(search, replace, subject));
+    this.functions.set("sprintf", (ctx: PHPContext, fmt: string, ...args: any[]) => StringRuntime.sprintf(fmt, ...args));
+    this.functions.set("printf", async (ctx: PHPContext, fmt: string, ...args: any[]) => {
+      const res = StringRuntime.sprintf(fmt, ...args);
+      await ctx.echo(res);
+      return res.length;
+    });
+    this.functions.set("vsprintf", (ctx: PHPContext, fmt: string, args: any[] = []) => StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : [])));
+    this.functions.set("vprintf", async (ctx: PHPContext, fmt: string, args: any[] = []) => {
+      const res = StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : []));
+      await ctx.echo(res);
+      return res.length;
+    });
     this.functions.set("explode", (ctx: PHPContext, delim: string, str: string, limit?: number) => StringRuntime.explode(delim, str, limit));
     this.functions.set("implode", (ctx: PHPContext, glue: string, pieces: any[]) => StringRuntime.implode(glue, pieces));
     this.functions.set("trim", (ctx: PHPContext, str: string, chars?: string) => StringRuntime.trim(str, chars));

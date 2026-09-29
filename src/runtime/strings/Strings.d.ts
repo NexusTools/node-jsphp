@@ -8,6 +8,7 @@ export declare class StringRuntime {
     static strstr(haystack: string, needle: string, beforeNeedle?: boolean): string | false;
     static str_replace(search: any, replace: any, subject: any): any;
     static str_ireplace(search: any, replace: any, subject: any): any;
+    static sprintf(fmt: string, ...args: any[]): string;
     static explode(delimiter: string, string: string, limit?: number): string[];
     static implode(glue: string, pieces: any[]): string;
     static trim(str: string, charlist?: string): string;
@@ -32,4 +33,5 @@ export declare class StringRuntime {
     static ord(character: string): number;
     static bin2hex(string: string): string;
     static hex2bin(hexString: string): string;
+    static version_compare(v1: string, v2: string, op?: string): any;
 }

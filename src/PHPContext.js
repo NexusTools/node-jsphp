@@ -270,7 +270,7 @@ class PHPContext {
         if (fn) {
             return await fn.apply(this, [this, ...args]);
         }
-        return false;
+        throw new PHPError_1.PHPFatalError(`Call to undefined function ${name}()`);
     }
     async createObject(className, args = []) {
         const rawClass = this.engine.classes.get(className.toLowerCase());
@@ -286,8 +286,16 @@ class PHPContext {
         return obj;
     }
     async eval(code, filepath = "eval") {
-        const compiledFunc = await this.engine.compileCode(code, filepath);
-        return await compiledFunc(this);
+        try {
+            const compiledFunc = await this.engine.compileCode(code, filepath);
+            return await compiledFunc(this);
+        }
+        catch (err) {
+            if (err instanceof PHPError_1.PHPExit || err?.name === "PHPExit") {
+                return err.status;
+            }
+            throw err;
+        }
     }
     async fileExists(filepath) {
         try {
@@ -303,7 +311,7 @@ class PHPContext {
             ? filepath
             : path.resolve(this.cwd, filepath);
         if (!(await this.fileExists(resolvedPath))) {
-            await this.echo(`Warning: include(${filepath}): Failed to open stream\n`);
+            await this.triggerError(`include(${filepath}): Failed to open stream: No such file or directory`, 2);
             return false;
         }
         const compiledFunc = await this.engine.compileFile(resolvedPath);
@@ -315,6 +323,10 @@ class PHPContext {
             : path.resolve(this.cwd, filepath);
         if (this.includedFiles.has(resolvedPath)) {
             return true;
+        }
+        if (!(await this.fileExists(resolvedPath))) {
+            await this.triggerError(`include_once(${filepath}): Failed to open stream: No such file or directory`, 2);
+            return false;
         }
         this.includedFiles.add(resolvedPath);
         return await this.include(resolvedPath);
@@ -335,6 +347,9 @@ class PHPContext {
             : path.resolve(this.cwd, filepath);
         if (this.includedFiles.has(resolvedPath)) {
             return true;
+        }
+        if (!(await this.fileExists(resolvedPath))) {
+            throw new PHPError_1.PHPFatalError(`Fatal error: require_once(${filepath}): Failed opening required '${filepath}'`);
         }
         this.includedFiles.add(resolvedPath);
         return await this.require(resolvedPath);

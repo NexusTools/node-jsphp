@@ -13,7 +13,7 @@ const TEST_PASS = "wp_jsphp_pass";
 
 describe("Complete WordPress End-to-End Installation & Control Panel Test", () => {
   let engine: PHPEngine;
-  const wpDir = path.join(__dirname, "wordpress");
+  const wpDir = path.join(__dirname, "../wordpress-test");
   const wpZipPath = path.join(__dirname, "latest.zip");
 
   beforeAll(async () => {
@@ -48,15 +48,31 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
       console.log("WordPress zip downloaded successfully.");
     }
 
-    // 3. Extract WordPress zip into tests/ directory
-    if (!fs.existsSync(wpDir)) {
+    // 3. Extract WordPress zip into root directory
+    const translationsFile = path.join(wpDir, "wp-includes", "pomo", "translations.php");
+    if (!fs.existsSync(translationsFile)) {
       console.log("Extracting WordPress archive...");
+      if (fs.existsSync(wpDir)) {
+        try { fs.rmSync(wpDir, { recursive: true, force: true }); } catch (e) {}
+      }
+      fs.mkdirSync(wpDir, { recursive: true });
       const zip = new AdmZip(wpZipPath);
-      zip.extractAllTo(__dirname, true);
+      zip.extractAllTo(wpDir, true);
+
+      const subFolder = path.join(wpDir, "wordpress");
+      if (fs.existsSync(subFolder)) {
+        const entries = fs.readdirSync(subFolder);
+        for (const entry of entries) {
+          try {
+            fs.renameSync(path.join(subFolder, entry), path.join(wpDir, entry));
+          } catch (e) {}
+        }
+        try { fs.rmdirSync(subFolder); } catch (e) {}
+      }
       console.log("WordPress extracted successfully to:", wpDir);
     }
 
-    // 4. Create wp-config.php inside extracted wordpress folder
+    // 4. Create wp-config.php inside extracted wordpress-test folder
     const wpConfigContent = `<?php
 define( 'DB_NAME', '${TEST_DB_NAME}' );
 define( 'DB_USER', '${TEST_USER}' );
@@ -71,6 +87,8 @@ define( 'WP_DEBUG', false );
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', __DIR__ . '/' );
 }
+
+require_once ABSPATH . 'wp-settings.php';
 `;
     fs.writeFileSync(path.join(wpDir, "wp-config.php"), wpConfigContent);
   }, 180000);
@@ -93,15 +111,6 @@ if ( ! defined( 'ABSPATH' ) ) {
         // Ignore
       }
       engine.close();
-    }
-
-    if (fs.existsSync(wpDir)) {
-      try {
-        fs.rmSync(wpDir, { recursive: true, force: true });
-        console.log("Cleaned up extracted wordpress directory.");
-      } catch (e) {
-        // Ignore
-      }
     }
   });
 

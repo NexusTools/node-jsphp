@@ -149,7 +149,6 @@ export class JSTranspiler {
       const buf = new Int32Array(new SharedArrayBuffer(4));
       Atomics.wait(buf, 0, 0, ms);
     } catch {
-      // Fallback loop if SharedArrayBuffer disabled
       const end = Date.now() + ms;
       while (Date.now() < end) {}
     }
@@ -280,9 +279,28 @@ export class JSTranspiler {
         return code;
       }
 
+      case "include": {
+        const target = this.transpileExpr(node.target || node.expr || node.what, filepath);
+        if (node.once) {
+          return node.require
+            ? `${pad}await ctx.requireOnce(${target});`
+            : `${pad}await ctx.includeOnce(${target});`;
+        } else {
+          return node.require
+            ? `${pad}await ctx.require(${target});`
+            : `${pad}await ctx.include(${target});`;
+        }
+      }
+
       case "throw": {
         const expr = this.transpileExpr(node.what || node.expression || node.expr, filepath);
         return `${pad}throw ${expr};`;
+      }
+
+      case "exit": {
+        const expr = node.status ? this.transpileExpr(node.status, filepath) : "0";
+        const errPath = JSON.stringify(path.resolve(__dirname, "../runtime/errors/PHPError"));
+        return `${pad}throw new (require(${errPath}).PHPExit)(${expr});`;
       }
 
       case "return": {
@@ -519,6 +537,18 @@ export class JSTranspiler {
         const right = this.transpileExpr(node.right, filepath);
         const op = node.type === "." ? "+" : node.type;
         return `(${left} ${op} ${right})`;
+      }
+      case "include": {
+        const target = this.transpileExpr(node.target || node.expr || node.what, filepath);
+        if (node.once) {
+          return node.require
+            ? `(await ctx.requireOnce(${target}))`
+            : `(await ctx.includeOnce(${target}))`;
+        } else {
+          return node.require
+            ? `(await ctx.require(${target}))`
+            : `(await ctx.include(${target}))`;
+        }
       }
       case "call": {
         if (node.what?.kind === "propertylookup") {

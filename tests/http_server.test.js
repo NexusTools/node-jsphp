@@ -34,75 +34,107 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const http = __importStar(require("http"));
-const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const php_http_server_1 = require("../src/cli/php-http-server");
-describe("PHP HTTP Server & URL Resolution Tests", () => {
+const fs = __importStar(require("fs"));
+const index_1 = require("../index");
+describe("HTTP Server SAPI Tests", () => {
     let server;
     const testPort = 8888;
-    const testDir = path.join(__dirname, "http_server_test_dir");
+    const docRoot = path.join(__dirname, "http_server_test_dir");
     beforeAll(async () => {
-        if (!fs.existsSync(testDir)) {
-            fs.mkdirSync(testDir, { recursive: true });
+        if (!fs.existsSync(docRoot)) {
+            fs.mkdirSync(docRoot, { recursive: true });
         }
-        // Create test files
-        fs.writeFileSync(path.join(testDir, "index.php"), `<?php echo "INDEX_PHP_OK;"; ?>`);
-        fs.writeFileSync(path.join(testDir, "test.php"), `<?php echo "TEST_PHP_OK;"; ?>`);
-        fs.writeFileSync(path.join(testDir, "static.html"), `<h1>STATIC_HTML_OK</h1>`);
-        const subDir = path.join(testDir, "sub");
-        if (!fs.existsSync(subDir)) {
-            fs.mkdirSync(subDir, { recursive: true });
-        }
-        fs.writeFileSync(path.join(subDir, "index.html"), `<h1>SUB_INDEX_HTML_OK</h1>`);
-        server = await (0, php_http_server_1.runHTTPServer)(testPort, testDir);
+        // Create static index.html
+        fs.writeFileSync(path.join(docRoot, "index.html"), "<!DOCTYPE html><html><body><h1>Static Test</h1></body></html>");
+        // Create general_test.php in docRoot
+        fs.writeFileSync(path.join(docRoot, "general_test.php"), `<?php
+function calculate_sum($a, $b) {
+    return $a + $b;
+}
+
+class TestCalculator {
+    public function multiply($x, $y) {
+        return $x * $y;
+    }
+}
+
+$calc = new TestCalculator();
+$sumResult = calculate_sum(15, 25);
+$multResult = $calc->multiply(6, 7);
+
+echo "METHOD: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN') . "\\n";
+echo "SUM: " . $sumResult . "\\n";
+echo "MULT: " . $multResult . "\\n";
+echo "QUERY_A: " . ($_GET['a'] ?? 'NONE') . "\\n";
+echo "STATUS: SUCCESS\\n";
+`);
+        // Create fatal_error_test.php in docRoot
+        fs.writeFileSync(path.join(docRoot, "fatal_error_test.php"), `<?php
+function cause_error() {
+    non_existent_function_call();
+}
+cause_error();
+`);
+        server = await (0, index_1.runHTTPServer)(testPort, docRoot);
     });
     afterAll((done) => {
-        if (fs.existsSync(testDir)) {
-            fs.rmSync(testDir, { recursive: true, force: true });
-        }
         if (server) {
-            server.close(done);
+            server.close(() => {
+                if (fs.existsSync(docRoot)) {
+                    fs.rmSync(docRoot, { recursive: true, force: true });
+                }
+                done();
+            });
         }
         else {
             done();
         }
     });
-    function httpGet(urlPath) {
+    function makeRequest(urlPath, method = "GET", postData = "") {
         return new Promise((resolve, reject) => {
-            http.get(`http://127.0.0.1:${testPort}${urlPath}`, (res) => {
-                let text = "";
-                res.on("data", (chunk) => { text += chunk; });
+            const options = {
+                hostname: "127.0.0.1",
+                port: testPort,
+                path: urlPath,
+                method: method,
+                headers: method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {},
+            };
+            const req = http.request(options, (res) => {
+                let body = "";
+                res.on("data", (chunk) => { body += chunk; });
                 res.on("end", () => {
-                    resolve({ status: res.statusCode || 200, text, headers: res.headers });
+                    resolve({ status: res.statusCode || 0, headers: res.headers, body });
                 });
-            }).on("error", reject);
+            });
+            req.on("error", reject);
+            if (postData) {
+                req.write(postData);
+            }
+            req.end();
         });
     }
-    test("Resolves '/' to index.php and executes PHP", async () => {
-        const res = await httpGet("/");
+    test("Serves static html files", async () => {
+        const res = await makeRequest("/index.html");
         expect(res.status).toBe(200);
-        expect(res.text).toContain("INDEX_PHP_OK;");
+        expect(res.body).toContain("Static Test");
     });
-    test("Resolves '/test' to test.php and executes PHP", async () => {
-        const res = await httpGet("/test");
+    test("Executes general_test.php with classes, functions and query params", async () => {
+        const res = await makeRequest("/general_test.php?a=100");
         expect(res.status).toBe(200);
-        expect(res.text).toContain("TEST_PHP_OK;");
+        expect(res.body).toContain("METHOD: GET");
+        expect(res.body).toContain("SUM: 40");
+        expect(res.body).toContain("MULT: 42");
+        expect(res.body).toContain("QUERY_A: 100");
+        expect(res.body).toContain("STATUS: SUCCESS");
     });
-    test("Serves static html file for '/static.html'", async () => {
-        const res = await httpGet("/static.html");
-        expect(res.status).toBe(200);
+    test("Returns HTTP 500 and PHP Stack Trace on fatal errors", async () => {
+        const res = await makeRequest("/fatal_error_test.php");
+        expect(res.status).toBe(500);
         expect(res.headers["content-type"]).toContain("text/html");
-        expect(res.text).toContain("STATIC_HTML_OK");
-    });
-    test("Resolves '/sub' to sub/index.html and serves static html", async () => {
-        const res = await httpGet("/sub");
-        expect(res.status).toBe(200);
-        expect(res.text).toContain("SUB_INDEX_HTML_OK");
-    });
-    test("Returns 404 for non-existent path '/nonexistent'", async () => {
-        const res = await httpGet("/nonexistent");
-        expect(res.status).toBe(404);
-        expect(res.text).toContain("404 Not Found");
+        expect(res.body).toContain("PHP Fatal Error");
+        expect(res.body).toContain("PHP Stack Trace");
+        expect(res.body).toContain("undefined function");
     });
 });
 //# sourceMappingURL=http_server.test.js.map

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ErrorException = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
+exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
 class PHPError extends Error {
     phpCode;
     phpFile;
@@ -75,6 +75,14 @@ exports.PHPNotice = PHPNotice;
 class PHPWarning extends PHPError {
 }
 exports.PHPWarning = PHPWarning;
+class PHPExit extends PHPError {
+    status;
+    constructor(status = 0) {
+        super(`PHP Exit with status ${status}`);
+        this.status = status;
+    }
+}
+exports.PHPExit = PHPExit;
 class ErrorException extends PHPError {
     severity;
     constructor(message = "", code = 0, severity = 1, file = "[INTERNAL]", line = 0, previous = null) {

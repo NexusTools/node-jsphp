@@ -92,6 +92,15 @@ export class PHPFatalError extends PHPError {}
 export class PHPNotice extends PHPError {}
 export class PHPWarning extends PHPError {}
 
+export class PHPExit extends PHPError {
+  public status: any;
+
+  constructor(status: any = 0) {
+    super(`PHP Exit with status ${status}`);
+    this.status = status;
+  }
+}
+
 export class ErrorException extends PHPError {
   public severity: number;
 

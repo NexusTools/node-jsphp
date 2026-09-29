@@ -137,6 +137,8 @@ class PHPEngine {
         this.internalVars.set(name, value);
     }
     getConstant(name) {
+        if (!name || typeof name !== "string")
+            return undefined;
         if (this.constants.has(name))
             return this.constants.get(name);
         if (this.constants.has(name.toUpperCase()))
@@ -147,24 +149,97 @@ class PHPEngine {
     }
     registerCoreFunctions() {
         // Core definition & state
-        this.functions.set("define", (ctx, name, value) => {
+        this.functions.set("define", async (ctx, name, value) => {
+            if (this.constants.has(name) || this.constants.has(name.toUpperCase())) {
+                await ctx.triggerError(`Constant ${name} already defined`, 2);
+                return false;
+            }
             this.constants.set(name, value);
             return true;
         });
         this.functions.set("defined", (ctx, name) => {
+            if (!name || typeof name !== "string")
+                return false;
             return this.constants.has(name) || this.constants.has(name.toUpperCase());
         });
         this.functions.set("extension_loaded", (ctx, name) => {
+            if (!name || typeof name !== "string")
+                return false;
             return this.extensions.has(name.toLowerCase());
         });
         this.functions.set("function_exists", (ctx, name) => {
+            if (!name || typeof name !== "string")
+                return false;
             return this.functions.has(name.toLowerCase());
         });
         this.functions.set("class_exists", (ctx, name) => {
+            if (!name || typeof name !== "string")
+                return false;
             return this.classes.has(name.toLowerCase());
         });
         this.functions.set("constant", (ctx, name) => {
             return this.getConstant(name);
+        });
+        this.functions.set("assert", (ctx, assertion, description) => {
+            if (!assertion) {
+                if (description) {
+                    throw new PHPError_1.PHPFatalError(`Assertion failed: ${description}`);
+                }
+                return false;
+            }
+            return true;
+        });
+        this.functions.set("is_callable", (ctx, v) => {
+            if (typeof v === "function")
+                return true;
+            if (typeof v === "string")
+                return this.functions.has(v.toLowerCase());
+            if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string") {
+                const cls = this.classes.get(v[0].toLowerCase());
+                return Boolean(cls && cls.methods && cls.methods.has(v[1].toLowerCase()));
+            }
+            return false;
+        });
+        this.functions.set("is_iterable", (ctx, v) => {
+            return Array.isArray(v) || (v && typeof v === "object");
+        });
+        this.functions.set("is_countable", (ctx, v) => {
+            return Array.isArray(v) || typeof v === "string";
+        });
+        this.functions.set("is_resource", (ctx, v) => {
+            return v && typeof v === "object" && Boolean(v.isResource);
+        });
+        this.functions.set("version_compare", (ctx, v1, v2, op) => {
+            return Strings_1.StringRuntime.version_compare(v1, v2, op);
+        });
+        this.functions.set("ini_get", (ctx, option) => {
+            const opt = (option || "").toLowerCase();
+            if (opt === "display_errors")
+                return "1";
+            if (opt === "memory_limit")
+                return "512M";
+            if (opt === "max_execution_time")
+                return "30";
+            if (opt === "post_max_size")
+                return "64M";
+            if (opt === "upload_max_filesize")
+                return "64M";
+            if (opt === "date.timezone")
+                return "UTC";
+            return "";
+        });
+        this.functions.set("ini_set", (ctx, option, value) => {
+            return "";
+        });
+        this.functions.set("register_shutdown_function", (ctx, callback, ...args) => {
+            ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
+            return true;
+        });
+        this.functions.set("register_tick_function", (ctx, callback, ...args) => {
+            return true;
+        });
+        this.functions.set("unregister_tick_function", (ctx, callback) => {
+            return true;
         });
         // Error handling
         this.functions.set("set_error_handler", (ctx, handler, levels = 32767) => {
@@ -207,6 +282,18 @@ class PHPEngine {
         this.functions.set("strstr", (ctx, haystack, needle, before = false) => Strings_1.StringRuntime.strstr(haystack, needle, before));
         this.functions.set("str_replace", (ctx, search, replace, subject) => Strings_1.StringRuntime.str_replace(search, replace, subject));
         this.functions.set("str_ireplace", (ctx, search, replace, subject) => Strings_1.StringRuntime.str_ireplace(search, replace, subject));
+        this.functions.set("sprintf", (ctx, fmt, ...args) => Strings_1.StringRuntime.sprintf(fmt, ...args));
+        this.functions.set("printf", async (ctx, fmt, ...args) => {
+            const res = Strings_1.StringRuntime.sprintf(fmt, ...args);
+            await ctx.echo(res);
+            return res.length;
+        });
+        this.functions.set("vsprintf", (ctx, fmt, args = []) => Strings_1.StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : [])));
+        this.functions.set("vprintf", async (ctx, fmt, args = []) => {
+            const res = Strings_1.StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : []));
+            await ctx.echo(res);
+            return res.length;
+        });
         this.functions.set("explode", (ctx, delim, str, limit) => Strings_1.StringRuntime.explode(delim, str, limit));
         this.functions.set("implode", (ctx, glue, pieces) => Strings_1.StringRuntime.implode(glue, pieces));
         this.functions.set("trim", (ctx, str, chars) => Strings_1.StringRuntime.trim(str, chars));

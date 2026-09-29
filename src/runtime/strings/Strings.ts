@@ -73,6 +73,19 @@ export class StringRuntime {
     return s;
   }
 
+  public static sprintf(fmt: string, ...args: any[]): string {
+    let i = 0;
+    return String(fmt ?? "").replace(/%([%d s f g x X])/g, (_, spec) => {
+      if (spec === "%") return "%";
+      const val = args[i++];
+      if (spec === "d") return String(parseInt(val, 10) || 0);
+      if (spec === "f" || spec === "g") return String(parseFloat(val) || 0);
+      if (spec === "x") return (parseInt(val, 10) || 0).toString(16);
+      if (spec === "X") return (parseInt(val, 10) || 0).toString(16).toUpperCase();
+      return String(val ?? "");
+    });
+  }
+
   public static explode(delimiter: string, string: string, limit?: number): string[] {
     const res = String(string ?? "").split(delimiter);
     if (limit !== undefined && limit > 0 && res.length > limit) {
@@ -202,5 +215,29 @@ export class StringRuntime {
 
   public static hex2bin(hexString: string): string {
     return Buffer.from(String(hexString ?? ""), "hex").toString("utf8");
+  }
+
+  public static version_compare(v1: string, v2: string, op?: string): any {
+    const parse = (v: string) => (v || "").split(".").map((n) => parseInt(n, 10) || 0);
+    const p1 = parse(v1);
+    const p2 = parse(v2);
+    const max = Math.max(p1.length, p2.length);
+    let comp = 0;
+    for (let i = 0; i < max; i++) {
+      const n1 = p1[i] || 0;
+      const n2 = p2[i] || 0;
+      if (n1 > n2) { comp = 1; break; }
+      if (n1 < n2) { comp = -1; break; }
+    }
+    if (!op) return comp;
+    switch (op) {
+      case "<": case "lt": return comp < 0;
+      case "<=": case "le": return comp <= 0;
+      case ">": case "gt": return comp > 0;
+      case ">=": case "ge": return comp >= 0;
+      case "==": case "=": case "eq": return comp === 0;
+      case "!=": case "<>": case "ne": return comp !== 0;
+      default: return false;
+    }
   }
 }

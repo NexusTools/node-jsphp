@@ -70,6 +70,9 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
       }
 
       let phpOutput = "";
+      const hostHeader = req.headers.host || `127.0.0.1:${port}`;
+      const [hostName, hostPort] = hostHeader.split(":");
+
       const ctx = engine.createContext({
         cwd: absoluteCwd,
         stdout: (data) => { phpOutput += data; },
@@ -78,9 +81,18 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
           server: {
             REQUEST_METHOD: req.method || "GET",
             REQUEST_URI: rawUrl,
-            DOCUMENT_ROOT: absoluteCwd,
-            SCRIPT_FILENAME: fullPath,
-            HTTP_HOST: req.headers.host || `127.0.0.1:${port}`,
+            DOCUMENT_ROOT: absoluteCwd.replace(/\\/g, "/"),
+            SCRIPT_FILENAME: fullPath.replace(/\\/g, "/"),
+            SCRIPT_NAME: decodedPath,
+            PHP_SELF: decodedPath,
+            HTTP_HOST: hostHeader,
+            SERVER_NAME: hostName || "127.0.0.1",
+            SERVER_PORT: hostPort || String(port),
+            SERVER_ADDR: "127.0.0.1",
+            REMOTE_ADDR: req.socket.remoteAddress || "127.0.0.1",
+            SERVER_SOFTWARE: "JSPHP HTTP Server / 8.5.0",
+            HTTP_USER_AGENT: req.headers["user-agent"] || "Mozilla/5.0",
+            HTTP_ACCEPT: req.headers["accept"] || "*/*",
           },
           get: getParams,
           post: postParams,
@@ -118,9 +130,19 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
       } catch (err: any) {
         if (!res.headersSent) {
           res.statusCode = 500;
-          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
         }
-        res.end(`PHP HTTP Server Error: ${err.message || err}`);
+        const stackTrace = typeof err.getPHPStackTraceString === "function"
+          ? err.getPHPStackTraceString()
+          : (err.stack || String(err));
+
+        const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
+                          `<h1>PHP Fatal Error</h1>` +
+                          `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
+                          `<h3>PHP Stack Trace</h3>` +
+                          `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
+                          `</body></html>`;
+        res.end(htmlError);
       }
     } else {
       // Serve static file
@@ -219,4 +241,12 @@ function parseCookieHeader(cookieHeader: string): Record<string, string> {
     }
   }
   return cookies;
+}
+
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

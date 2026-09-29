@@ -34,87 +34,93 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const net = __importStar(require("net"));
-const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const php_fpm_1 = require("../src/cli/php-fpm");
-function makeHeader(type, requestId, contentLength, paddingLength) {
-    const buf = Buffer.alloc(8);
-    buf.writeUInt8(1, 0);
-    buf.writeUInt8(type, 1);
-    buf.writeUInt16BE(requestId, 2);
-    buf.writeUInt16BE(contentLength, 4);
-    buf.writeUInt8(paddingLength, 6);
-    buf.writeUInt8(0, 7);
-    return buf;
+const index_1 = require("../index");
+// Helper to encode FastCGI record
+function makeFCGIRecord(type, requestId, content) {
+    const header = Buffer.alloc(8);
+    header.writeUInt8(1, 0); // version
+    header.writeUInt8(type, 1);
+    header.writeUInt16BE(requestId, 2);
+    header.writeUInt16BE(content.length, 4);
+    header.writeUInt8(0, 6); // paddingLength
+    header.writeUInt8(0, 7); // reserved
+    return Buffer.concat([header, content]);
 }
-function encodeNameValuePair(name, value) {
-    const nameBuf = Buffer.from(name, "utf8");
-    const valBuf = Buffer.from(value, "utf8");
-    const nameLen = nameBuf.length;
-    const valLen = valBuf.length;
-    const headerBuf = Buffer.alloc((nameLen < 128 ? 1 : 4) + (valLen < 128 ? 1 : 4));
-    let off = 0;
-    if (nameLen < 128) {
-        headerBuf.writeUInt8(nameLen, off++);
+// Helper to encode FCGI_PARAMS
+function makeFCGIParams(params) {
+    const chunks = [];
+    for (const [key, val] of Object.entries(params)) {
+        const kLen = Buffer.byteLength(key);
+        const vLen = Buffer.byteLength(val);
+        const header = Buffer.alloc(kLen > 127 ? 4 : 1 + (vLen > 127 ? 4 : 1));
+        let off = 0;
+        if (kLen > 127) {
+            header.writeUInt32BE(kLen | 0x80000000, off);
+            off += 4;
+        }
+        else {
+            header.writeUInt8(kLen, off++);
+        }
+        if (vLen > 127) {
+            header.writeUInt32BE(vLen | 0x80000000, off);
+            off += 4;
+        }
+        else {
+            header.writeUInt8(vLen, off++);
+        }
+        chunks.push(header, Buffer.from(key, "utf8"), Buffer.from(val, "utf8"));
     }
-    else {
-        headerBuf.writeUInt32BE(nameLen | 0x80000000, off);
-        off += 4;
-    }
-    if (valLen < 128) {
-        headerBuf.writeUInt8(valLen, off++);
-    }
-    else {
-        headerBuf.writeUInt32BE(valLen | 0x80000000, off);
-        off += 4;
-    }
-    return Buffer.concat([headerBuf, nameBuf, valBuf]);
+    return Buffer.concat(chunks);
 }
-describe("FastCGI / PHP-FPM Server Protocol Tests", () => {
+describe("FastCGI Process Manager (PHP-FPM) Tests", () => {
     let fpmServer;
-    const testPort = 9090;
-    const testScriptPath = path.join(__dirname, "fpm_sample.php");
+    const fpmPort = 9090;
+    const fixturesDir = path.join(__dirname, "fixtures");
     beforeAll(async () => {
-        fs.writeFileSync(testScriptPath, `<?php echo "FASTCGI_OK;"; ?>`);
-        fpmServer = await (0, php_fpm_1.runFPM)(testPort, "127.0.0.1");
+        fpmServer = await (0, index_1.runFPM)(fpmPort, "127.0.0.1");
     });
     afterAll((done) => {
-        if (fs.existsSync(testScriptPath)) {
-            fs.unlinkSync(testScriptPath);
-        }
         if (fpmServer) {
-            fpmServer.close(done);
+            fpmServer.close(() => done());
         }
         else {
             done();
         }
     });
-    test("Communicates over FastCGI protocol and returns PHP output", (done) => {
-        const client = net.connect(testPort, "127.0.0.1", () => {
+    test("Executes general_test.php over FastCGI protocol", (done) => {
+        const client = net.createConnection({ port: fpmPort, host: "127.0.0.1" }, () => {
+            const requestId = 1;
             // 1. FCGI_BEGIN_REQUEST
-            const beginBuf = Buffer.alloc(8);
-            beginBuf.writeUInt16BE(1, 0); // role = FCGI_RESPONDER
-            beginBuf.writeUInt8(0, 2); // flags = 0
-            const beginRecord = Buffer.concat([makeHeader(1, 1, 8, 0), beginBuf]);
-            client.write(beginRecord);
+            const beginBody = Buffer.alloc(8);
+            beginBody.writeUInt16BE(1, 0); // FCGI_RESPONDER
+            beginBody.writeUInt8(0, 2); // flags
+            client.write(makeFCGIRecord(1, requestId, beginBody)); // FCGI_BEGIN_REQUEST = 1
             // 2. FCGI_PARAMS
-            const p1 = encodeNameValuePair("SCRIPT_FILENAME", testScriptPath);
-            const p2 = encodeNameValuePair("REQUEST_METHOD", "GET");
-            const pBuf = Buffer.concat([p1, p2]);
-            const paramsRecord = Buffer.concat([makeHeader(4, 1, pBuf.length, 0), pBuf]);
-            const paramsEof = makeHeader(4, 1, 0, 0);
-            client.write(Buffer.concat([paramsRecord, paramsEof]));
-            // 3. FCGI_STDIN EOF
-            const stdinEof = makeHeader(5, 1, 0, 0);
-            client.write(stdinEof);
+            const testFile = path.join(fixturesDir, "general_test.php");
+            const paramsBuf = makeFCGIParams({
+                SCRIPT_FILENAME: testFile,
+                REQUEST_METHOD: "GET",
+                QUERY_STRING: "a=100",
+                DOCUMENT_ROOT: fixturesDir,
+                SERVER_SOFTWARE: "JSPHP-FPM",
+            });
+            client.write(makeFCGIRecord(4, requestId, paramsBuf)); // FCGI_PARAMS = 4
+            client.write(makeFCGIRecord(4, requestId, Buffer.alloc(0))); // Empty FCGI_PARAMS ends params
+            // 3. Empty FCGI_STDIN
+            client.write(makeFCGIRecord(5, requestId, Buffer.alloc(0))); // FCGI_STDIN = 5
         });
-        let receivedData = Buffer.alloc(0);
+        let rawData = Buffer.alloc(0);
         client.on("data", (chunk) => {
-            receivedData = Buffer.concat([receivedData, chunk]);
+            rawData = Buffer.concat([rawData, chunk]);
         });
         client.on("end", () => {
-            const responseText = receivedData.toString("utf8");
-            expect(responseText).toContain("FASTCGI_OK;");
+            const responseStr = rawData.toString("utf8");
+            expect(responseStr).toContain("METHOD: GET");
+            expect(responseStr).toContain("SUM: 40");
+            expect(responseStr).toContain("MULT: 42");
+            expect(responseStr).toContain("QUERY_A: 100");
+            expect(responseStr).toContain("STATUS: SUCCESS");
             done();
         });
     });

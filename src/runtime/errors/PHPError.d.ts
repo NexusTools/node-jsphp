@@ -33,6 +33,10 @@ export declare class PHPNotice extends PHPError {
 }
 export declare class PHPWarning extends PHPError {
 }
+export declare class PHPExit extends PHPError {
+    status: any;
+    constructor(status?: any);
+}
 export declare class ErrorException extends PHPError {
     severity: number;
     constructor(message?: string, code?: number, severity?: number, file?: string, line?: number, previous?: PHPError | null);

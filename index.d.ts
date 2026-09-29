@@ -1,7 +1,7 @@
 export { PHPEngine, PHPEngineOptions } from "./src/PHPEngine";
 export { PHPContext, PHPContextOptions } from "./src/PHPContext";
 export { PHPExtension } from "./src/PHPExtension";
-export { PHPError, PHPException, PHPTypeError, PHPParseError, PHPFatalError, PHPNotice, PHPWarning, ErrorException, } from "./src/runtime/errors/PHPError";
+export { PHPError, PHPException, PHPTypeError, PHPParseError, PHPFatalError, PHPNotice, PHPWarning, PHPExit, ErrorException, } from "./src/runtime/errors/PHPError";
 export { PHPObject, PHPClass, PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./src/runtime/objects/PHPObject";
 export { Superglobals } from "./src/runtime/superglobals/Superglobals";
 export { OutputBufferStack } from "./src/runtime/output/OutputBuffer";

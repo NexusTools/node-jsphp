@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unwrapPHPValue = exports.wrapJSValue = exports.NodeJSService = exports.NodeJSObject = exports.NodeJSExtension = exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.runFPM = exports.runHTTPServer = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.ErrorException = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
+exports.unwrapPHPValue = exports.wrapJSValue = exports.NodeJSService = exports.NodeJSObject = exports.NodeJSExtension = exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.runFPM = exports.runHTTPServer = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
 var PHPEngine_1 = require("./src/PHPEngine");
 Object.defineProperty(exports, "PHPEngine", { enumerable: true, get: function () { return PHPEngine_1.PHPEngine; } });
 var PHPContext_1 = require("./src/PHPContext");
@@ -15,6 +15,7 @@ Object.defineProperty(exports, "PHPParseError", { enumerable: true, get: functio
 Object.defineProperty(exports, "PHPFatalError", { enumerable: true, get: function () { return PHPError_1.PHPFatalError; } });
 Object.defineProperty(exports, "PHPNotice", { enumerable: true, get: function () { return PHPError_1.PHPNotice; } });
 Object.defineProperty(exports, "PHPWarning", { enumerable: true, get: function () { return PHPError_1.PHPWarning; } });
+Object.defineProperty(exports, "PHPExit", { enumerable: true, get: function () { return PHPError_1.PHPExit; } });
 Object.defineProperty(exports, "ErrorException", { enumerable: true, get: function () { return PHPError_1.ErrorException; } });
 var PHPObject_1 = require("./src/runtime/objects/PHPObject");
 Object.defineProperty(exports, "PHPObject", { enumerable: true, get: function () { return PHPObject_1.PHPObject; } });

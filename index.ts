@@ -9,6 +9,7 @@ export {
   PHPFatalError,
   PHPNotice,
   PHPWarning,
+  PHPExit,
   ErrorException,
 } from "./src/runtime/errors/PHPError";
 export { PHPObject, PHPClass, PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./src/runtime/objects/PHPObject";
