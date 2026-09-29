@@ -1,8 +1,8 @@
-# jsphp (`node-jsphp`)
+# @nexustools/php (`node-jsphp`)
 
-`jsphp` is a high-performance Node.js runtime, CLI, and transpiler engine for **PHP 8.5** written in TypeScript. It parses PHP code into ASTs, optimizes execution through constant folding and dead-code elimination, and transpiles PHP to asynchronous JavaScript source code with source maps (`.js.map`).
+`@nexustools/php` is a high-performance Node.js runtime, CLI, and transpiler engine for **PHP 8.5** written in TypeScript. It parses PHP code into ASTs, optimizes execution through constant folding and dead-code elimination, and transpiles PHP to asynchronous JavaScript source code with source maps (`.js.map`).
 
-`jsphp` enables running PHP scripts, applications (including full **WordPress** sites), and command-line interfaces directly inside Node.js without needing native PHP binaries or socket connections to PHP-FPM.
+`@nexustools/php` enables running PHP scripts, applications (including full **WordPress** sites), and command-line interfaces directly inside Node.js without needing native PHP binaries or socket connections to PHP-FPM.
 
 ---
 
@@ -22,7 +22,7 @@
 ## Installation
 
 ```bash
-npm install jsphp
+npm install @nexustools/php
 ```
 
 ---
@@ -32,7 +32,7 @@ npm install jsphp
 ### 1. Basic PHP Code Execution
 
 ```typescript
-import { PHPEngine } from "jsphp";
+import { PHPEngine } from "@nexustools/php";
 
 async function main() {
   const engine = new PHPEngine();
@@ -55,7 +55,7 @@ main();
 ### 2. Running a PHP File
 
 ```typescript
-import { PHPContext } from "jsphp";
+import { PHPContext } from "@nexustools/php";
 
 async function run() {
   await PHPContext.runFile("./index.php", {

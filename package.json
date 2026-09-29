@@ -1,5 +1,5 @@
 {
-  "name": "jsphp",
+  "name": "@nexustools/php",
   "version": "1.0.0",
   "description": "PHP 8.5 runtime and CLI written in TypeScript for Node.js",
   "main": "index.js",
@@ -7,6 +7,9 @@
   "bin": {
     "php": "bin/php.js",
     "php-fpm": "bin/php-fpm.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
