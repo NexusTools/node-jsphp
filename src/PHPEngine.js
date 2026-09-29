@@ -470,7 +470,7 @@ class PHPEngine {
             return func;
         }
         catch {
-            throw new Error(`PHP file not found: ${resolvedPath}`);
+            throw new PHPError_1.PHPFatalError(`Fatal error: require(${resolvedPath}): Failed opening required '${resolvedPath}'`);
         }
     }
     async compileCode(code, filepath = "eval") {

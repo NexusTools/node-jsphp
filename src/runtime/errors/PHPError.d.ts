@@ -18,7 +18,7 @@ export declare class PHPError extends Error {
     getFile(): string;
     getLine(): number;
     getPrevious(): PHPError | null;
-    static virtualizeJSStack(jsStack: string, phpFile: string, phpLine: number, phpTrace: PHPStackFrame[]): string;
+    static virtualizeJSStack(jsStack: string, phpFile?: string, phpLine?: number, phpTrace?: PHPStackFrame[]): string;
     getPHPStackTraceString(): string;
 }
 export declare class PHPException extends PHPError {

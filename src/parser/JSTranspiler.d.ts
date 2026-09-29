@@ -1,3 +1,4 @@
+import { PHPLineLocation } from "../runtime/errors/SourceMapRegistry";
 import type { PHPEngine } from "../PHPEngine";
 export interface TranspilerOptions {
     engineSHA1: string;
@@ -8,6 +9,7 @@ export interface TranspilationResult {
     code: string;
     map: string;
     cached: boolean;
+    lineMap: Map<number, PHPLineLocation>;
 }
 export declare class JSTranspiler {
     private parser;

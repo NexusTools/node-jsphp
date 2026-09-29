@@ -463,7 +463,7 @@ export class PHPEngine {
 
       return func;
     } catch {
-      throw new Error(`PHP file not found: ${resolvedPath}`);
+      throw new PHPFatalError(`Fatal error: require(${resolvedPath}): Failed opening required '${resolvedPath}'`);
     }
   }
 
