@@ -1,4 +1,5 @@
 import type { PHPEngine } from "./PHPEngine";
+import { defineFunction, FunctionMetaOptions } from "./runtime/reflection/Reflection";
 
 export abstract class PHPExtension {
   public abstract readonly name: string;
@@ -6,6 +7,16 @@ export abstract class PHPExtension {
   public constants: Record<string, any> = {};
   public functions: Record<string, Function> = {};
   public classes: Record<string, any> = {};
+
+  public registerFunction(
+    name: string,
+    fn: Function,
+    params: { name: string; isOptional?: boolean; defaultValue?: any; type?: string }[] = [],
+    visibility: "public" | "protected" | "private" = "public"
+  ): void {
+    const fnWithMeta = defineFunction(fn, { name, visibility, parameters: params });
+    this.functions[name.toLowerCase()] = fnWithMeta;
+  }
 
   public onInit(engine: PHPEngine): void | Promise<void> {
     // Optional extension initialization hook

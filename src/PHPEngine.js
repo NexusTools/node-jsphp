@@ -37,7 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPEngine = void 0;
-const fs = __importStar(require("fs"));
+const fs = __importStar(require("fs/promises"));
 const path = __importStar(require("path"));
 const crypto = __importStar(require("crypto"));
 const chokidar_1 = __importDefault(require("chokidar"));
@@ -46,6 +46,15 @@ const JSTranspiler_1 = require("./parser/JSTranspiler");
 const Strings_1 = require("./runtime/strings/Strings");
 const Arrays_1 = require("./runtime/arrays/Arrays");
 const FileSystem_1 = require("./runtime/fs/FileSystem");
+const Networking_1 = require("./runtime/net/Networking");
+const Math_1 = require("./runtime/math/Math");
+const Variables_1 = require("./runtime/variables/Variables");
+const DateTime_1 = require("./runtime/datetime/DateTime");
+const Streams_1 = require("./runtime/streams/Streams");
+const Exec_1 = require("./runtime/exec/Exec");
+const Fiber_1 = require("./runtime/fibers/Fiber");
+const Enum_1 = require("./runtime/enums/Enum");
+const Reflection_1 = require("./runtime/reflection/Reflection");
 const mysqli_1 = require("./extensions/mysqli/mysqli");
 const pdo_1 = require("./extensions/pdo/pdo");
 const gd_1 = require("./extensions/gd/gd");
@@ -102,13 +111,23 @@ class PHPEngine {
             this.initWatcher();
         }
     }
+    getConstant(name) {
+        if (this.constants.has(name))
+            return this.constants.get(name);
+        if (this.constants.has(name.toUpperCase()))
+            return this.constants.get(name.toUpperCase());
+        if (this.constants.has(name.toLowerCase()))
+            return this.constants.get(name.toLowerCase());
+        return undefined;
+    }
     registerCoreFunctions() {
+        // Core definition & state
         this.functions.set("define", (ctx, name, value) => {
             this.constants.set(name, value);
             return true;
         });
         this.functions.set("defined", (ctx, name) => {
-            return this.constants.has(name);
+            return this.constants.has(name) || this.constants.has(name.toUpperCase());
         });
         this.functions.set("extension_loaded", (ctx, name) => {
             return this.extensions.has(name.toLowerCase());
@@ -120,7 +139,7 @@ class PHPEngine {
             return this.classes.has(name.toLowerCase());
         });
         this.functions.set("constant", (ctx, name) => {
-            return this.constants.get(name);
+            return this.getConstant(name);
         });
         // Output buffering
         this.functions.set("ob_start", (ctx) => ctx.outputBuffer.start());
@@ -133,25 +152,151 @@ class PHPEngine {
         this.functions.set("strlen", (ctx, str) => Strings_1.StringRuntime.strlen(str));
         this.functions.set("substr", (ctx, str, start, length) => Strings_1.StringRuntime.substr(str, start, length));
         this.functions.set("strpos", (ctx, haystack, needle, offset = 0) => Strings_1.StringRuntime.strpos(haystack, needle, offset));
+        this.functions.set("stripos", (ctx, haystack, needle, offset = 0) => Strings_1.StringRuntime.stripos(haystack, needle, offset));
+        this.functions.set("strrpos", (ctx, haystack, needle, offset = 0) => Strings_1.StringRuntime.strrpos(haystack, needle, offset));
+        this.functions.set("strripos", (ctx, haystack, needle, offset = 0) => Strings_1.StringRuntime.strripos(haystack, needle, offset));
+        this.functions.set("strstr", (ctx, haystack, needle, before = false) => Strings_1.StringRuntime.strstr(haystack, needle, before));
+        this.functions.set("str_replace", (ctx, search, replace, subject) => Strings_1.StringRuntime.str_replace(search, replace, subject));
+        this.functions.set("str_ireplace", (ctx, search, replace, subject) => Strings_1.StringRuntime.str_ireplace(search, replace, subject));
         this.functions.set("explode", (ctx, delim, str, limit) => Strings_1.StringRuntime.explode(delim, str, limit));
         this.functions.set("implode", (ctx, glue, pieces) => Strings_1.StringRuntime.implode(glue, pieces));
+        this.functions.set("trim", (ctx, str, chars) => Strings_1.StringRuntime.trim(str, chars));
+        this.functions.set("ltrim", (ctx, str, chars) => Strings_1.StringRuntime.ltrim(str, chars));
+        this.functions.set("rtrim", (ctx, str, chars) => Strings_1.StringRuntime.rtrim(str, chars));
+        this.functions.set("strtolower", (ctx, str) => Strings_1.StringRuntime.strtolower(str));
+        this.functions.set("strtoupper", (ctx, str) => Strings_1.StringRuntime.strtoupper(str));
+        this.functions.set("ucfirst", (ctx, str) => Strings_1.StringRuntime.ucfirst(str));
+        this.functions.set("lcfirst", (ctx, str) => Strings_1.StringRuntime.lcfirst(str));
+        this.functions.set("ucwords", (ctx, str) => Strings_1.StringRuntime.ucwords(str));
+        this.functions.set("strcmp", (ctx, s1, s2) => Strings_1.StringRuntime.strcmp(s1, s2));
+        this.functions.set("addslashes", (ctx, str) => Strings_1.StringRuntime.addslashes(str));
+        this.functions.set("stripslashes", (ctx, str) => Strings_1.StringRuntime.stripslashes(str));
+        this.functions.set("htmlspecialchars", (ctx, str) => Strings_1.StringRuntime.htmlspecialchars(str));
+        this.functions.set("htmlspecialchars_decode", (ctx, str) => Strings_1.StringRuntime.htmlspecialchars_decode(str));
+        this.functions.set("nl2br", (ctx, str, xhtml = true) => Strings_1.StringRuntime.nl2br(str, xhtml));
+        this.functions.set("str_repeat", (ctx, str, mult) => Strings_1.StringRuntime.str_repeat(str, mult));
+        this.functions.set("str_pad", (ctx, str, len, pad = " ", type = 1) => Strings_1.StringRuntime.str_pad(str, len, pad, type));
+        this.functions.set("str_split", (ctx, str, len = 1) => Strings_1.StringRuntime.str_split(str, len));
+        this.functions.set("strrev", (ctx, str) => Strings_1.StringRuntime.strrev(str));
+        this.functions.set("chr", (ctx, ascii) => Strings_1.StringRuntime.chr(ascii));
+        this.functions.set("ord", (ctx, char) => Strings_1.StringRuntime.ord(char));
+        this.functions.set("bin2hex", (ctx, str) => Strings_1.StringRuntime.bin2hex(str));
+        this.functions.set("hex2bin", (ctx, str) => Strings_1.StringRuntime.hex2bin(str));
         // Arrays
         this.functions.set("count", (ctx, arr) => Arrays_1.ArrayRuntime.count(arr));
+        this.functions.set("sizeof", (ctx, arr) => Arrays_1.ArrayRuntime.count(arr));
+        this.functions.set("array_keys", (ctx, arr) => Arrays_1.ArrayRuntime.array_keys(arr));
+        this.functions.set("array_values", (ctx, arr) => Arrays_1.ArrayRuntime.array_values(arr));
+        this.functions.set("array_flip", (ctx, arr) => Arrays_1.ArrayRuntime.array_flip(arr));
+        this.functions.set("array_reverse", (ctx, arr) => Arrays_1.ArrayRuntime.array_reverse(arr));
         this.functions.set("in_array", (ctx, needle, haystack, strict = false) => Arrays_1.ArrayRuntime.in_array(needle, haystack, strict));
+        this.functions.set("array_search", (ctx, needle, haystack, strict = false) => Arrays_1.ArrayRuntime.array_search(needle, haystack, strict));
+        this.functions.set("array_key_exists", (ctx, key, arr) => Arrays_1.ArrayRuntime.array_key_exists(key, arr));
+        this.functions.set("key_exists", (ctx, key, arr) => Arrays_1.ArrayRuntime.array_key_exists(key, arr));
         this.functions.set("array_merge", (ctx, ...arrays) => Arrays_1.ArrayRuntime.array_merge(...arrays));
-        // File system
-        this.functions.set("file_get_contents", (ctx, path) => FileSystem_1.FileSystemRuntime.file_get_contents(path));
-        this.functions.set("file_put_contents", (ctx, path, data, flags = 0) => FileSystem_1.FileSystemRuntime.file_put_contents(path, data, flags));
-        this.functions.set("file_exists", (ctx, path) => FileSystem_1.FileSystemRuntime.file_exists(path));
-        this.functions.set("is_dir", (ctx, path) => FileSystem_1.FileSystemRuntime.is_dir(path));
-        this.functions.set("is_file", (ctx, path) => FileSystem_1.FileSystemRuntime.is_file(path));
-        this.functions.set("unlink", (ctx, path) => FileSystem_1.FileSystemRuntime.unlink(path));
+        this.functions.set("array_combine", (ctx, keys, values) => Arrays_1.ArrayRuntime.array_combine(keys, values));
+        this.functions.set("array_slice", (ctx, arr, off, len) => Arrays_1.ArrayRuntime.array_slice(arr, off, len));
+        this.functions.set("array_push", (ctx, arr, ...v) => Arrays_1.ArrayRuntime.array_push(arr, ...v));
+        this.functions.set("array_pop", (ctx, arr) => Arrays_1.ArrayRuntime.array_pop(arr));
+        this.functions.set("array_shift", (ctx, arr) => Arrays_1.ArrayRuntime.array_shift(arr));
+        this.functions.set("array_unshift", (ctx, arr, ...v) => Arrays_1.ArrayRuntime.array_unshift(arr, ...v));
+        this.functions.set("array_unique", (ctx, arr) => Arrays_1.ArrayRuntime.array_unique(arr));
+        this.functions.set("array_column", (ctx, arr, col) => Arrays_1.ArrayRuntime.array_column(arr, col));
+        this.functions.set("sort", (ctx, arr) => Arrays_1.ArrayRuntime.sort(arr));
+        this.functions.set("rsort", (ctx, arr) => Arrays_1.ArrayRuntime.rsort(arr));
+        // File system (all async)
+        this.functions.set("file_get_contents", async (ctx, path) => await FileSystem_1.FileSystemRuntime.file_get_contents(path));
+        this.functions.set("file_put_contents", async (ctx, path, data, flags = 0) => await FileSystem_1.FileSystemRuntime.file_put_contents(path, data, flags));
+        this.functions.set("file_exists", async (ctx, path) => await FileSystem_1.FileSystemRuntime.file_exists(path));
+        this.functions.set("is_dir", async (ctx, path) => await FileSystem_1.FileSystemRuntime.is_dir(path));
+        this.functions.set("is_file", async (ctx, path) => await FileSystem_1.FileSystemRuntime.is_file(path));
+        this.functions.set("is_readable", async (ctx, path) => await FileSystem_1.FileSystemRuntime.is_readable(path));
+        this.functions.set("is_writable", async (ctx, path) => await FileSystem_1.FileSystemRuntime.is_writable(path));
+        this.functions.set("filesize", async (ctx, path) => await FileSystem_1.FileSystemRuntime.filesize(path));
+        this.functions.set("filemtime", async (ctx, path) => await FileSystem_1.FileSystemRuntime.filemtime(path));
+        this.functions.set("realpath", async (ctx, path) => await FileSystem_1.FileSystemRuntime.realpath(path));
+        this.functions.set("basename", (ctx, path, suf) => FileSystem_1.FileSystemRuntime.basename(path, suf));
+        this.functions.set("dirname", (ctx, path) => FileSystem_1.FileSystemRuntime.dirname(path));
+        this.functions.set("pathinfo", (ctx, path, flags = 15) => FileSystem_1.FileSystemRuntime.pathinfo(path, flags));
+        this.functions.set("mkdir", async (ctx, path, mode = 0o777, rec = false) => await FileSystem_1.FileSystemRuntime.mkdir(path, mode, rec));
+        this.functions.set("rmdir", async (ctx, path) => await FileSystem_1.FileSystemRuntime.rmdir(path));
+        this.functions.set("unlink", async (ctx, path) => await FileSystem_1.FileSystemRuntime.unlink(path));
+        this.functions.set("rename", async (ctx, oldn, newn) => await FileSystem_1.FileSystemRuntime.rename(oldn, newn));
+        this.functions.set("copy", async (ctx, src, dest) => await FileSystem_1.FileSystemRuntime.copy(src, dest));
+        this.functions.set("tempnam", async (ctx, dir, pfx) => await FileSystem_1.FileSystemRuntime.tempnam(dir, pfx));
+        this.functions.set("sys_get_temp_dir", () => FileSystem_1.FileSystemRuntime.sys_get_temp_dir());
+        this.functions.set("scandir", async (ctx, path) => await FileSystem_1.FileSystemRuntime.scandir(path));
+        // Networking
+        this.functions.set("gethostname", () => Networking_1.NetworkingRuntime.gethostname());
+        this.functions.set("gethostbyname", async (ctx, name) => await Networking_1.NetworkingRuntime.gethostbyname(name));
+        this.functions.set("gethostbyaddr", async (ctx, ip) => await Networking_1.NetworkingRuntime.gethostbyaddr(ip));
+        this.functions.set("ip2long", (ctx, ip) => Networking_1.NetworkingRuntime.ip2long(ip));
+        this.functions.set("long2ip", (ctx, num) => Networking_1.NetworkingRuntime.long2ip(num));
+        this.functions.set("parse_url", (ctx, url, comp = -1) => Networking_1.NetworkingRuntime.parse_url(url, comp));
+        this.functions.set("http_build_query", (ctx, data, prefix = "", sep = "&") => Networking_1.NetworkingRuntime.http_build_query(data, prefix, sep));
+        this.functions.set("header", (ctx, header, replace = true, code) => Networking_1.NetworkingRuntime.header(ctx, header, replace, code));
+        this.functions.set("http_response_code", (ctx, code) => Networking_1.NetworkingRuntime.http_response_code(ctx, code));
+        // Math
+        this.functions.set("abs", (ctx, n) => Math_1.MathRuntime.abs(n));
+        this.functions.set("ceil", (ctx, n) => Math_1.MathRuntime.ceil(n));
+        this.functions.set("floor", (ctx, n) => Math_1.MathRuntime.floor(n));
+        this.functions.set("round", (ctx, n, p = 0) => Math_1.MathRuntime.round(n, p));
+        this.functions.set("max", (ctx, ...args) => Math_1.MathRuntime.max(...args));
+        this.functions.set("min", (ctx, ...args) => Math_1.MathRuntime.min(...args));
+        this.functions.set("pow", (ctx, b, e) => Math_1.MathRuntime.pow(b, e));
+        this.functions.set("sqrt", (ctx, n) => Math_1.MathRuntime.sqrt(n));
+        this.functions.set("rand", (ctx, min = 0, max = 2147483647) => Math_1.MathRuntime.rand(min, max));
+        this.functions.set("mt_rand", (ctx, min = 0, max = 2147483647) => Math_1.MathRuntime.mt_rand(min, max));
+        // Variables & Types
+        this.functions.set("var_dump", (ctx, ...args) => Variables_1.VariablesRuntime.var_dump(ctx, ...args));
+        this.functions.set("print_r", (ctx, val, ret = false) => Variables_1.VariablesRuntime.print_r(ctx, val, ret));
+        this.functions.set("is_array", (ctx, v) => Variables_1.VariablesRuntime.is_array(v));
+        this.functions.set("is_bool", (ctx, v) => Variables_1.VariablesRuntime.is_bool(v));
+        this.functions.set("is_float", (ctx, v) => Variables_1.VariablesRuntime.is_float(v));
+        this.functions.set("is_int", (ctx, v) => Variables_1.VariablesRuntime.is_int(v));
+        this.functions.set("is_null", (ctx, v) => Variables_1.VariablesRuntime.is_null(v));
+        this.functions.set("is_numeric", (ctx, v) => Variables_1.VariablesRuntime.is_numeric(v));
+        this.functions.set("is_object", (ctx, v) => Variables_1.VariablesRuntime.is_object(v));
+        this.functions.set("is_scalar", (ctx, v) => Variables_1.VariablesRuntime.is_scalar(v));
+        this.functions.set("is_string", (ctx, v) => Variables_1.VariablesRuntime.is_string(v));
+        this.functions.set("gettype", (ctx, v) => Variables_1.VariablesRuntime.gettype(v));
+        this.functions.set("intval", (ctx, v, b = 10) => Variables_1.VariablesRuntime.intval(v, b));
+        this.functions.set("floatval", (ctx, v) => Variables_1.VariablesRuntime.floatval(v));
+        this.functions.set("strval", (ctx, v) => Variables_1.VariablesRuntime.strval(v));
+        this.functions.set("boolval", (ctx, v) => Variables_1.VariablesRuntime.boolval(v));
+        // Streams & Exec
+        this.functions.set("stream_context_create", (ctx, opts = {}) => Streams_1.StreamRuntime.stream_context_create(opts));
+        this.functions.set("stream_get_contents", async (ctx, stream, max = -1, off = -1) => await Streams_1.StreamRuntime.stream_get_contents(stream, max, off));
+        this.functions.set("stream_get_wrappers", () => Streams_1.StreamRuntime.stream_get_wrappers());
+        this.functions.set("stream_is_local", (ctx, stream) => Streams_1.StreamRuntime.stream_is_local(stream));
+        this.functions.set("exec", async (ctx, cmd, out, ret) => await Exec_1.ExecRuntime.exec(ctx, cmd, out, ret));
+        this.functions.set("shell_exec", async (ctx, cmd) => await Exec_1.ExecRuntime.shell_exec(ctx, cmd));
+        this.functions.set("escapeshellarg", (ctx, arg) => Exec_1.ExecRuntime.escapeshellarg(arg));
+        this.functions.set("escapeshellcmd", (ctx, cmd) => Exec_1.ExecRuntime.escapeshellcmd(cmd));
+        // DateTime
+        this.functions.set("time", () => DateTime_1.DateTimeRuntime.time());
+        this.functions.set("microtime", (ctx, asFloat = false) => DateTime_1.DateTimeRuntime.microtime(asFloat));
+        this.functions.set("date", (ctx, fmt, ts) => DateTime_1.DateTimeRuntime.date(fmt, ts));
+        this.functions.set("strtotime", (ctx, timeStr, now) => DateTime_1.DateTimeRuntime.strtotime(timeStr, now));
+        this.functions.set("date_default_timezone_get", () => DateTime_1.DateTimeRuntime.date_default_timezone_get());
+        this.functions.set("date_default_timezone_set", (ctx, tz) => DateTime_1.DateTimeRuntime.date_default_timezone_set(tz));
+        // Classes
+        this.classes.set("datetime", DateTime_1.PHPDateTime);
+        this.classes.set("reflectionclass", Reflection_1.ReflectionClass);
+        this.classes.set("reflectionmethod", Reflection_1.ReflectionMethod);
+        this.classes.set("reflectionproperty", Reflection_1.ReflectionProperty);
+        this.classes.set("reflectionfunction", Reflection_1.ReflectionFunction);
+        this.classes.set("reflectionparameter", Reflection_1.ReflectionParameter);
+        this.classes.set("reflectiontype", Reflection_1.ReflectionType);
+        this.classes.set("fiber", Fiber_1.PHPFiber);
+        this.classes.set("enum", Enum_1.PHPEnum);
     }
     registerExtension(extension) {
         this.extensions.set(extension.name.toLowerCase(), extension);
         extension.onInit(this);
         for (const [key, val] of Object.entries(extension.constants)) {
             this.constants.set(key, val);
+            this.constants.set(key.toUpperCase(), val);
         }
         for (const [key, func] of Object.entries(extension.functions)) {
             this.functions.set(key.toLowerCase(), func);
@@ -173,16 +318,18 @@ class PHPEngine {
         if (this.compiledCache.has(resolvedPath)) {
             return this.compiledCache.get(resolvedPath);
         }
-        if (!fs.existsSync(resolvedPath)) {
+        try {
+            const source = await fs.readFile(resolvedPath, "utf8");
+            const func = await this.compileCode(source, resolvedPath);
+            this.compiledCache.set(resolvedPath, func);
+            if (this.watcher) {
+                this.watcher.add(resolvedPath);
+            }
+            return func;
+        }
+        catch {
             throw new Error(`PHP file not found: ${resolvedPath}`);
         }
-        const source = fs.readFileSync(resolvedPath, "utf8");
-        const func = await this.compileCode(source, resolvedPath);
-        this.compiledCache.set(resolvedPath, func);
-        if (this.watcher) {
-            this.watcher.add(resolvedPath);
-        }
-        return func;
     }
     async compileCode(code, filepath = "eval") {
         const optimizerCtx = {
@@ -191,7 +338,7 @@ class PHPEngine {
         };
         const transpilation = this.transpiler.transpile(code, filepath, {
             engineSHA1: this.getConfigurationSHA1(),
-            cacheDir: this.cacheDir,
+            cacheDir: filepath === "eval" ? undefined : this.cacheDir,
             optimizerCtx,
         });
         // Load compiled JS into Function wrapper

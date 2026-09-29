@@ -1,5 +1,5 @@
 import * as path from "path";
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/superglobals/Superglobals";
@@ -52,6 +52,15 @@ export class PHPContext {
     } else if (this.stdout && typeof this.stdout.write === "function") {
       this.stdout.write(str);
     }
+  }
+
+  public getConstant(name: string): any {
+    return this.engine.getConstant(name);
+  }
+
+  public defineConstant(name: string, val: any): void {
+    this.engine.constants.set(name, val);
+    this.engine.constants.set(name.toUpperCase(), val);
   }
 
   public getVar(name: string): any {
@@ -108,16 +117,19 @@ export class PHPContext {
     if (fn) {
       return await fn.apply(this, [this, ...args]);
     }
-    // Return false or undefined gracefully for soft function lookups
     return false;
   }
 
-  public async createObject(className: string, args: any[] = []): Promise<PHPObject> {
-    const phpClass = this.engine.classes.get(className.toLowerCase()) || new PHPClass(className);
+  public async createObject(className: string, args: any[] = []): Promise<any> {
+    const rawClass = this.engine.classes.get(className.toLowerCase());
+    if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject)) {
+      return new (rawClass as any)(...args);
+    }
+    const phpClass = rawClass instanceof PHPClass ? rawClass : new PHPClass(className);
     const obj = new PHPObject(phpClass);
-    const __construct = phpClass.methods.get("__construct");
-    if (__construct) {
-      await __construct.apply(obj, [this, ...args]);
+    const __construct = phpClass.methods ? phpClass.methods.get("__construct") : undefined;
+    if (__construct?.fn) {
+      await __construct.fn.apply(obj, [this, ...args]);
     }
     return obj;
   }
@@ -127,11 +139,20 @@ export class PHPContext {
     return await compiledFunc(this);
   }
 
+  private async fileExists(filepath: string): Promise<boolean> {
+    try {
+      await fs.access(filepath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public async include(filepath: string): Promise<any> {
     const resolvedPath = path.isAbsolute(filepath)
       ? filepath
       : path.resolve(this.cwd, filepath);
-    if (!fs.existsSync(resolvedPath)) {
+    if (!(await this.fileExists(resolvedPath))) {
       await this.echo(`Warning: include(${filepath}): Failed to open stream\n`);
       return false;
     }
@@ -154,7 +175,7 @@ export class PHPContext {
     const resolvedPath = path.isAbsolute(filepath)
       ? filepath
       : path.resolve(this.cwd, filepath);
-    if (!fs.existsSync(resolvedPath)) {
+    if (!(await this.fileExists(resolvedPath))) {
       throw new PHPFatalError(`Fatal error: require(${filepath}): Failed opening required '${filepath}'`);
     }
     const compiledFunc = await this.engine.compileFile(resolvedPath);

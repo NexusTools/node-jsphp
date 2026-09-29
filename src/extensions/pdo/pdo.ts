@@ -7,7 +7,6 @@ export class PDOConnection {
   public connection?: mysql.Connection;
 
   public async connect(dsn: string, username = "", password = ""): Promise<boolean> {
-    // Parse MySQL DSN format: mysql:host=localhost;dbname=test;port=3306
     const hostMatch = dsn.match(/host=([^;]+)/);
     const dbMatch = dsn.match(/dbname=([^;]+)/);
     const portMatch = dsn.match(/port=([^;]+)/);

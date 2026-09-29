@@ -2,7 +2,6 @@ import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/superglobals/Superglobals";
 import { OutputBufferStack } from "./runtime/output/OutputBuffer";
-import { PHPObject } from "./runtime/objects/PHPObject";
 export interface PHPContextOptions {
     cwd?: string;
     env?: Record<string, string>;
@@ -24,14 +23,17 @@ export declare class PHPContext {
     constructor(engine: PHPEngine, options?: PHPContextOptions);
     echo(data: any): Promise<void>;
     private writeStdout;
+    getConstant(name: string): any;
+    defineConstant(name: string, val: any): void;
     getVar(name: string): any;
     setVar(name: string, value: any): void;
     getProperty(obj: any, prop: string): Promise<any>;
     setProperty(obj: any, prop: string, value: any): Promise<void>;
     callMethod(obj: any, method: string, args?: any[]): Promise<any>;
     callFunction(name: string, args?: any[]): Promise<any>;
-    createObject(className: string, args?: any[]): Promise<PHPObject>;
+    createObject(className: string, args?: any[]): Promise<any>;
     eval(code: string, filepath?: string): Promise<any>;
+    private fileExists;
     include(filepath: string): Promise<any>;
     includeOnce(filepath: string): Promise<any>;
     require(filepath: string): Promise<any>;

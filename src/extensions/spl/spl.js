@@ -8,20 +8,17 @@ class SPLExtension extends PHPExtension_1.PHPExtension {
     onInit(engine) {
         this.functions = {
             spl_autoload_register: (ctx, callback) => {
-                if (typeof callback === "function") {
+                if (callback !== undefined && callback !== null) {
                     this.autoloaders.push(callback);
                     return true;
                 }
                 return false;
             },
             spl_autoload_unregister: (ctx, callback) => {
-                const idx = this.autoloaders.indexOf(callback);
-                if (idx !== -1) {
-                    this.autoloaders.splice(idx, 1);
-                    return true;
-                }
-                return false;
+                this.autoloaders = this.autoloaders.filter((cb) => cb !== callback);
+                return true;
             },
+            spl_autoload_functions: () => this.autoloaders,
         };
     }
 }

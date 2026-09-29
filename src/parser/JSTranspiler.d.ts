@@ -15,6 +15,7 @@ export declare class JSTranspiler {
     transpile(sourceCode: string, filepath: string, options: TranspilerOptions): TranspilationResult;
     private transpileNodeList;
     private transpileNode;
+    private getConstName;
     private transpileExpr;
     private transpileTarget;
 }

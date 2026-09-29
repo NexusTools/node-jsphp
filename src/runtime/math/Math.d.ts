@@ -1,0 +1,38 @@
+export declare class MathRuntime {
+    static abs(num: number): number;
+    static ceil(num: number): number;
+    static floor(num: number): number;
+    static round(num: number, precision?: number): number;
+    static max(...args: any[]): any;
+    static min(...args: any[]): any;
+    static pow(base: number, exp: number): number;
+    static sqrt(num: number): number;
+    static rand(min?: number, max?: number): number;
+    static mt_rand(min?: number, max?: number): number;
+    static mt_getrandmax(): number;
+    static sin(num: number): number;
+    static cos(num: number): number;
+    static tan(num: number): number;
+    static asin(num: number): number;
+    static acos(num: number): number;
+    static atan(num: number): number;
+    static atan2(y: number, x: number): number;
+    static log(num: number, base?: number): number;
+    static log10(num: number): number;
+    static exp(num: number): number;
+    static fmod(x: number, y: number): number;
+    static intdiv(x: number, y: number): number;
+    static is_nan(num: number): boolean;
+    static is_finite(num: number): boolean;
+    static is_infinite(num: number): boolean;
+    static pi(): number;
+    static deg2rad(num: number): number;
+    static rad2deg(num: number): number;
+    static base_convert(num: string, fromBase: number, toBase: number): string;
+    static bindec(binaryString: string): number;
+    static decbin(num: number): string;
+    static dechex(num: number): string;
+    static hexdec(hexString: string): number;
+    static octdec(octString: string): number;
+    static decoct(num: number): string;
+}

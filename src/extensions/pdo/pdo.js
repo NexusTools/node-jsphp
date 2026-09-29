@@ -9,7 +9,6 @@ const PHPExtension_1 = require("../../PHPExtension");
 class PDOConnection {
     connection;
     async connect(dsn, username = "", password = "") {
-        // Parse MySQL DSN format: mysql:host=localhost;dbname=test;port=3306
         const hostMatch = dsn.match(/host=([^;]+)/);
         const dbMatch = dsn.match(/dbname=([^;]+)/);
         const portMatch = dsn.match(/port=([^;]+)/);

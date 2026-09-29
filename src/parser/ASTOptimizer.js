@@ -20,13 +20,34 @@ class ASTOptimizer {
             }
             return optimizedArray;
         }
-        // Process child nodes first
+        // 1. Optimize constant references (name & constref) before child recursion
+        if (ast.kind === "name" || ast.kind === "constref") {
+            let constName = "";
+            if (typeof ast.name === "string") {
+                constName = ast.name;
+            }
+            else if (ast.name && typeof ast.name === "object") {
+                constName = (ast.name.name || ast.name.value || "").toString();
+            }
+            else if (typeof ast.value === "string") {
+                constName = ast.value;
+            }
+            if (constName) {
+                if (ctx.constants.has(constName)) {
+                    return ASTOptimizer.literalNode(ctx.constants.get(constName), ast.loc);
+                }
+                if (ctx.constants.has(constName.toUpperCase())) {
+                    return ASTOptimizer.literalNode(ctx.constants.get(constName.toUpperCase()), ast.loc);
+                }
+            }
+        }
+        // Process child nodes
         for (const key of Object.keys(ast)) {
             if (key !== "kind" && key !== "loc" && typeof ast[key] === "object") {
                 ast[key] = ASTOptimizer.optimize(ast[key], ctx);
             }
         }
-        // 1. Optimize Call expressions: extension_loaded & defined & constant
+        // 2. Optimize Call expressions: extension_loaded & defined & constant
         if (ast.kind === "call" && ast.what) {
             const funcName = (ast.what.name || ast.what.value || "").toString().toLowerCase();
             // extension_loaded("ext")
@@ -43,20 +64,25 @@ class ASTOptimizer {
                 const arg = ast.arguments[0];
                 if (arg.kind === "string") {
                     const constName = arg.value;
-                    const isDefined = ctx.constants.has(constName) || constName === "PHP_VERSION" || constName === "PHP_ENGINE";
+                    const isDefined = ctx.constants.has(constName) || ctx.constants.has(constName.toUpperCase()) || constName === "PHP_VERSION" || constName === "PHP_ENGINE";
                     return { kind: "boolean", value: isDefined, loc: ast.loc };
                 }
             }
             // constant("CONST_NAME")
             if (funcName === "constant" && ast.arguments && ast.arguments.length === 1) {
                 const arg = ast.arguments[0];
-                if (arg.kind === "string" && ctx.constants.has(arg.value)) {
-                    const val = ctx.constants.get(arg.value);
-                    return ASTOptimizer.literalNode(val, ast.loc);
+                if (arg.kind === "string") {
+                    const cName = arg.value;
+                    if (ctx.constants.has(cName)) {
+                        return ASTOptimizer.literalNode(ctx.constants.get(cName), ast.loc);
+                    }
+                    if (ctx.constants.has(cName.toUpperCase())) {
+                        return ASTOptimizer.literalNode(ctx.constants.get(cName.toUpperCase()), ast.loc);
+                    }
                 }
             }
         }
-        // 2. Optimize If statements
+        // 3. Optimize If statements
         if (ast.kind === "if") {
             const cond = ast.test;
             // if (true)
@@ -76,13 +102,13 @@ class ASTOptimizer {
                 return null;
             }
         }
-        // 3. Optimize unary boolean NOT !
+        // 4. Optimize unary boolean NOT !
         if (ast.kind === "unary" && ast.type === "!") {
             if (ast.what && ast.what.kind === "boolean") {
                 return { kind: "boolean", value: !ast.what.value, loc: ast.loc };
             }
         }
-        // 4. Optimize binary boolean expressions &&, ||
+        // 5. Optimize binary boolean expressions &&, ||
         if (ast.kind === "binary") {
             if (ast.type === "&&") {
                 if (ast.left.kind === "boolean" && ast.right.kind === "boolean") {

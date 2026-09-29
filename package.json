@@ -1,12 +1,13 @@
 {
   "name": "@nexustools/php",
-  "version": "1.0.0",
-  "description": "PHP 8.5 runtime and CLI written in TypeScript for Node.js",
+  "version": "1.0.1",
+  "description": "PHP 8.5 runtime, FastCGI PHP-FPM, HTTP server and CLI written in TypeScript for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
   "bin": {
     "php": "bin/php.js",
-    "php-fpm": "bin/php-fpm.js"
+    "php-fpm": "bin/php-fpm.js",
+    "php-http-server": "bin/php-http-server.js"
   },
   "publishConfig": {
     "access": "public"
@@ -21,7 +22,9 @@
     "php8.5",
     "transpiler",
     "cli",
+    "fastcgi",
     "php-fpm",
+    "php-http-server",
     "wordpress",
     "runtime"
   ],

@@ -8,6 +8,7 @@ class PHPClass {
     traits = [];
     constants = new Map();
     staticProperties = new Map();
+    properties = new Map();
     methods = new Map();
     isAbstract = false;
     isFinal = false;
@@ -34,36 +35,36 @@ class PHPObject {
         if (this.properties.has(name)) {
             return this.properties.get(name);
         }
-        const __get = this.phpClass.methods.get("__get");
-        if (__get) {
-            return await __get.call(this, ctx, name);
+        const __getMeta = this.phpClass.methods.get("__get");
+        if (__getMeta?.fn) {
+            return await __getMeta.fn.call(this, ctx, name);
         }
         return undefined;
     }
     async setProperty(ctx, name, value) {
-        const __set = this.phpClass.methods.get("__set");
-        if (__set) {
-            await __set.call(this, ctx, name, value);
+        const __setMeta = this.phpClass.methods.get("__set");
+        if (__setMeta?.fn) {
+            await __setMeta.fn.call(this, ctx, name, value);
         }
         else {
             this.properties.set(name, value);
         }
     }
     async callMethod(ctx, name, args) {
-        const method = this.phpClass.methods.get(name.toLowerCase());
-        if (method) {
-            return await method.apply(this, [ctx, ...args]);
+        const methodMeta = this.phpClass.methods.get(name.toLowerCase());
+        if (methodMeta?.fn) {
+            return await methodMeta.fn.apply(this, [ctx, ...args]);
         }
-        const __call = this.phpClass.methods.get("__call");
-        if (__call) {
-            return await __call.call(this, ctx, name, args);
+        const __callMeta = this.phpClass.methods.get("__call");
+        if (__callMeta?.fn) {
+            return await __callMeta.fn.call(this, ctx, name, args);
         }
         throw new Error(`Call to undefined method ${this.phpClass.name}::${name}()`);
     }
     async toString(ctx) {
-        const __toString = this.phpClass.methods.get("__tostring");
-        if (__toString) {
-            return String(await __toString.call(this, ctx));
+        const __toStringMeta = this.phpClass.methods.get("__tostring");
+        if (__toStringMeta?.fn) {
+            return String(await __toStringMeta.fn.call(this, ctx));
         }
         return `Object(${this.phpClass.name})`;
     }

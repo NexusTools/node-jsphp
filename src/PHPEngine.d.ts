@@ -16,6 +16,7 @@ export declare class PHPEngine {
     private transpiler;
     private cacheDir?;
     constructor(options?: PHPEngineOptions);
+    getConstant(name: string): any;
     private registerCoreFunctions;
     registerExtension(extension: PHPExtension): void;
     getConfigurationSHA1(): string;

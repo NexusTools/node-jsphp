@@ -1,5 +1,34 @@
 import type { PHPContext } from "../../PHPContext";
 
+export interface PHPParameterMetadata {
+  name: string;
+  position: number;
+  isOptional: boolean;
+  hasDefault: boolean;
+  defaultValue?: any;
+  type?: string;
+}
+
+export interface PHPPropertyMetadata {
+  name: string;
+  visibility: "public" | "protected" | "private";
+  isStatic: boolean;
+  isReadOnly: boolean;
+  defaultValue?: any;
+}
+
+export interface PHPMethodMetadata {
+  name: string;
+  visibility: "public" | "protected" | "private";
+  isStatic: boolean;
+  isAbstract: boolean;
+  isFinal: boolean;
+  numberOfParameters: number;
+  numberOfRequiredParameters: number;
+  parameters: PHPParameterMetadata[];
+  fn: Function;
+}
+
 export class PHPClass {
   public readonly name: string;
   public readonly parentClass?: PHPClass;
@@ -7,7 +36,8 @@ export class PHPClass {
   public readonly traits: any[] = [];
   public constants: Map<string, any> = new Map();
   public staticProperties: Map<string, any> = new Map();
-  public methods: Map<string, Function> = new Map();
+  public properties: Map<string, PHPPropertyMetadata> = new Map();
+  public methods: Map<string, PHPMethodMetadata> = new Map();
   public isAbstract: boolean = false;
   public isFinal: boolean = false;
 
@@ -35,38 +65,38 @@ export class PHPObject {
     if (this.properties.has(name)) {
       return this.properties.get(name);
     }
-    const __get = this.phpClass.methods.get("__get");
-    if (__get) {
-      return await __get.call(this, ctx, name);
+    const __getMeta = this.phpClass.methods.get("__get");
+    if (__getMeta?.fn) {
+      return await __getMeta.fn.call(this, ctx, name);
     }
     return undefined;
   }
 
   public async setProperty(ctx: PHPContext, name: string, value: any): Promise<void> {
-    const __set = this.phpClass.methods.get("__set");
-    if (__set) {
-      await __set.call(this, ctx, name, value);
+    const __setMeta = this.phpClass.methods.get("__set");
+    if (__setMeta?.fn) {
+      await __setMeta.fn.call(this, ctx, name, value);
     } else {
       this.properties.set(name, value);
     }
   }
 
   public async callMethod(ctx: PHPContext, name: string, args: any[]): Promise<any> {
-    const method = this.phpClass.methods.get(name.toLowerCase());
-    if (method) {
-      return await method.apply(this, [ctx, ...args]);
+    const methodMeta = this.phpClass.methods.get(name.toLowerCase());
+    if (methodMeta?.fn) {
+      return await methodMeta.fn.apply(this, [ctx, ...args]);
     }
-    const __call = this.phpClass.methods.get("__call");
-    if (__call) {
-      return await __call.call(this, ctx, name, args);
+    const __callMeta = this.phpClass.methods.get("__call");
+    if (__callMeta?.fn) {
+      return await __callMeta.fn.call(this, ctx, name, args);
     }
     throw new Error(`Call to undefined method ${this.phpClass.name}::${name}()`);
   }
 
   public async toString(ctx: PHPContext): Promise<string> {
-    const __toString = this.phpClass.methods.get("__tostring");
-    if (__toString) {
-      return String(await __toString.call(this, ctx));
+    const __toStringMeta = this.phpClass.methods.get("__tostring");
+    if (__toStringMeta?.fn) {
+      return String(await __toStringMeta.fn.call(this, ctx));
     }
     return `Object(${this.phpClass.name})`;
   }

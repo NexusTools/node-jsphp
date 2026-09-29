@@ -35,7 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPContext = void 0;
 const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
+const fs = __importStar(require("fs/promises"));
 const PHPEngine_1 = require("./PHPEngine");
 const Superglobals_1 = require("./runtime/superglobals/Superglobals");
 const OutputBuffer_1 = require("./runtime/output/OutputBuffer");
@@ -77,6 +77,13 @@ class PHPContext {
         else if (this.stdout && typeof this.stdout.write === "function") {
             this.stdout.write(str);
         }
+    }
+    getConstant(name) {
+        return this.engine.getConstant(name);
+    }
+    defineConstant(name, val) {
+        this.engine.constants.set(name, val);
+        this.engine.constants.set(name.toUpperCase(), val);
     }
     getVar(name) {
         if (name.startsWith("_")) {
@@ -128,15 +135,18 @@ class PHPContext {
         if (fn) {
             return await fn.apply(this, [this, ...args]);
         }
-        // Return false or undefined gracefully for soft function lookups
         return false;
     }
     async createObject(className, args = []) {
-        const phpClass = this.engine.classes.get(className.toLowerCase()) || new PHPObject_1.PHPClass(className);
+        const rawClass = this.engine.classes.get(className.toLowerCase());
+        if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject_1.PHPObject)) {
+            return new rawClass(...args);
+        }
+        const phpClass = rawClass instanceof PHPObject_1.PHPClass ? rawClass : new PHPObject_1.PHPClass(className);
         const obj = new PHPObject_1.PHPObject(phpClass);
-        const __construct = phpClass.methods.get("__construct");
-        if (__construct) {
-            await __construct.apply(obj, [this, ...args]);
+        const __construct = phpClass.methods ? phpClass.methods.get("__construct") : undefined;
+        if (__construct?.fn) {
+            await __construct.fn.apply(obj, [this, ...args]);
         }
         return obj;
     }
@@ -144,11 +154,20 @@ class PHPContext {
         const compiledFunc = await this.engine.compileCode(code, filepath);
         return await compiledFunc(this);
     }
+    async fileExists(filepath) {
+        try {
+            await fs.access(filepath);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     async include(filepath) {
         const resolvedPath = path.isAbsolute(filepath)
             ? filepath
             : path.resolve(this.cwd, filepath);
-        if (!fs.existsSync(resolvedPath)) {
+        if (!(await this.fileExists(resolvedPath))) {
             await this.echo(`Warning: include(${filepath}): Failed to open stream\n`);
             return false;
         }
@@ -169,7 +188,7 @@ class PHPContext {
         const resolvedPath = path.isAbsolute(filepath)
             ? filepath
             : path.resolve(this.cwd, filepath);
-        if (!fs.existsSync(resolvedPath)) {
+        if (!(await this.fileExists(resolvedPath))) {
             throw new PHPError_1.PHPFatalError(`Fatal error: require(${filepath}): Failed opening required '${filepath}'`);
         }
         const compiledFunc = await this.engine.compileFile(resolvedPath);

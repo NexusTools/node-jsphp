@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
+exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
 var PHPEngine_1 = require("./src/PHPEngine");
 Object.defineProperty(exports, "PHPEngine", { enumerable: true, get: function () { return PHPEngine_1.PHPEngine; } });
 var PHPContext_1 = require("./src/PHPContext");
@@ -26,4 +26,13 @@ var ASTOptimizer_1 = require("./src/parser/ASTOptimizer");
 Object.defineProperty(exports, "ASTOptimizer", { enumerable: true, get: function () { return ASTOptimizer_1.ASTOptimizer; } });
 var JSTranspiler_1 = require("./src/parser/JSTranspiler");
 Object.defineProperty(exports, "JSTranspiler", { enumerable: true, get: function () { return JSTranspiler_1.JSTranspiler; } });
+var Reflection_1 = require("./src/runtime/reflection/Reflection");
+Object.defineProperty(exports, "defineFunction", { enumerable: true, get: function () { return Reflection_1.defineFunction; } });
+Object.defineProperty(exports, "Reflection", { enumerable: true, get: function () { return Reflection_1.Reflection; } });
+Object.defineProperty(exports, "ReflectionClass", { enumerable: true, get: function () { return Reflection_1.ReflectionClass; } });
+Object.defineProperty(exports, "ReflectionMethod", { enumerable: true, get: function () { return Reflection_1.ReflectionMethod; } });
+Object.defineProperty(exports, "ReflectionProperty", { enumerable: true, get: function () { return Reflection_1.ReflectionProperty; } });
+Object.defineProperty(exports, "ReflectionFunction", { enumerable: true, get: function () { return Reflection_1.ReflectionFunction; } });
+Object.defineProperty(exports, "ReflectionParameter", { enumerable: true, get: function () { return Reflection_1.ReflectionParameter; } });
+Object.defineProperty(exports, "ReflectionType", { enumerable: true, get: function () { return Reflection_1.ReflectionType; } });
 //# sourceMappingURL=index.js.map

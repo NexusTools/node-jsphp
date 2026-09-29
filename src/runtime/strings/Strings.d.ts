@@ -1,7 +1,35 @@
 export declare class StringRuntime {
-    static strlen(str: string): number;
+    static strlen(str: any): number;
     static substr(str: string, start: number, length?: number): string;
     static strpos(haystack: string, needle: string, offset?: number): number | false;
+    static stripos(haystack: string, needle: string, offset?: number): number | false;
+    static strrpos(haystack: string, needle: string, offset?: number): number | false;
+    static strripos(haystack: string, needle: string, offset?: number): number | false;
+    static strstr(haystack: string, needle: string, beforeNeedle?: boolean): string | false;
+    static str_replace(search: any, replace: any, subject: any): any;
+    static str_ireplace(search: any, replace: any, subject: any): any;
     static explode(delimiter: string, string: string, limit?: number): string[];
     static implode(glue: string, pieces: any[]): string;
+    static trim(str: string, charlist?: string): string;
+    static ltrim(str: string, charlist?: string): string;
+    static rtrim(str: string, charlist?: string): string;
+    static strtolower(str: string): string;
+    static strtoupper(str: string): string;
+    static ucfirst(str: string): string;
+    static lcfirst(str: string): string;
+    static ucwords(str: string): string;
+    static strcmp(str1: string, str2: string): number;
+    static addslashes(str: string): string;
+    static stripslashes(str: string): string;
+    static htmlspecialchars(str: string): string;
+    static htmlspecialchars_decode(str: string): string;
+    static nl2br(str: string, isXhtml?: boolean): string;
+    static str_repeat(input: string, multiplier: number): string;
+    static str_pad(input: string, padLength: number, padString?: string, padType?: number): string;
+    static str_split(string: string, length?: number): string[];
+    static strrev(string: string): string;
+    static chr(ascii: number): string;
+    static ord(character: string): number;
+    static bin2hex(string: string): string;
+    static hex2bin(hexString: string): string;
 }

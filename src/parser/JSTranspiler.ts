@@ -32,7 +32,7 @@ export class JSTranspiler {
     const resolvedPath = path.isAbsolute(filepath) ? path.resolve(filepath) : filepath;
     const pathSHA1 = crypto.createHash("sha1").update(resolvedPath).digest("hex");
 
-    const cacheBase = options.cacheDir || process.env.JSPHP_CACHE;
+    const cacheBase = (filepath === "eval") ? undefined : (options.cacheDir || process.env.JSPHP_CACHE);
     let cacheJSPath = "";
     let cacheMapPath = "";
 
@@ -56,8 +56,9 @@ export class JSTranspiler {
     const optimizedAst = ASTOptimizer.optimize(rawAst, options.optimizerCtx);
 
     const mapGen = new SourceMapGenerator({ file: `${path.basename(filepath)}.js` });
-    const jsLines: string[] = [];
+    mapGen.setSourceContent(filepath, sourceCode);
 
+    const jsLines: string[] = [];
     jsLines.push(`// Transpiled from PHP: ${filepath}`);
     jsLines.push(`module.exports = async function(ctx) {`);
 
@@ -65,8 +66,11 @@ export class JSTranspiler {
 
     jsLines.push(`};`);
 
-    const generatedCode = jsLines.join("\n");
+    let generatedCode = jsLines.join("\n");
     const mapString = mapGen.toString();
+
+    const base64Map = Buffer.from(mapString, "utf8").toString("base64");
+    generatedCode += `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${base64Map}\n`;
 
     if (cacheJSPath) {
       try {
@@ -95,14 +99,29 @@ export class JSTranspiler {
 
     for (const node of nodeList) {
       if (!node) continue;
-      const stmt = this.transpileNode(node, filepath, pad);
+
+      if (mapGen && node.loc?.start) {
+        mapGen.addMapping({
+          generated: {
+            line: lines.length + 1,
+            column: pad.length,
+          },
+          source: filepath,
+          original: {
+            line: node.loc.start.line,
+            column: node.loc.start.column || 0,
+          },
+        });
+      }
+
+      const stmt = this.transpileNode(node, filepath, pad, mapGen);
       if (stmt) {
         lines.push(stmt);
       }
     }
   }
 
-  private transpileNode(node: any, filepath: string, pad: string): string {
+  private transpileNode(node: any, filepath: string, pad: string, mapGen?: SourceMapGenerator): string {
     if (!node || typeof node !== "object") return "";
 
     switch (node.kind) {
@@ -141,13 +160,13 @@ export class JSTranspiler {
         const cond = this.transpileExpr(node.test, filepath);
         let code = `${pad}if (${cond}) {\n`;
         const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 1);
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 1);
         code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
 
         if (node.alternate) {
           code += ` else {\n`;
           const altLines: string[] = [];
-          this.transpileNodeList(node.alternate?.children || node.alternate, altLines, null as any, filepath, 1);
+          this.transpileNodeList(node.alternate?.children || node.alternate, altLines, mapGen!, filepath, 1);
           code += altLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
         }
         return code;
@@ -157,7 +176,7 @@ export class JSTranspiler {
         const cond = this.transpileExpr(node.test, filepath);
         let code = `${pad}while (${cond}) {\n`;
         const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 1);
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 1);
         code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
         return code;
       }
@@ -170,7 +189,7 @@ export class JSTranspiler {
         if (keyVar) code += `${pad}  ctx.setVar(${keyVar}, __k);\n`;
         code += `${pad}  ctx.setVar(${valueVar}, __v);\n`;
         const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 1);
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 1);
         code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
         return code;
       }
@@ -178,11 +197,11 @@ export class JSTranspiler {
       case "try": {
         let code = `${pad}try {\n`;
         const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 1);
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 1);
         code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}} catch (__err) {\n`;
         if (node.catches && node.catches.length > 0) {
           const catchBody: string[] = [];
-          this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, catchBody, null as any, filepath, 1);
+          this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, catchBody, mapGen!, filepath, 1);
           code += catchBody.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
         } else {
           code += `${pad}}`;
@@ -197,22 +216,28 @@ export class JSTranspiler {
 
       case "function": {
         const funcName = (node.name?.name || node.name || "").toString().toLowerCase();
-        const params = (node.arguments || []).map((a: any) => {
+        const visibility = (node.visibility || "public").toString();
+        const params = (node.arguments || []).map((a: any, idx: number) => {
           const pName = (a.name?.name || a.name || "p").toString();
+          const hasDefault = Boolean(a.value);
           const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
-          return { name: pName, defaultVal };
+          return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
         });
 
+        const requiredCount = params.filter((p: any) => !p.hasDefault).length;
+
         const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 2);
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, mapGen!, filepath, 2);
 
         const paramSetup = params.map((p: any, idx: number) => {
-          return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultVal});`;
+          return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
         }).join("\n" + pad + "  ");
 
         const bodyCode = bodyLines.map((l) => pad + "  " + l).join("\n");
 
-        return `${pad}ctx.engine.functions.set(${JSON.stringify(funcName)}, async function(ctx, ...args) {\n${pad}  ${paramSetup}\n${bodyCode}\n${pad}});`;
+        return `${pad}const __fn_${funcName} = async function(ctx, ...args) {\n${pad}  ${paramSetup}\n${bodyCode}\n${pad}};\n` +
+               `${pad}__fn_${funcName}.phpMeta = { name: ${JSON.stringify(funcName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };\n` +
+               `${pad}ctx.engine.functions.set(${JSON.stringify(funcName)}, __fn_${funcName});`;
       }
 
       case "class": {
@@ -225,6 +250,15 @@ export class JSTranspiler {
         return expr ? `${pad}${expr};` : "";
       }
     }
+  }
+
+  private getConstName(node: any): string {
+    if (!node) return "";
+    if (typeof node === "string") return node;
+    if (typeof node.name === "string") return node.name;
+    if (typeof node.value === "string") return node.value;
+    if (node.name && typeof node.name === "object") return this.getConstName(node.name);
+    return String(node);
   }
 
   private transpileExpr(node: any, filepath: string = "eval"): string {
@@ -246,9 +280,30 @@ export class JSTranspiler {
         if (m === "__LINE__") return String(node.loc?.start?.line || 1);
         return JSON.stringify(m);
       }
+      case "name":
       case "constref": {
-        const constName = node.name?.name || node.name || "";
-        return `(ctx.engine.constants.get(${JSON.stringify(constName)}) ?? ${JSON.stringify(constName)})`;
+        const constName = this.getConstName(node.name || node);
+        return `(ctx.getConstant(${JSON.stringify(constName)}) ?? ${JSON.stringify(constName)})`;
+      }
+      case "closure":
+      case "arrowfunc": {
+        const params = (node.arguments || []).map((a: any, idx: number) => {
+          const pName = (a.name?.name || a.name || "p").toString();
+          const hasDefault = Boolean(a.value);
+          const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
+          return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
+        });
+
+        const bodyLines: string[] = [];
+        this.transpileNodeList(node.body?.children || node.body, bodyLines, null as any, filepath, 2);
+
+        const paramSetup = params.map((p: any, idx: number) => {
+          return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
+        }).join("\n  ");
+
+        const bodyCode = bodyLines.map((l) => "  " + l).join("\n");
+
+        return `(async function(ctx, ...args) {\n  ${paramSetup}\n${bodyCode}\n})`;
       }
       case "variable":
         return `ctx.getVar(${JSON.stringify(node.name?.name || node.name)})`;
@@ -271,6 +326,29 @@ export class JSTranspiler {
           const list = items.map((it: any) => this.transpileExpr(it.value || it, filepath));
           return `([ ${list.join(", ")} ])`;
         }
+      }
+      case "match": {
+        const cond = this.transpileExpr(node.cond, filepath);
+        const arms = (node.arms || []).map((arm: any) => {
+          const body = this.transpileExpr(arm.body, filepath);
+          if (!arm.conds || arm.conds.length === 0) {
+            return `return ${body};`;
+          }
+          const conds = arm.conds.map((c: any) => `__m === (${this.transpileExpr(c, filepath)})`).join(" || ");
+          return `if (${conds}) return ${body};`;
+        });
+        return `(await (async () => { const __m = ${cond};\n  ${arms.join("\n  ")}\n  throw new Error("UnhandledMatchError");\n})())`;
+      }
+      case "nullsafepropertylookup": {
+        const obj = this.transpileExpr(node.what, filepath);
+        const prop = JSON.stringify(node.offset?.name || node.offset?.value || "prop");
+        return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.getProperty(__o, ${prop}) : null; })())`;
+      }
+      case "nullsafemethodcall": {
+        const obj = this.transpileExpr(node.what, filepath);
+        const method = JSON.stringify(node.name?.name || node.name || "method");
+        const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
+        return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.callMethod(__o, ${method}, [${args.join(", ")}]) : null; })())`;
       }
       case "offsetlookup": {
         const target = this.transpileExpr(node.what, filepath);
