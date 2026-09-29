@@ -5,7 +5,6 @@ import chokidar from "chokidar";
 import { PHPExtension } from "./PHPExtension";
 import { PHPContext, PHPContextOptions } from "./PHPContext";
 import { JSTranspiler } from "./parser/JSTranspiler";
-import { OptimizerContext } from "./parser/ASTOptimizer";
 
 import { StringRuntime } from "./runtime/strings/Strings";
 import { ArrayRuntime } from "./runtime/arrays/Arrays";
@@ -395,16 +394,10 @@ export class PHPEngine {
   }
 
   public async compileCode(code: string, filepath: string = "eval"): Promise<Function> {
-    const optimizerCtx: OptimizerContext = {
-      enabledExtensions: new Set(this.extensions.keys()),
-      constants: this.constants,
-      functions: this.functions,
-    };
-
     const transpilation = this.transpiler.transpile(code, filepath, {
       engineSHA1: this.getConfigurationSHA1(),
       cacheDir: filepath === "eval" ? undefined : this.cacheDir,
-      optimizerCtx,
+      engine: this,
     });
 
     // Load compiled JS into Function wrapper

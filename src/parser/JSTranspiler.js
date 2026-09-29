@@ -51,10 +51,14 @@ class JSTranspiler {
         const cacheBase = (filepath === "eval") ? undefined : (options.cacheDir || process.env.JSPHP_CACHE);
         let cacheJSPath = "";
         let cacheMapPath = "";
+        let lockPath = "";
+        let acquiredLock = false;
         if (cacheBase) {
             const targetDir = path.join(cacheBase, options.engineSHA1);
             cacheJSPath = path.join(targetDir, `${pathSHA1}.js`);
             cacheMapPath = path.join(targetDir, `${pathSHA1}.js.map`);
+            lockPath = path.join(targetDir, `${pathSHA1}.lock`);
+            // 1. Try reading existing cache
             if (fs.existsSync(cacheJSPath) && fs.existsSync(cacheMapPath)) {
                 try {
                     const cachedCode = fs.readFileSync(cacheJSPath, "utf8");
@@ -65,32 +69,98 @@ class JSTranspiler {
                     // Recompile on read error
                 }
             }
-        }
-        const rawAst = this.parser.parse(sourceCode, filepath);
-        const optimizedAst = ASTOptimizer_1.ASTOptimizer.optimize(rawAst, options.optimizerCtx);
-        const mapGen = new source_map_1.SourceMapGenerator({ file: `${path.basename(filepath)}.js` });
-        mapGen.setSourceContent(filepath, sourceCode);
-        const jsLines = [];
-        jsLines.push(`// Transpiled from PHP: ${filepath}`);
-        jsLines.push(`module.exports = async function(ctx) {`);
-        this.transpileNodeList(optimizedAst.children || optimizedAst, jsLines, mapGen, filepath, 1);
-        jsLines.push(`};`);
-        let generatedCode = jsLines.join("\n");
-        const mapString = mapGen.toString();
-        const base64Map = Buffer.from(mapString, "utf8").toString("base64");
-        generatedCode += `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${base64Map}\n`;
-        if (cacheJSPath) {
-            try {
-                const dir = path.dirname(cacheJSPath);
-                fs.mkdirSync(dir, { recursive: true });
-                fs.writeFileSync(cacheJSPath, generatedCode, "utf8");
-                fs.writeFileSync(cacheMapPath, mapString, "utf8");
+            // 2. Acquire atomic cluster process lock
+            const startTime = Date.now();
+            const lockTimeoutMs = 10000;
+            while (!acquiredLock && Date.now() - startTime < lockTimeoutMs) {
+                try {
+                    fs.mkdirSync(targetDir, { recursive: true });
+                    const fd = fs.openSync(lockPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY);
+                    fs.writeSync(fd, String(process.pid));
+                    fs.closeSync(fd);
+                    acquiredLock = true;
+                }
+                catch (err) {
+                    if (err.code === "EEXIST") {
+                        // Check if another cluster worker finished transpiling
+                        if (fs.existsSync(cacheJSPath) && fs.existsSync(cacheMapPath)) {
+                            try {
+                                const cachedCode = fs.readFileSync(cacheJSPath, "utf8");
+                                const cachedMap = fs.readFileSync(cacheMapPath, "utf8");
+                                return { code: cachedCode, map: cachedMap, cached: true };
+                            }
+                            catch (e) {
+                                // Keep waiting
+                            }
+                        }
+                        // Remove stale lock if timeout exceeded
+                        try {
+                            const stat = fs.statSync(lockPath);
+                            if (Date.now() - stat.mtimeMs > lockTimeoutMs) {
+                                fs.unlinkSync(lockPath);
+                            }
+                        }
+                        catch (e) {
+                            // Ignore
+                        }
+                        this.sleepSync(20);
+                    }
+                    else {
+                        break;
+                    }
+                }
             }
-            catch (e) {
-                // Non-fatal
+        }
+        try {
+            const rawAst = this.parser.parse(sourceCode, filepath);
+            const optimizedAst = ASTOptimizer_1.ASTOptimizer.optimize(rawAst, options.engine);
+            const mapGen = new source_map_1.SourceMapGenerator({ file: `${path.basename(filepath)}.js` });
+            mapGen.setSourceContent(filepath, sourceCode);
+            const jsLines = [];
+            jsLines.push(`// Transpiled from PHP: ${filepath}`);
+            jsLines.push(`module.exports = async function(ctx) {`);
+            this.transpileNodeList(optimizedAst.children || optimizedAst, jsLines, mapGen, filepath, 1);
+            jsLines.push(`};`);
+            let generatedCode = jsLines.join("\n");
+            const mapString = mapGen.toString();
+            const base64Map = Buffer.from(mapString, "utf8").toString("base64");
+            generatedCode += `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${base64Map}\n`;
+            if (cacheJSPath) {
+                try {
+                    const tmpJSPath = `${cacheJSPath}.${process.pid}.tmp`;
+                    const tmpMapPath = `${cacheMapPath}.${process.pid}.tmp`;
+                    fs.writeFileSync(tmpJSPath, generatedCode, "utf8");
+                    fs.writeFileSync(tmpMapPath, mapString, "utf8");
+                    fs.renameSync(tmpJSPath, cacheJSPath);
+                    fs.renameSync(tmpMapPath, cacheMapPath);
+                }
+                catch (e) {
+                    // Non-fatal
+                }
+            }
+            return { code: generatedCode, map: mapString, cached: false };
+        }
+        finally {
+            if (acquiredLock && lockPath && fs.existsSync(lockPath)) {
+                try {
+                    fs.unlinkSync(lockPath);
+                }
+                catch (e) {
+                    // Ignore
+                }
             }
         }
-        return { code: generatedCode, map: mapString, cached: false };
+    }
+    sleepSync(ms) {
+        try {
+            const buf = new Int32Array(new SharedArrayBuffer(4));
+            Atomics.wait(buf, 0, 0, ms);
+        }
+        catch {
+            // Fallback loop if SharedArrayBuffer disabled
+            const end = Date.now() + ms;
+            while (Date.now() < end) { }
+        }
     }
     transpileNodeList(nodes, lines, mapGen, filepath, indent) {
         if (!nodes)
@@ -231,7 +301,41 @@ class JSTranspiler {
             }
             case "class": {
                 const className = (node.name?.name || node.name || "AnonymousClass").toString();
-                return `${pad}ctx.engine.classes.set(${JSON.stringify(className.toLowerCase())}, new (require("./src/runtime/objects/PHPObject").PHPClass)(${JSON.stringify(className)}));`;
+                const phpObjPath = JSON.stringify(path.resolve(__dirname, "../runtime/objects/PHPObject"));
+                const methods = [];
+                for (const item of (node.body || node.children || [])) {
+                    if (item && (item.kind === "method" || item.kind === "function")) {
+                        const mName = (item.name?.name || item.name || "").toString().toLowerCase();
+                        const visibility = (item.visibility || "public").toString();
+                        const isStatic = Boolean(item.isStatic);
+                        const params = (item.arguments || []).map((a, idx) => {
+                            const pName = (a.name?.name || a.name || "p").toString();
+                            const hasDefault = Boolean(a.value);
+                            const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
+                            return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
+                        });
+                        const requiredCount = params.filter((p) => !p.hasDefault).length;
+                        const bodyLines = [];
+                        this.transpileNodeList(item.body?.children || item.body, bodyLines, mapGen, filepath, 3);
+                        const paramSetup = params.map((p, idx) => {
+                            return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
+                        }).join("\n" + pad + "    ");
+                        const bodyCode = bodyLines.map((l) => pad + "    " + l).join("\n");
+                        methods.push(`${pad}__cls_${className}.methods.set(${JSON.stringify(mName)}, {\n` +
+                            `${pad}  name: ${JSON.stringify(mName)},\n` +
+                            `${pad}  visibility: ${JSON.stringify(visibility)},\n` +
+                            `${pad}  isStatic: ${isStatic},\n` +
+                            `${pad}  numberOfParameters: ${params.length},\n` +
+                            `${pad}  numberOfRequiredParameters: ${requiredCount},\n` +
+                            `${pad}  parameters: ${JSON.stringify(params)},\n` +
+                            `${pad}  fn: async function(ctx, ...args) {\n${pad}    ${paramSetup}\n${bodyCode}\n${pad}  }\n` +
+                            `${pad}});`);
+                    }
+                }
+                return `${pad}const { PHPClass } = require(${phpObjPath});\n` +
+                    `${pad}const __cls_${className} = new PHPClass(${JSON.stringify(className)});\n` +
+                    `${methods.join("\n")}\n` +
+                    `${pad}ctx.engine.classes.set(${JSON.stringify(className.toLowerCase())}, __cls_${className});`;
             }
             default: {
                 const expr = this.transpileExpr(node, filepath);
@@ -363,11 +467,13 @@ class JSTranspiler {
             }
             case "post": {
                 const target = this.transpileTarget(node.what);
-                return `(${target}${node.type})`;
+                const op = (node.type === "-" || node.type === 2 || node.type === "--") ? "--" : "++";
+                return `${target}${op}`;
             }
             case "pre": {
                 const target = this.transpileTarget(node.what);
-                return `(${node.type}${target})`;
+                const op = (node.type === "-" || node.type === 2 || node.type === "--") ? "--" : "++";
+                return `${op}${target}`;
             }
             case "isset": {
                 const args = (node.variables || [node.variable]).map((v) => this.transpileExpr(v, filepath));

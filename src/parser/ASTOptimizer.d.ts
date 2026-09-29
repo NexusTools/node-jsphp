@@ -1,10 +1,6 @@
-export interface OptimizerContext {
-    enabledExtensions: Set<string>;
-    constants: Map<string, any>;
-    functions?: Map<string, Function>;
-}
+import type { PHPEngine } from "../PHPEngine";
 export declare class ASTOptimizer {
-    static optimize(ast: any, ctx: OptimizerContext): any;
+    static optimize(ast: any, engine: PHPEngine): any;
     private static extractStatements;
     private static literalNode;
 }

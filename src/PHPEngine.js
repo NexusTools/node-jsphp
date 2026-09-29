@@ -387,15 +387,10 @@ class PHPEngine {
         }
     }
     async compileCode(code, filepath = "eval") {
-        const optimizerCtx = {
-            enabledExtensions: new Set(this.extensions.keys()),
-            constants: this.constants,
-            functions: this.functions,
-        };
         const transpilation = this.transpiler.transpile(code, filepath, {
             engineSHA1: this.getConfigurationSHA1(),
             cacheDir: filepath === "eval" ? undefined : this.cacheDir,
-            optimizerCtx,
+            engine: this,
         });
         // Load compiled JS into Function wrapper
         const moduleObj = { exports: {} };
