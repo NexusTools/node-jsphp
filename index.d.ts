@@ -1,0 +1,10 @@
+export { PHPEngine, PHPEngineOptions } from "./src/PHPEngine";
+export { PHPContext, PHPContextOptions } from "./src/PHPContext";
+export { PHPExtension } from "./src/PHPExtension";
+export { PHPError, PHPException, PHPTypeError, PHPParseError, PHPFatalError } from "./src/runtime/errors/PHPError";
+export { PHPObject, PHPClass } from "./src/runtime/objects/PHPObject";
+export { Superglobals } from "./src/runtime/superglobals/Superglobals";
+export { OutputBufferStack } from "./src/runtime/output/OutputBuffer";
+export { PHPParser } from "./src/parser/PHPParser";
+export { ASTOptimizer } from "./src/parser/ASTOptimizer";
+export { JSTranspiler } from "./src/parser/JSTranspiler";

@@ -1,0 +1,64 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
+class PHPError extends Error {
+    phpCode;
+    phpFile;
+    phpLine;
+    phpTrace;
+    previous;
+    constructor(message = "", code = 0, file = "[INTERNAL]", line = 0, trace = [], previous = null) {
+        super(message);
+        this.name = this.constructor.name;
+        this.phpCode = code;
+        this.phpFile = file;
+        this.phpLine = line;
+        this.phpTrace = trace;
+        this.previous = previous;
+        // Clean JavaScript stack trace to replace internal JS paths with [INTERNAL]
+        if (this.stack) {
+            this.stack = PHPError.virtualizeJSStack(this.stack, file, line, trace);
+        }
+    }
+    static virtualizeJSStack(jsStack, phpFile, phpLine, phpTrace) {
+        const lines = jsStack.split("\n");
+        const header = lines[0] || "PHP Error";
+        const formattedFrames = [];
+        if (phpTrace.length > 0) {
+            phpTrace.forEach((frame, idx) => {
+                const fileLoc = `${frame.file || "[INTERNAL]"}:${frame.line || 0}`;
+                const funcStr = frame.class
+                    ? `${frame.class}${frame.type || "->"}${frame.function || "main"}`
+                    : frame.function || "{main}";
+                formattedFrames.push(`    #${idx} ${fileLoc}: ${funcStr}()`);
+            });
+        }
+        else {
+            formattedFrames.push(`    #0 ${phpFile}:${phpLine}: [INTERNAL]`);
+        }
+        return `${header}\nStack trace:\n${formattedFrames.join("\n")}`;
+    }
+    getPHPStackTraceString() {
+        return PHPError.virtualizeJSStack(this.stack || "", this.phpFile, this.phpLine, this.phpTrace);
+    }
+}
+exports.PHPError = PHPError;
+class PHPException extends PHPError {
+}
+exports.PHPException = PHPException;
+class PHPTypeError extends PHPError {
+}
+exports.PHPTypeError = PHPTypeError;
+class PHPParseError extends PHPError {
+}
+exports.PHPParseError = PHPParseError;
+class PHPFatalError extends PHPError {
+}
+exports.PHPFatalError = PHPFatalError;
+class PHPNotice extends PHPError {
+}
+exports.PHPNotice = PHPNotice;
+class PHPWarning extends PHPError {
+}
+exports.PHPWarning = PHPWarning;
+//# sourceMappingURL=PHPError.js.map
