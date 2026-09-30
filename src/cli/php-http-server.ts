@@ -2,6 +2,7 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs/promises";
 import { PHPEngine } from "../PHPEngine";
+import { PHPExit } from "../runtime/errors/PHPError";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -104,46 +105,51 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
 
       try {
         await ctx.require(fullPath);
-
-        const statusCode = ctx.response.statusCode;
-        res.statusCode = statusCode;
-
-        for (const h of ctx.response.headers) {
-          if (h.name.toLowerCase() === "set-cookie") {
-            const existing = res.getHeader("Set-Cookie");
-            if (existing) {
-              const arr = Array.isArray(existing) ? existing : [String(existing)];
-              res.setHeader("Set-Cookie", [...arr, h.value]);
-            } else {
-              res.setHeader("Set-Cookie", [h.value]);
-            }
-          } else {
-            res.setHeader(h.name, h.value);
-          }
-        }
-
-        if (!res.getHeader("Content-Type")) {
-          res.setHeader("Content-Type", "text/html; charset=utf-8");
-        }
-
-        res.end(phpOutput);
       } catch (err: any) {
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "text/html; charset=utf-8");
-        }
-        const stackTrace = typeof err.getPHPStackTraceString === "function"
-          ? err.getPHPStackTraceString()
-          : (err.stack || String(err));
+        if (err instanceof PHPExit || err?.name === "PHPExit") {
+          // Normal exit/redirect
+        } else {
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+          }
+          const stackTrace = typeof err.getPHPStackTraceString === "function"
+            ? err.getPHPStackTraceString()
+            : (err.stack || String(err));
 
-        const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
-                          `<h1>PHP Fatal Error</h1>` +
-                          `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
-                          `<h3>PHP Stack Trace</h3>` +
-                          `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
-                          `</body></html>`;
-        res.end(htmlError);
+          const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
+                            `<h1>PHP Fatal Error</h1>` +
+                            `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
+                            `<h3>PHP Stack Trace</h3>` +
+                            `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
+                            `</body></html>`;
+          res.end(htmlError);
+          return;
+        }
       }
+
+      const statusCode = ctx.response.statusCode;
+      res.statusCode = statusCode;
+
+      for (const h of ctx.response.headers) {
+        if (h.name.toLowerCase() === "set-cookie") {
+          const existing = res.getHeader("Set-Cookie");
+          if (existing) {
+            const arr = Array.isArray(existing) ? existing : [String(existing)];
+            res.setHeader("Set-Cookie", [...arr, h.value]);
+          } else {
+            res.setHeader("Set-Cookie", [h.value]);
+          }
+        } else {
+          res.setHeader(h.name, h.value);
+        }
+      }
+
+      if (!res.getHeader("Content-Type")) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+      }
+
+      res.end(phpOutput);
     } else {
       // Serve static file
       try {

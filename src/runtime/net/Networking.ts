@@ -1,61 +1,44 @@
 import * as dns from "dns/promises";
 import * as os from "os";
-import type { PHPContext } from "../../PHPContext";
-import { PHPWarning } from "../errors/PHPError";
+import { PHPContext } from "../../PHPContext";
 
 export class NetworkingRuntime {
-  public static checkServerOutputHandler(ctx: PHPContext, funcName: string): void {
-    const hasHandler = ctx.getInternalVar("hasServerResponseHandler") || ctx.internalVars.has("serverOutputHandler");
-    if (!hasHandler) {
-      throw new PHPWarning(`Cannot modify header information - ${funcName}() is not supported in CLI mode unless a server response handler is provided`);
-    }
-  }
-
   public static gethostname(): string {
     return os.hostname();
   }
 
   public static async gethostbyname(hostname: string): Promise<string> {
     try {
-      const res = await dns.lookup(hostname);
+      const res = await dns.lookup(hostname, { family: 4 });
       return res.address;
     } catch {
       return hostname;
     }
   }
 
-  public static async gethostbyaddr(ip: string): Promise<string> {
+  public static async gethostbyaddr(ip: string): Promise<string | false> {
     try {
-      const res = await dns.reverse(ip);
-      return res[0] || ip;
-    } catch {
-      return ip;
-    }
-  }
-
-  public static async gethostbynamel(hostname: string): Promise<string[] | false> {
-    try {
-      const res = await dns.resolve4(hostname);
-      return res;
+      const names = await dns.reverse(ip);
+      return names[0] || false;
     } catch {
       return false;
     }
   }
 
   public static ip2long(ip: string): number | false {
-    const parts = ip.split(".");
+    const parts = (ip || "").split(".");
     if (parts.length !== 4) return false;
     let num = 0;
     for (let i = 0; i < 4; i++) {
-      const p = parseInt(parts[i], 10);
-      if (isNaN(p) || p < 0 || p > 255) return false;
-      num = (num << 8) + p;
+      const n = parseInt(parts[i], 10);
+      if (isNaN(n) || n < 0 || n > 255) return false;
+      num = (num << 8) + n;
     }
     return num >>> 0;
   }
 
   public static long2ip(num: number): string | false {
-    if (num < 0 || num > 4294967295) return false;
+    if (typeof num !== "number" || num < 0 || num > 4294967295) return false;
     return [
       (num >>> 24) & 255,
       (num >>> 16) & 255,
@@ -64,33 +47,35 @@ export class NetworkingRuntime {
     ].join(".");
   }
 
-  public static parse_url(urlStr: string, component: number = -1): any {
+  public static parse_url(urlStr: string, component = -1): any {
     try {
-      const u = new URL(urlStr);
-      const parsed: Record<string, any> = {
-        scheme: u.protocol.replace(":", ""),
-        host: u.hostname,
-        port: u.port ? parseInt(u.port, 10) : undefined,
-        user: u.username || undefined,
-        pass: u.password || undefined,
-        path: u.pathname,
-        query: u.search ? u.search.substring(1) : undefined,
-        fragment: u.hash ? u.hash.substring(1) : undefined,
+      const parsed = new URL(urlStr, "http://localhost");
+      const obj: Record<string, any> = {
+        scheme: parsed.protocol.replace(":", ""),
+        host: parsed.hostname,
+        port: parsed.port ? parseInt(parsed.port, 10) : undefined,
+        user: parsed.username || undefined,
+        pass: parsed.password || undefined,
+        path: parsed.pathname,
+        query: parsed.search ? parsed.search.substring(1) : undefined,
+        fragment: parsed.hash ? parsed.hash.substring(1) : undefined,
       };
 
-      if (component !== -1) {
-        switch (component) {
-          case 0: return parsed.scheme;
-          case 1: return parsed.host;
-          case 2: return parsed.port;
-          case 3: return parsed.user;
-          case 4: return parsed.pass;
-          case 5: return parsed.path;
-          case 6: return parsed.query;
-          case 7: return parsed.fragment;
-        }
+      if (component === 0) return obj.scheme;
+      if (component === 1) return obj.host;
+      if (component === 2) return obj.port;
+      if (component === 3) return obj.user;
+      if (component === 4) return obj.pass;
+      if (component === 5) return obj.path;
+      if (component === 6) return obj.query;
+      if (component === 7) return obj.fragment;
+
+      // Filter undefined
+      const cleanObj: Record<string, any> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined) cleanObj[k] = v;
       }
-      return parsed;
+      return cleanObj;
     } catch {
       return false;
     }
@@ -99,34 +84,49 @@ export class NetworkingRuntime {
   public static http_build_query(data: any, numericPrefix = "", argSeparator = "&"): string {
     if (!data || typeof data !== "object") return "";
     const params = new URLSearchParams();
-    for (const [key, val] of Object.entries(data)) {
-      const k = typeof key === "number" ? `${numericPrefix}${key}` : key;
-      params.append(k, String(val ?? ""));
+
+    function build(obj: any, prefix = "") {
+      for (const [key, val] of Object.entries(obj)) {
+        const fullKey = prefix
+          ? `${prefix}[${key}]`
+          : /^\d+$/.test(key) && numericPrefix
+          ? `${numericPrefix}${key}`
+          : key;
+
+        if (val !== null && typeof val === "object") {
+          build(val, fullKey);
+        } else if (val !== undefined) {
+          params.append(fullKey, String(val ?? ""));
+        }
+      }
     }
-    return params.toString().replace(/&/g, argSeparator);
+
+    build(data);
+    return params.toString().replace(/\+/g, "%20").replace(/&/g, argSeparator);
   }
 
-  public static header(ctx: PHPContext, headerStr: string, replace = true, httpResponseCode?: number): void {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "header");
-
-    if (httpResponseCode) {
-      ctx.response.statusCode = httpResponseCode;
-    }
-
-    if (headerStr.startsWith("HTTP/")) {
-      const parts = headerStr.split(" ");
-      if (parts.length >= 2) {
-        const code = parseInt(parts[1], 10);
-        if (!isNaN(code)) ctx.response.statusCode = code;
-      }
+  public static header(ctx: PHPContext, headerStr: string, replace = true, code?: number): void {
+    if (!headerStr) return;
+    if (ctx.response.headersSent) {
+      ctx.triggerError(`Cannot modify header information - headers already sent`, 2);
       return;
     }
-
-    const colonIdx = headerStr.indexOf(":");
-    if (colonIdx !== -1) {
-      const name = headerStr.substring(0, colonIdx).trim();
-      const val = headerStr.substring(colonIdx + 1).trim();
-      ctx.response.setHeader(name, val, replace);
+    const idx = headerStr.indexOf(":");
+    if (idx !== -1) {
+      const name = headerStr.substring(0, idx).trim();
+      const value = headerStr.substring(idx + 1).trim();
+      ctx.response.setHeader(name, value, replace);
+    } else if (headerStr.toUpperCase().startsWith("HTTP/")) {
+      const parts = headerStr.split(" ");
+      if (parts.length >= 2) {
+        const statusCode = parseInt(parts[1], 10);
+        if (!isNaN(statusCode)) {
+          ctx.response.statusCode = statusCode;
+        }
+      }
+    }
+    if (code) {
+      ctx.response.statusCode = code;
     }
   }
 
@@ -140,7 +140,10 @@ export class NetworkingRuntime {
     secure = false,
     httponly = false
   ): boolean {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "setcookie");
+    if (ctx.response.headersSent) {
+      ctx.triggerError(`Cannot set cookie - headers already sent`, 2);
+      return false;
+    }
     ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, false);
     return true;
   }
@@ -155,31 +158,30 @@ export class NetworkingRuntime {
     secure = false,
     httponly = false
   ): boolean {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "setrawcookie");
+    if (ctx.response.headersSent) {
+      ctx.triggerError(`Cannot set raw cookie - headers already sent`, 2);
+      return false;
+    }
     ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, true);
     return true;
   }
 
   public static header_remove(ctx: PHPContext, name?: string): void {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "header_remove");
     ctx.response.removeHeader(name);
   }
 
   public static headers_list(ctx: PHPContext): string[] {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "headers_list");
     return ctx.response.getHeadersList();
   }
 
   public static headers_sent(ctx: PHPContext): boolean {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "headers_sent");
     return ctx.response.headersSent;
   }
 
-  public static http_response_code(ctx: PHPContext, responseCode?: number): number {
-    NetworkingRuntime.checkServerOutputHandler(ctx, "http_response_code");
-    if (responseCode !== undefined) {
-      ctx.response.statusCode = responseCode;
-      return responseCode;
+  public static http_response_code(ctx: PHPContext, code?: number): number | boolean {
+    if (code !== undefined) {
+      ctx.response.statusCode = code;
+      return true;
     }
     return ctx.response.statusCode;
   }

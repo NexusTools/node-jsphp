@@ -38,6 +38,7 @@ const http = __importStar(require("http"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
 const PHPEngine_1 = require("../PHPEngine");
+const PHPError_1 = require("../runtime/errors/PHPError");
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
@@ -126,44 +127,50 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd()) {
             ctx.setInternalVar("hasServerResponseHandler", true);
             try {
                 await ctx.require(fullPath);
-                const statusCode = ctx.response.statusCode;
-                res.statusCode = statusCode;
-                for (const h of ctx.response.headers) {
-                    if (h.name.toLowerCase() === "set-cookie") {
-                        const existing = res.getHeader("Set-Cookie");
-                        if (existing) {
-                            const arr = Array.isArray(existing) ? existing : [String(existing)];
-                            res.setHeader("Set-Cookie", [...arr, h.value]);
-                        }
-                        else {
-                            res.setHeader("Set-Cookie", [h.value]);
-                        }
-                    }
-                    else {
-                        res.setHeader(h.name, h.value);
-                    }
-                }
-                if (!res.getHeader("Content-Type")) {
-                    res.setHeader("Content-Type", "text/html; charset=utf-8");
-                }
-                res.end(phpOutput);
             }
             catch (err) {
-                if (!res.headersSent) {
-                    res.statusCode = 500;
-                    res.setHeader("Content-Type", "text/html; charset=utf-8");
+                if (err instanceof PHPError_1.PHPExit || err?.name === "PHPExit") {
+                    // Normal exit/redirect
                 }
-                const stackTrace = typeof err.getPHPStackTraceString === "function"
-                    ? err.getPHPStackTraceString()
-                    : (err.stack || String(err));
-                const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
-                    `<h1>PHP Fatal Error</h1>` +
-                    `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
-                    `<h3>PHP Stack Trace</h3>` +
-                    `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
-                    `</body></html>`;
-                res.end(htmlError);
+                else {
+                    if (!res.headersSent) {
+                        res.statusCode = 500;
+                        res.setHeader("Content-Type", "text/html; charset=utf-8");
+                    }
+                    const stackTrace = typeof err.getPHPStackTraceString === "function"
+                        ? err.getPHPStackTraceString()
+                        : (err.stack || String(err));
+                    const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
+                        `<h1>PHP Fatal Error</h1>` +
+                        `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
+                        `<h3>PHP Stack Trace</h3>` +
+                        `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
+                        `</body></html>`;
+                    res.end(htmlError);
+                    return;
+                }
             }
+            const statusCode = ctx.response.statusCode;
+            res.statusCode = statusCode;
+            for (const h of ctx.response.headers) {
+                if (h.name.toLowerCase() === "set-cookie") {
+                    const existing = res.getHeader("Set-Cookie");
+                    if (existing) {
+                        const arr = Array.isArray(existing) ? existing : [String(existing)];
+                        res.setHeader("Set-Cookie", [...arr, h.value]);
+                    }
+                    else {
+                        res.setHeader("Set-Cookie", [h.value]);
+                    }
+                }
+                else {
+                    res.setHeader(h.name, h.value);
+                }
+            }
+            if (!res.getHeader("Content-Type")) {
+                res.setHeader("Content-Type", "text/html; charset=utf-8");
+            }
+            res.end(phpOutput);
         }
         else {
             // Serve static file

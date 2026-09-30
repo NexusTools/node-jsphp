@@ -74,7 +74,7 @@ class JSTranspiler {
             }
             // 2. Acquire atomic cluster process lock
             const startTime = Date.now();
-            const lockTimeoutMs = 10000;
+            const lockTimeoutMs = 3000;
             while (!acquiredLock && Date.now() - startTime < lockTimeoutMs) {
                 try {
                     fs.mkdirSync(targetDir, { recursive: true });
@@ -85,7 +85,6 @@ class JSTranspiler {
                 }
                 catch (err) {
                     if (err.code === "EEXIST") {
-                        // Check if another cluster worker finished transpiling
                         if (fs.existsSync(cacheJSPath) && fs.existsSync(cacheMapPath)) {
                             try {
                                 const cachedCode = fs.readFileSync(cacheJSPath, "utf8");
@@ -94,19 +93,28 @@ class JSTranspiler {
                                 SourceMapRegistry_1.SourceMapRegistry.register(filepath, lineMap);
                                 return { code: cachedCode, map: cachedMap, cached: true, lineMap };
                             }
-                            catch (e) {
-                                // Keep waiting
-                            }
+                            catch (e) { }
                         }
-                        // Remove stale lock if timeout exceeded
+                        // Remove stale lock if process is dead or timeout exceeded
                         try {
-                            const stat = fs.statSync(lockPath);
-                            if (Date.now() - stat.mtimeMs > lockTimeoutMs) {
-                                fs.unlinkSync(lockPath);
+                            if (fs.existsSync(lockPath)) {
+                                const pidStr = fs.readFileSync(lockPath, "utf8");
+                                const pid = parseInt(pidStr, 10);
+                                if (pid) {
+                                    try {
+                                        process.kill(pid, 0);
+                                    }
+                                    catch {
+                                        fs.unlinkSync(lockPath);
+                                    }
+                                }
                             }
                         }
                         catch (e) {
-                            // Ignore
+                            try {
+                                fs.unlinkSync(lockPath);
+                            }
+                            catch (e) { }
                         }
                         this.sleepSync(20);
                     }
