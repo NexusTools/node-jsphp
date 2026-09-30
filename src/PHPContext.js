@@ -41,6 +41,7 @@ const Superglobals_1 = require("./runtime/superglobals/Superglobals");
 const OutputBuffer_1 = require("./runtime/output/OutputBuffer");
 const PHPError_1 = require("./runtime/errors/PHPError");
 const PHPObject_1 = require("./runtime/objects/PHPObject");
+const SourceMapRegistry_1 = require("./runtime/errors/SourceMapRegistry");
 class PHPResponse {
     statusCode = 200;
     headers = [];
@@ -123,6 +124,62 @@ class PHPContext {
         if (options.errorReporting !== undefined) {
             this.errorReportingLevel = options.errorReporting;
         }
+    }
+    isInstanceOf(obj, className) {
+        if (!obj || typeof obj !== "object")
+            return false;
+        if (obj instanceof PHPObject_1.PHPObject) {
+            return obj.phpClass.name.toLowerCase() === String(className).toLowerCase();
+        }
+        const cls = this.engine.classes.get(String(className).toLowerCase());
+        if (cls && typeof cls === "function") {
+            return obj instanceof cls;
+        }
+        return false;
+    }
+    getPHPBacktrace() {
+        const err = new Error();
+        const rawLines = (err.stack || "").split("\n");
+        const frames = [];
+        for (let i = 1; i < rawLines.length; i++) {
+            const line = rawLines[i].trim();
+            if (!line)
+                continue;
+            const matchAnon = line.match(/<anonymous>:(\d+):(\d+)/) || line.match(/<eval>:(\d+):(\d+)/);
+            if (matchAnon) {
+                const jsLine = parseInt(matchAnon[1], 10);
+                const fnMatch = line.match(/(?:__fn_|method_|class_)([a-zA-Z0-9_]+)/);
+                let funcHint = fnMatch ? fnMatch[1] : null;
+                if (!funcHint) {
+                    const genericMatch = line.match(/at\s+(?:async\s+)?([a-zA-Z0-9_]+)/);
+                    if (genericMatch && genericMatch[1] !== "PHPContext" && genericMatch[1] !== "PHPEngine" && genericMatch[1] !== "callFunction" && genericMatch[1] !== "getPHPBacktrace") {
+                        funcHint = genericMatch[1];
+                    }
+                }
+                const loc = SourceMapRegistry_1.SourceMapRegistry.lookup(funcHint, jsLine);
+                if (loc) {
+                    let funcName = loc.function || funcHint || "{main}";
+                    if (!funcName || funcName === "exports" || funcName === "module" || funcName === "async" || funcName === "at") {
+                        funcName = "{main}";
+                    }
+                    frames.push({
+                        file: loc.file,
+                        line: loc.line,
+                        function: funcName,
+                    });
+                    continue;
+                }
+            }
+            const matchPhp = line.match(/\((.*?\.php):(\d+):(\d+)\)/) || line.match(/at\s+(.*?\.php):(\d+):(\d+)/);
+            if (matchPhp) {
+                frames.push({
+                    file: matchPhp[1],
+                    line: parseInt(matchPhp[2], 10),
+                    function: "{main}",
+                });
+            }
+        }
+        return frames;
     }
     setErrorHandler(handler, levels = 32767) {
         const prev = this.errorHandlerStack.length > 0 ? this.errorHandlerStack[this.errorHandlerStack.length - 1] : null;

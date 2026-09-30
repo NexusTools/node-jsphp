@@ -15,6 +15,7 @@ export class PHPError extends Error {
   public phpLine: number;
   public phpTrace: PHPStackFrame[];
   public previous: PHPError | null;
+  public rawJSStack: string = "";
 
   constructor(
     message: string = "",
@@ -32,8 +33,9 @@ export class PHPError extends Error {
     this.phpTrace = trace;
     this.previous = previous;
 
+    this.rawJSStack = this.stack || "";
     if (this.stack) {
-      this.stack = PHPError.virtualizeJSStack(this.stack, file, line, trace);
+      this.stack = PHPError.virtualizeJSStack(this.rawJSStack, file, line, trace);
     }
   }
 
@@ -83,17 +85,20 @@ export class PHPError extends Error {
       const line = rawLines[i].trim();
       if (!line) continue;
 
-      const matchAnon = line.match(/<anonymous>:(\d+):(\d+)/);
+      const matchAnon = line.match(/<anonymous>:(\d+):(\d+)/) || line.match(/<eval>:(\d+):(\d+)/);
       if (matchAnon) {
         const jsLine = parseInt(matchAnon[1], 10);
-        const loc = SourceMapRegistry.lookup(null, jsLine);
+        const funcMatch = line.match(/at\s+(?:async\s+)?(?:PHPContext\.)?(?:__fn_|class_|method_)?([a-zA-Z0-9_]+)/);
+        let funcHint = funcMatch ? funcMatch[1] : null;
+
+        if (funcHint === "at" || funcHint === "async" || funcHint === "PHPContext" || funcHint === "callFunction" || funcHint === "callMethod") {
+          funcHint = null;
+        }
+
+        const loc = SourceMapRegistry.lookup(funcHint, jsLine);
         if (loc) {
-          let funcName = loc.function || "";
-          if (!funcName) {
-            const funcMatch = line.match(/(?:__fn_|class_|method_)?([a-zA-Z0-9_]+)/);
-            funcName = funcMatch ? funcMatch[1] : "";
-          }
-          if (!funcName || funcName === "exports" || funcName === "module" || funcName === "async") {
+          let funcName = loc.function || funcHint || "{main}";
+          if (!funcName || funcName === "exports" || funcName === "module" || funcName === "async" || funcName === "at") {
             funcName = "{main}";
           }
           formattedFrames.push(`    #${frameIdx++} ${loc.file}:${loc.line}: ${funcName}()`);
@@ -105,22 +110,20 @@ export class PHPError extends Error {
       if (matchPhp) {
         const file = matchPhp[1];
         const lineNum = matchPhp[2];
-        formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: [INTERNAL]`);
+        formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: {main}()`);
         continue;
       }
-
-      formattedFrames.push(`    #${frameIdx++} [INTERNAL]:0: [INTERNAL]`);
     }
 
     if (formattedFrames.length === 0) {
-      formattedFrames.push(`    #0 ${phpFile}:${phpLine}: [INTERNAL]`);
+      formattedFrames.push(`    #0 ${phpFile}:${phpLine}: {main}()`);
     }
 
     return `${header}\nStack trace:\n${formattedFrames.join("\n")}`;
   }
 
   public getPHPStackTraceString(): string {
-    return PHPError.virtualizeJSStack(this.stack || "", this.phpFile, this.phpLine, this.phpTrace);
+    return PHPError.virtualizeJSStack(this.rawJSStack || this.stack || "", this.phpFile, this.phpLine, this.phpTrace);
   }
 }
 

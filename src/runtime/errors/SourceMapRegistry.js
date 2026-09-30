@@ -37,27 +37,51 @@ exports.SourceMapRegistry = void 0;
 const path = __importStar(require("path"));
 class SourceMapRegistry {
     static fileLineMaps = new Map();
-    static globalLineMaps = [];
+    static funcToFileMaps = new Map();
+    static recentLineMaps = [];
     static register(filepath, lineMap) {
         if (filepath && filepath !== "eval") {
             const resolved = path.resolve(filepath);
             this.fileLineMaps.set(resolved, lineMap);
-        }
-        this.globalLineMaps.push(lineMap);
-    }
-    static lookup(filepath, jsLine) {
-        if (filepath) {
-            const resolved = path.resolve(filepath);
-            const map = this.fileLineMaps.get(resolved);
-            if (map && map.has(jsLine)) {
-                return map.get(jsLine);
+            this.recentLineMaps.push({ file: resolved, map: lineMap });
+            for (const loc of lineMap.values()) {
+                if (loc.function) {
+                    this.funcToFileMaps.set(loc.function.toLowerCase(), resolved);
+                }
             }
         }
-        // Fallback search across recent line maps
-        for (let i = this.globalLineMaps.length - 1; i >= 0; i--) {
-            const map = this.globalLineMaps[i];
-            if (map.has(jsLine)) {
-                return map.get(jsLine);
+        else {
+            this.recentLineMaps.push({ file: "eval", map: lineMap });
+        }
+    }
+    static lookup(funcNameHint, jsLine) {
+        const candidates = [jsLine, jsLine - 2, jsLine - 1, jsLine + 1, jsLine + 2];
+        if (funcNameHint) {
+            const cleanHint = funcNameHint.toLowerCase().replace(/^__fn_/, "").replace(/^method_/, "").replace(/^class_/, "");
+            const file = this.funcToFileMaps.get(cleanHint);
+            if (file) {
+                const map = this.fileLineMaps.get(file);
+                if (map) {
+                    for (const cand of candidates) {
+                        if (map.has(cand))
+                            return map.get(cand);
+                    }
+                    let bestKey = -1;
+                    for (const k of map.keys()) {
+                        if (k <= jsLine && k > bestKey)
+                            bestKey = k;
+                    }
+                    if (bestKey !== -1)
+                        return map.get(bestKey);
+                }
+            }
+        }
+        // Search recent line maps in reverse
+        for (let i = this.recentLineMaps.length - 1; i >= 0; i--) {
+            const entry = this.recentLineMaps[i];
+            for (const cand of candidates) {
+                if (entry.map.has(cand))
+                    return entry.map.get(cand);
             }
         }
         return undefined;

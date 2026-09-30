@@ -6,6 +6,7 @@ import { Superglobals, SuperglobalsOptions } from "./runtime/superglobals/Superg
 import { OutputBufferStack } from "./runtime/output/OutputBuffer";
 import { PHPError, PHPFatalError, PHPWarning, PHPNotice, PHPExit } from "./runtime/errors/PHPError";
 import { PHPObject, PHPClass } from "./runtime/objects/PHPObject";
+import { SourceMapRegistry } from "./runtime/errors/SourceMapRegistry";
 
 export interface PHPContextOptions {
   cwd?: string;
@@ -112,6 +113,68 @@ export class PHPContext {
     if (options.errorReporting !== undefined) {
       this.errorReportingLevel = options.errorReporting;
     }
+  }
+
+  public isInstanceOf(obj: any, className: string): boolean {
+    if (!obj || typeof obj !== "object") return false;
+    if (obj instanceof PHPObject) {
+      return obj.phpClass.name.toLowerCase() === String(className).toLowerCase();
+    }
+    const cls = this.engine.classes.get(String(className).toLowerCase());
+    if (cls && typeof cls === "function") {
+      return obj instanceof cls;
+    }
+    return false;
+  }
+
+  public getPHPBacktrace(): any[] {
+    const err = new Error();
+    const rawLines = (err.stack || "").split("\n");
+    const frames: any[] = [];
+
+    for (let i = 1; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+      if (!line) continue;
+
+      const matchAnon = line.match(/<anonymous>:(\d+):(\d+)/) || line.match(/<eval>:(\d+):(\d+)/);
+      if (matchAnon) {
+        const jsLine = parseInt(matchAnon[1], 10);
+        const fnMatch = line.match(/(?:__fn_|method_|class_)([a-zA-Z0-9_]+)/);
+        let funcHint = fnMatch ? fnMatch[1] : null;
+
+        if (!funcHint) {
+          const genericMatch = line.match(/at\s+(?:async\s+)?([a-zA-Z0-9_]+)/);
+          if (genericMatch && genericMatch[1] !== "PHPContext" && genericMatch[1] !== "PHPEngine" && genericMatch[1] !== "callFunction" && genericMatch[1] !== "getPHPBacktrace") {
+            funcHint = genericMatch[1];
+          }
+        }
+
+        const loc = SourceMapRegistry.lookup(funcHint, jsLine);
+        if (loc) {
+          let funcName = loc.function || funcHint || "{main}";
+          if (!funcName || funcName === "exports" || funcName === "module" || funcName === "async" || funcName === "at") {
+            funcName = "{main}";
+          }
+          frames.push({
+            file: loc.file,
+            line: loc.line,
+            function: funcName,
+          });
+          continue;
+        }
+      }
+
+      const matchPhp = line.match(/\((.*?\.php):(\d+):(\d+)\)/) || line.match(/at\s+(.*?\.php):(\d+):(\d+)/);
+      if (matchPhp) {
+        frames.push({
+          file: matchPhp[1],
+          line: parseInt(matchPhp[2], 10),
+          function: "{main}",
+        });
+      }
+    }
+
+    return frames;
   }
 
   public setErrorHandler(handler: any, levels = 32767): any {

@@ -241,6 +241,16 @@ class PHPEngine {
         this.functions.set("unregister_tick_function", (ctx, callback) => {
             return true;
         });
+        this.functions.set("debug_backtrace", (ctx) => ctx.getPHPBacktrace());
+        this.functions.set("debug_print_backtrace", async (ctx) => {
+            const frames = ctx.getPHPBacktrace();
+            let str = "";
+            frames.forEach((f, idx) => {
+                str += `#${idx} ${f.file || "[INTERNAL]"}(${f.line || 0}): ${f.function || "{main}"}()\n`;
+            });
+            await ctx.echo(str);
+            return str;
+        });
         // Error handling
         this.functions.set("set_error_handler", (ctx, handler, levels = 32767) => {
             return ctx.setErrorHandler(handler, levels);
@@ -460,18 +470,19 @@ class PHPEngine {
         if (this.compiledCache.has(resolvedPath)) {
             return this.compiledCache.get(resolvedPath);
         }
+        let source;
         try {
-            const source = await fs.readFile(resolvedPath, "utf8");
-            const func = await this.compileCode(source, resolvedPath);
-            this.compiledCache.set(resolvedPath, func);
-            if (this.watcher) {
-                this.watcher.add(resolvedPath);
-            }
-            return func;
+            source = await fs.readFile(resolvedPath, "utf8");
         }
         catch {
             throw new PHPError_1.PHPFatalError(`Fatal error: require(${resolvedPath}): Failed opening required '${resolvedPath}'`);
         }
+        const func = await this.compileCode(source, resolvedPath);
+        this.compiledCache.set(resolvedPath, func);
+        if (this.watcher) {
+            this.watcher.add(resolvedPath);
+        }
+        return func;
     }
     async compileCode(code, filepath = "eval") {
         const transpilation = this.transpiler.transpile(code, filepath, {

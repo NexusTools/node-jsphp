@@ -6,7 +6,8 @@ export interface PHPLineLocation {
 }
 export declare class SourceMapRegistry {
     private static fileLineMaps;
-    private static globalLineMaps;
+    private static funcToFileMaps;
+    private static recentLineMaps;
     static register(filepath: string, lineMap: Map<number, PHPLineLocation>): void;
-    static lookup(filepath: string | null, jsLine: number): PHPLineLocation | undefined;
+    static lookup(funcNameHint: string | null, jsLine: number): PHPLineLocation | undefined;
 }

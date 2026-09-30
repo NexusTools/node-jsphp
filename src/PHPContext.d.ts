@@ -39,6 +39,8 @@ export declare class PHPContext {
     private stderr;
     outputText: string;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
+    isInstanceOf(obj: any, className: string): boolean;
+    getPHPBacktrace(): any[];
     setErrorHandler(handler: any, levels?: number): any;
     restoreErrorHandler(): boolean;
     triggerError(message: string, level?: number, file?: string, line?: number): Promise<boolean>;

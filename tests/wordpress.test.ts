@@ -11,6 +11,36 @@ const TEST_DB_NAME = "wp_jsphp_test";
 const TEST_USER = "wp_jsphp_user";
 const TEST_PASS = "wp_jsphp_pass";
 
+function forceRmSync(dir: string) {
+  if (!fs.existsSync(dir)) return;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      try { fs.chmodSync(full, 0o666); } catch (e) {}
+      if (entry.isDirectory()) {
+        forceRmSync(full);
+      } else {
+        try { fs.unlinkSync(full); } catch (e) {}
+      }
+    }
+    try { fs.rmdirSync(dir); } catch (e) {}
+  } catch (e) {}
+}
+
+function copyRecursiveSync(src: string, dest: string) {
+  const exists = fs.existsSync(src);
+  const stats = exists ? fs.statSync(src) : null;
+  const isDirectory = Boolean(stats && stats.isDirectory());
+  if (isDirectory) {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    for (const childItemName of fs.readdirSync(src)) {
+      copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+    }
+  } else if (exists) {
+    fs.copyFileSync(src, dest);
+  }
+}
+
 describe("Complete WordPress End-to-End Installation & Control Panel Test", () => {
   let engine: PHPEngine;
   const wpDir = path.join(__dirname, "../wordpress-test");
@@ -52,27 +82,61 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     const translationsFile = path.join(wpDir, "wp-includes", "pomo", "translations.php");
     if (!fs.existsSync(translationsFile)) {
       console.log("Extracting WordPress archive...");
-      if (fs.existsSync(wpDir)) {
-        try { fs.rmSync(wpDir, { recursive: true, force: true }); } catch (e) {}
-      }
+      forceRmSync(wpDir);
       fs.mkdirSync(wpDir, { recursive: true });
-      const zip = new AdmZip(wpZipPath);
-      zip.extractAllTo(wpDir, true);
 
-      const subFolder = path.join(wpDir, "wordpress");
-      if (fs.existsSync(subFolder)) {
-        const entries = fs.readdirSync(subFolder);
-        for (const entry of entries) {
-          try {
-            fs.renameSync(path.join(subFolder, entry), path.join(wpDir, entry));
-          } catch (e) {}
-        }
-        try { fs.rmdirSync(subFolder); } catch (e) {}
-      }
+      const tmpDir = path.join(__dirname, "../wp_temp_extract");
+      forceRmSync(tmpDir);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const zip = new AdmZip(wpZipPath);
+      zip.extractAllTo(tmpDir, true);
+
+      const subFolder = path.join(tmpDir, "wordpress");
+      copyRecursiveSync(subFolder, wpDir);
+      forceRmSync(tmpDir);
       console.log("WordPress extracted successfully to:", wpDir);
     }
 
-    // 4. Create wp-config.php inside extracted wordpress-test folder
+    // 4. Create testing plugin inside wordpress-test/wp-content/plugins/stacktrace-plugin/
+    const pluginDir = path.join(wpDir, "wp-content", "plugins", "stacktrace-plugin");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, "stacktrace-plugin.php"),
+      `<?php
+/**
+ * Plugin Name: Stack Trace Verification Plugin
+ * Description: Dumps a PHP stack trace and outputs layer information.
+ */
+
+function stacktrace_plugin_layer_3() {
+    $trace = debug_backtrace();
+    echo "--- PLUGIN STACK TRACE ---\\n";
+    foreach ($trace as $i => $frame) {
+        $file = isset($frame['file']) ? basename($frame['file']) : '[INTERNAL]';
+        $line = isset($frame['line']) ? $frame['line'] : 0;
+        $func = isset($frame['function']) ? $frame['function'] : '{main}';
+        echo "#{$i} {$file}:{$line} {$func}()\\n";
+    }
+    echo "--- END PLUGIN STACK TRACE ---\\n";
+}
+
+function stacktrace_plugin_layer_2() {
+    stacktrace_plugin_layer_3();
+}
+
+function stacktrace_plugin_layer_1() {
+    stacktrace_plugin_layer_2();
+}
+
+if (function_exists('add_action')) {
+    add_action('init', 'stacktrace_plugin_layer_1');
+}
+stacktrace_plugin_layer_1();
+`
+    );
+
+    // 5. Create wp-config.php inside extracted wordpress-test folder
     const wpConfigContent = `<?php
 define( 'DB_NAME', '${TEST_DB_NAME}' );
 define( 'DB_USER', '${TEST_USER}' );
@@ -112,6 +176,34 @@ require_once ABSPATH . 'wp-settings.php';
       }
       engine.close();
     }
+  });
+
+  test("Verifies multi-layer PHP stack trace from WordPress plugin execution", async () => {
+    let pluginOutput = "";
+    const ctx = engine.createContext({
+      cwd: wpDir,
+      stdout: (data) => { pluginOutput += data; },
+      superglobals: {
+        server: {
+          REQUEST_METHOD: "GET",
+          REQUEST_URI: "/index.php",
+          DOCUMENT_ROOT: wpDir,
+          SCRIPT_FILENAME: path.join(wpDir, "index.php"),
+        },
+      },
+    });
+
+    const pluginFile = path.join(wpDir, "wp-content", "plugins", "stacktrace-plugin", "stacktrace-plugin.php");
+    await ctx.require(pluginFile);
+
+    console.log("=== RECEIVED PLUGIN OUTPUT ===");
+    console.log(pluginOutput);
+
+    expect(pluginOutput).toContain("--- PLUGIN STACK TRACE ---");
+    expect(pluginOutput).toContain("stacktrace-plugin.php");
+    expect(pluginOutput).toContain("stacktrace_plugin_layer_3()");
+    expect(pluginOutput).toContain("stacktrace_plugin_layer_2()");
+    expect(pluginOutput).toContain("stacktrace_plugin_layer_1()");
   });
 
   test("Performs simulated installer GET/POST requests and reaches installed state", async () => {

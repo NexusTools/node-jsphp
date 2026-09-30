@@ -114,10 +114,13 @@ export class JSTranspiler {
       const jsLines: string[] = [];
       const lineMap = new Map<number, PHPLineLocation>();
 
+      const phpObjPath = JSON.stringify(path.resolve(__dirname, "../runtime/objects/PHPObject"));
+
       jsLines.push(`// Transpiled from PHP: ${filepath}`);
       jsLines.push(`module.exports = async function(ctx) {`);
+      jsLines.push(`  const { PHPClass } = require(${phpObjPath});`);
 
-      this.transpileNodeList(optimizedAst.children || optimizedAst, jsLines, lineMap, mapGen, filepath, 1);
+      this.transpileNodeList(optimizedAst.children || optimizedAst, jsLines, lineMap, mapGen, filepath, 1, "{main}");
 
       jsLines.push(`};`);
 
@@ -170,7 +173,8 @@ export class JSTranspiler {
     lineMap: Map<number, PHPLineLocation>,
     mapGen: SourceMapGenerator,
     filepath: string,
-    indent: number
+    indent: number,
+    currentFuncName: string = "{main}"
   ) {
     if (!nodes) return;
     const nodeList = Array.isArray(nodes) ? nodes : [nodes];
@@ -179,17 +183,19 @@ export class JSTranspiler {
     for (const node of nodeList) {
       if (!node) continue;
 
+      const currentJsLine = lines.length + 1;
+
       if (node.loc?.start) {
-        const nextLine = lines.length + 1;
-        lineMap.set(nextLine, {
+        lineMap.set(currentJsLine, {
           file: filepath,
           line: node.loc.start.line,
+          function: currentFuncName,
         });
 
         if (mapGen) {
           mapGen.addMapping({
             generated: {
-              line: nextLine,
+              line: currentJsLine,
               column: pad.length,
             },
             source: filepath,
@@ -201,10 +207,7 @@ export class JSTranspiler {
         }
       }
 
-      const stmt = this.transpileNode(node, filepath, pad, lineMap, mapGen);
-      if (stmt) {
-        lines.push(stmt);
-      }
+      this.transpileNode(node, filepath, pad, lines, lineMap, mapGen, currentFuncName);
     }
   }
 
@@ -212,125 +215,128 @@ export class JSTranspiler {
     node: any,
     filepath: string,
     pad: string,
+    lines: string[],
     lineMap: Map<number, PHPLineLocation>,
-    mapGen?: SourceMapGenerator
-  ): string {
-    if (!node || typeof node !== "object") return "";
+    mapGen?: SourceMapGenerator,
+    currentFuncName: string = "{main}"
+  ): void {
+    if (!node || typeof node !== "object") return;
 
     switch (node.kind) {
       case "echo":
       case "print": {
         const exprs = node.expressions || node.arguments || [node.expression];
         const args = exprs.filter(Boolean).map((a: any) => this.transpileExpr(a, filepath));
-        return `${pad}await ctx.echo(${args.join(" + ")});`;
+        lines.push(`${pad}await ctx.echo(${args.join(" + ")});`);
+        break;
       }
 
       case "inline": {
         const escaped = JSON.stringify(node.value || "");
-        return `${pad}await ctx.echo(${escaped});`;
+        lines.push(`${pad}await ctx.echo(${escaped});`);
+        break;
       }
 
       case "expressionstatement": {
         const expr = this.transpileExpr(node.expression, filepath);
-        return expr ? `${pad}${expr};` : "";
+        if (expr) lines.push(`${pad}${expr};`);
+        break;
       }
 
       case "assign": {
         const target = this.transpileTarget(node.left);
         const value = this.transpileExpr(node.right, filepath);
-        return `${pad}${target} = ${value};`;
+        lines.push(`${pad}${target} = ${value};`);
+        break;
       }
 
       case "global": {
         const vars = (node.items || []).map((v: any) => {
           const name = JSON.stringify(v.name?.name || v.name);
-          return `ctx.vars[${name}] = ctx.getVar(${name});`;
+          return `${pad}ctx.vars[${name}] = ctx.getVar(${name});`;
         });
-        return `${pad}${vars.join("\n" + pad)}`;
+        vars.forEach((v: string) => lines.push(v));
+        break;
       }
 
       case "if": {
         const cond = this.transpileExpr(node.test, filepath);
-        let code = `${pad}if (${cond}) {\n`;
-        const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, lineMap, mapGen!, filepath, 1);
-        code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
+        lines.push(`${pad}if (${cond}) {`);
+        this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
+        lines.push(`${pad}}`);
 
         if (node.alternate) {
-          code += ` else {\n`;
-          const altLines: string[] = [];
-          this.transpileNodeList(node.alternate?.children || node.alternate, altLines, lineMap, mapGen!, filepath, 1);
-          code += altLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
+          lines.push(`${pad}else {`);
+          this.transpileNodeList(node.alternate?.children || node.alternate, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
+          lines.push(`${pad}}`);
         }
-        return code;
+        break;
       }
 
       case "while": {
         const cond = this.transpileExpr(node.test, filepath);
-        let code = `${pad}while (${cond}) {\n`;
-        const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, lineMap, mapGen!, filepath, 1);
-        code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
-        return code;
+        lines.push(`${pad}while (${cond}) {`);
+        this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
+        lines.push(`${pad}}`);
+        break;
       }
 
       case "foreach": {
         const target = this.transpileExpr(node.source, filepath);
         const valueVar = JSON.stringify(node.value?.name?.name || node.value?.name || "val");
         const keyVar = node.key ? JSON.stringify(node.key.name?.name || node.key.name) : null;
-        let code = `${pad}for (const [__k, __v] of Object.entries(${target} || {})) {\n`;
-        if (keyVar) code += `${pad}  ctx.setVar(${keyVar}, __k);\n`;
-        code += `${pad}  ctx.setVar(${valueVar}, __v);\n`;
-        const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, lineMap, mapGen!, filepath, 1);
-        code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
-        return code;
+        lines.push(`${pad}for (const [__k, __v] of Object.entries(${target} || {})) {`);
+        if (keyVar) lines.push(`${pad}  ctx.setVar(${keyVar}, __k);`);
+        lines.push(`${pad}  ctx.setVar(${valueVar}, __v);`);
+        this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
+        lines.push(`${pad}}`);
+        break;
       }
 
       case "try": {
-        let code = `${pad}try {\n`;
-        const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, lineMap, mapGen!, filepath, 1);
-        code += bodyLines.map((l) => pad + "  " + l).join("\n") + `\n${pad}} catch (__err) {\n`;
+        lines.push(`${pad}try {`);
+        this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
+        lines.push(`${pad}} catch (__err) {`);
         if (node.catches && node.catches.length > 0) {
           const catchVar = node.catches[0].variable?.name?.name || node.catches[0].variable?.name || node.catches[0].variable || "e";
-          code += `${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);\n`;
-          const catchBody: string[] = [];
-          this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, catchBody, lineMap, mapGen!, filepath, 1);
-          code += catchBody.map((l) => pad + "  " + l).join("\n") + `\n${pad}}`;
-        } else {
-          code += `${pad}}`;
+          lines.push(`${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);`);
+          this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, currentFuncName);
         }
-        return code;
+        lines.push(`${pad}}`);
+        break;
       }
 
       case "include": {
         const target = this.transpileExpr(node.target || node.expr || node.what, filepath);
         if (node.once) {
-          return node.require
+          lines.push(node.require
             ? `${pad}await ctx.requireOnce(${target});`
-            : `${pad}await ctx.includeOnce(${target});`;
+            : `${pad}await ctx.includeOnce(${target});`);
         } else {
-          return node.require
+          lines.push(node.require
             ? `${pad}await ctx.require(${target});`
-            : `${pad}await ctx.include(${target});`;
+            : `${pad}await ctx.include(${target});`);
         }
+        break;
       }
 
       case "throw": {
         const expr = this.transpileExpr(node.what || node.expression || node.expr, filepath);
-        return `${pad}throw ${expr};`;
+        lines.push(`${pad}throw ${expr};`);
+        break;
       }
 
       case "exit": {
         const expr = node.status ? this.transpileExpr(node.status, filepath) : "0";
         const errPath = JSON.stringify(path.resolve(__dirname, "../runtime/errors/PHPError"));
-        return `${pad}throw new (require(${errPath}).PHPExit)(${expr});`;
+        lines.push(`${pad}throw new (require(${errPath}).PHPExit)(${expr});`);
+        break;
       }
 
       case "return": {
         const expr = node.expr ? this.transpileExpr(node.expr, filepath) : "undefined";
-        return `${pad}return ${expr};`;
+        lines.push(`${pad}return ${expr};`);
+        break;
       }
 
       case "function": {
@@ -345,24 +351,23 @@ export class JSTranspiler {
 
         const requiredCount = params.filter((p: any) => !p.hasDefault).length;
 
-        const bodyLines: string[] = [];
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, lineMap, mapGen!, filepath, 2);
+        lines.push(`${pad}var __fn_${funcName} = async function(ctx, ...args) {`);
+        params.forEach((p: any, idx: number) => {
+          lines.push(`${pad}  ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
+        });
 
-        const paramSetup = params.map((p: any, idx: number) => {
-          return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
-        }).join("\n" + pad + "  ");
+        this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 1, funcName);
 
-        const bodyCode = bodyLines.map((l) => pad + "  " + l).join("\n");
-
-        return `${pad}const __fn_${funcName} = async function(ctx, ...args) {\n${pad}  ${paramSetup}\n${bodyCode}\n${pad}};\n` +
-               `${pad}__fn_${funcName}.phpMeta = { name: ${JSON.stringify(funcName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };\n` +
-               `${pad}ctx.engine.functions.set(${JSON.stringify(funcName)}, __fn_${funcName});`;
+        lines.push(`${pad}};`);
+        lines.push(`${pad}__fn_${funcName}.phpMeta = { name: ${JSON.stringify(funcName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
+        lines.push(`${pad}ctx.engine.functions.set(${JSON.stringify(funcName)}, __fn_${funcName});`);
+        break;
       }
 
       case "class": {
         const className = (node.name?.name || node.name || "AnonymousClass").toString();
-        const phpObjPath = JSON.stringify(path.resolve(__dirname, "../runtime/objects/PHPObject"));
-        const methods: string[] = [];
+
+        lines.push(`${pad}var __cls_${className} = new PHPClass(${JSON.stringify(className)});`);
 
         for (const item of (node.body || node.children || [])) {
           if (item && (item.kind === "method" || item.kind === "function")) {
@@ -379,38 +384,33 @@ export class JSTranspiler {
 
             const requiredCount = params.filter((p: any) => !p.hasDefault).length;
 
-            const bodyLines: string[] = [];
-            this.transpileNodeList(item.body?.children || item.body, bodyLines, lineMap, mapGen!, filepath, 3);
+            lines.push(`${pad}__cls_${className}.methods.set(${JSON.stringify(mName)}, {`);
+            lines.push(`${pad}  name: ${JSON.stringify(mName)},`);
+            lines.push(`${pad}  visibility: ${JSON.stringify(visibility)},`);
+            lines.push(`${pad}  isStatic: ${isStatic},`);
+            lines.push(`${pad}  numberOfParameters: ${params.length},`);
+            lines.push(`${pad}  numberOfRequiredParameters: ${requiredCount},`);
+            lines.push(`${pad}  parameters: ${JSON.stringify(params)},`);
+            lines.push(`${pad}  fn: async function(ctx, ...args) {`);
+            params.forEach((p: any, idx: number) => {
+              lines.push(`${pad}    ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
+            });
 
-            const paramSetup = params.map((p: any, idx: number) => {
-              return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
-            }).join("\n" + pad + "    ");
+            this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen!, filepath, indentLevel(pad) + 2, `${className}::${mName}`);
 
-            const bodyCode = bodyLines.map((l) => pad + "    " + l).join("\n");
-
-            methods.push(
-              `${pad}__cls_${className}.methods.set(${JSON.stringify(mName)}, {\n` +
-              `${pad}  name: ${JSON.stringify(mName)},\n` +
-              `${pad}  visibility: ${JSON.stringify(visibility)},\n` +
-              `${pad}  isStatic: ${isStatic},\n` +
-              `${pad}  numberOfParameters: ${params.length},\n` +
-              `${pad}  numberOfRequiredParameters: ${requiredCount},\n` +
-              `${pad}  parameters: ${JSON.stringify(params)},\n` +
-              `${pad}  fn: async function(ctx, ...args) {\n${pad}    ${paramSetup}\n${bodyCode}\n${pad}  }\n` +
-              `${pad}});`
-            );
+            lines.push(`${pad}  }`);
+            lines.push(`${pad}});`);
           }
         }
 
-        return `${pad}const { PHPClass } = require(${phpObjPath});\n` +
-               `${pad}const __cls_${className} = new PHPClass(${JSON.stringify(className)});\n` +
-               `${methods.join("\n")}\n` +
-               `${pad}ctx.engine.classes.set(${JSON.stringify(className.toLowerCase())}, __cls_${className});`;
+        lines.push(`${pad}ctx.engine.classes.set(${JSON.stringify(className.toLowerCase())}, __cls_${className});`);
+        break;
       }
 
       default: {
         const expr = this.transpileExpr(node, filepath);
-        return expr ? `${pad}${expr};` : "";
+        if (expr) lines.push(`${pad}${expr};`);
+        break;
       }
     }
   }
@@ -430,6 +430,15 @@ export class JSTranspiler {
     switch (node.kind) {
       case "string":
         return JSON.stringify(node.value);
+      case "encapsed": {
+        const parts = (node.value || node.parts || []).map((p: any) => {
+          if (typeof p === "string") return JSON.stringify(p);
+          const exprNode = p.expression || p;
+          if (exprNode.kind === "string" || exprNode.kind === "inline") return JSON.stringify(exprNode.value || "");
+          return `(String(${this.transpileExpr(exprNode, filepath)} ?? ""))`;
+        });
+        return `(${parts.length > 0 ? parts.join(" + ") : '""'})`;
+      }
       case "number":
         return String(node.value);
       case "boolean":
@@ -457,15 +466,15 @@ export class JSTranspiler {
           return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
         });
 
-        const bodyLines: string[] = [];
+        const dummyLines: string[] = [];
         const dummyLineMap = new Map<number, PHPLineLocation>();
-        this.transpileNodeList(node.body?.children || node.body, bodyLines, dummyLineMap, null as any, filepath, 2);
+        this.transpileNodeList(node.body?.children || node.body, dummyLines, dummyLineMap, null as any, filepath, 2, "{closure}");
 
         const paramSetup = params.map((p: any, idx: number) => {
           return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
         }).join("\n  ");
 
-        const bodyCode = bodyLines.map((l) => "  " + l).join("\n");
+        const bodyCode = dummyLines.join("\n");
 
         return `(async function(ctx, ...args) {\n  ${paramSetup}\n${bodyCode}\n})`;
       }
@@ -560,6 +569,10 @@ export class JSTranspiler {
       case "bin":
       case "binary": {
         const left = this.transpileExpr(node.left, filepath);
+        if (node.type === "instanceof") {
+          const rightName = this.getConstName(node.right?.name || node.right);
+          return `ctx.isInstanceOf(${left}, ${JSON.stringify(rightName)})`;
+        }
         const right = this.transpileExpr(node.right, filepath);
         const op = node.type === "." ? "+" : node.type;
         return `(${left} ${op} ${right})`;
@@ -631,4 +644,8 @@ export class JSTranspiler {
     }
     return "tmp";
   }
+}
+
+function indentLevel(pad: string): number {
+  return pad.length / 2;
 }

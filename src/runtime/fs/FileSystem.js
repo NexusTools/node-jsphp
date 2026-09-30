@@ -133,7 +133,8 @@ class FileSystemRuntime {
         }
     }
     static basename(filepath, suffix) {
-        let base = path.basename(filepath);
+        const normalized = String(filepath ?? "").replace(/\\/g, "/");
+        let base = path.basename(normalized);
         if (suffix && base.endsWith(suffix)) {
             base = base.substring(0, base.length - suffix.length);
         }

@@ -12,6 +12,7 @@ export declare class PHPError extends Error {
     phpLine: number;
     phpTrace: PHPStackFrame[];
     previous: PHPError | null;
+    rawJSStack: string;
     constructor(message?: string, code?: number, file?: string, line?: number, trace?: PHPStackFrame[], previous?: PHPError | null);
     getMessage(): string;
     getCode(): number;
