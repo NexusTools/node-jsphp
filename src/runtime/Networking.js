@@ -38,27 +38,22 @@ const dns = __importStar(require("dns/promises"));
 const os = __importStar(require("os"));
 const PHPError_1 = require("./PHPError");
 class NetworkingRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("gethostname", () => NetworkingRuntime.gethostname());
-        register("gethostbyname", async (ctx, name) => NetworkingRuntime.gethostbyname(name));
-        register("gethostbyaddr", async (ctx, address) => NetworkingRuntime.gethostbyaddr(address));
-        register("ip2long", (ctx, address) => NetworkingRuntime.ip2long(address));
-        register("long2ip", (ctx, value) => NetworkingRuntime.long2ip(value));
-        register("parse_url", (ctx, url, component = -1) => NetworkingRuntime.parse_url(url, component));
-        register("http_build_query", (ctx, data, prefix = "", separator = "&") => NetworkingRuntime.http_build_query(data, prefix, separator));
-        register("header", (ctx, value, replace = true, code) => NetworkingRuntime.header(ctx, value, replace, code));
-        register("setcookie", (ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httpOnly = false) => NetworkingRuntime.setcookie(ctx, name, value, expires, path, domain, secure, httpOnly));
-        register("setrawcookie", (ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httpOnly = false) => NetworkingRuntime.setrawcookie(ctx, name, value, expires, path, domain, secure, httpOnly));
-        register("header_remove", (ctx, name) => NetworkingRuntime.header_remove(ctx, name));
-        register("headers_list", (ctx) => NetworkingRuntime.headers_list(ctx));
-        register("headers_sent", (ctx) => NetworkingRuntime.headers_sent(ctx));
-        register("http_response_code", (ctx, code) => NetworkingRuntime.http_response_code(ctx, code));
+    static urlencode(ctx, value, raw = false) {
+        let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+        if (!raw)
+            encoded = encoded.replace(/~/g, "%7E").replace(/%20/g, "+");
+        return encoded;
     }
-    static gethostname() {
+    static urldecode(ctx, value, raw = false) {
+        let encoded = String(value ?? "").replace(/&/g, "%26");
+        if (raw)
+            encoded = encoded.replace(/\+/g, "%2B");
+        return new URLSearchParams(`value=${encoded}`).get("value") || "";
+    }
+    static gethostname(ctx) {
         return os.hostname();
     }
-    static async gethostbyname(hostname) {
+    static async gethostbyname(ctx, hostname) {
         try {
             const res = await dns.lookup(hostname, { family: 4 });
             return res.address;
@@ -67,7 +62,7 @@ class NetworkingRuntime {
             return hostname;
         }
     }
-    static async gethostbyaddr(ip) {
+    static async gethostbyaddr(ctx, ip) {
         try {
             const names = await dns.reverse(ip);
             return names[0] || false;
@@ -76,7 +71,7 @@ class NetworkingRuntime {
             return false;
         }
     }
-    static ip2long(ip) {
+    static ip2long(ctx, ip) {
         const parts = (ip || "").split(".");
         if (parts.length !== 4)
             return false;
@@ -89,7 +84,7 @@ class NetworkingRuntime {
         }
         return num >>> 0;
     }
-    static long2ip(num) {
+    static long2ip(ctx, num) {
         if (typeof num !== "number" || num < 0 || num > 4294967295)
             return false;
         return [
@@ -99,7 +94,7 @@ class NetworkingRuntime {
             num & 255,
         ].join(".");
     }
-    static parse_url(urlStr, component = -1) {
+    static parse_url(ctx, urlStr, component = -1) {
         try {
             const parsed = new URL(urlStr, "http://localhost");
             const obj = {
@@ -140,7 +135,7 @@ class NetworkingRuntime {
             return false;
         }
     }
-    static http_build_query(data, numericPrefix = "", argSeparator = "&") {
+    static http_build_query(ctx, data, numericPrefix = "", argSeparator = "&") {
         if (!data || typeof data !== "object")
             return "";
         const params = new URLSearchParams();
@@ -237,6 +232,29 @@ class NetworkingRuntime {
             return true;
         }
         return ctx.response.statusCode;
+    }
+    static functions = {
+        "gethostname": NetworkingRuntime.gethostname,
+        "gethostbyname": NetworkingRuntime.gethostbyname,
+        "gethostbyaddr": NetworkingRuntime.gethostbyaddr,
+        "ip2long": NetworkingRuntime.ip2long,
+        "long2ip": NetworkingRuntime.long2ip,
+        "parse_url": NetworkingRuntime.parse_url,
+        "urlencode": (ctx, value) => NetworkingRuntime.urlencode(ctx, value),
+        "rawurlencode": (ctx, value) => NetworkingRuntime.urlencode(ctx, value, true),
+        "urldecode": (ctx, value) => NetworkingRuntime.urldecode(ctx, value),
+        "rawurldecode": (ctx, value) => NetworkingRuntime.urldecode(ctx, value, true),
+        "http_build_query": NetworkingRuntime.http_build_query,
+        "header": NetworkingRuntime.header,
+        "setcookie": NetworkingRuntime.setcookie,
+        "setrawcookie": NetworkingRuntime.setrawcookie,
+        "header_remove": NetworkingRuntime.header_remove,
+        "headers_list": NetworkingRuntime.headers_list,
+        "headers_sent": NetworkingRuntime.headers_sent,
+        "http_response_code": NetworkingRuntime.http_response_code,
+    };
+    static register(engine) {
+        engine.registerFunctions(NetworkingRuntime.functions);
     }
 }
 exports.NetworkingRuntime = NetworkingRuntime;

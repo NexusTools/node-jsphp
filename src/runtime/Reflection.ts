@@ -2,22 +2,12 @@ import { PHPClass, PHPObject, PHPMethodMetadata, PHPPropertyMetadata, PHPParamet
 import type { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
 
-export class ReflectionRuntime {
-  public static register(engine: PHPEngine): void {
-    engine.registerClass("reflectionclass", ReflectionClass);
-    engine.registerClass("reflectionmethod", ReflectionMethod);
-    engine.registerClass("reflectionproperty", ReflectionProperty);
-    engine.registerClass("reflectionfunction", ReflectionFunction);
-    engine.registerClass("reflectionparameter", ReflectionParameter);
-    engine.registerClass("reflectiontype", ReflectionType);
-  }
-}
-
 export interface FunctionMetaOptions {
   name: string;
   visibility?: "public" | "protected" | "private";
   parameters?: {
     name: string;
+    byref?: boolean;
     isOptional?: boolean;
     hasDefault?: boolean;
     defaultValue?: any;
@@ -35,6 +25,7 @@ export function defineFunction<T extends Function>(fn: T, meta: FunctionMetaOpti
       hasDefault: hasDefault,
       defaultValue: p.defaultValue,
       type: p.type || "mixed",
+      byref: Boolean(p.byref),
     };
   });
 
@@ -286,7 +277,7 @@ export class ReflectionFunction {
     if (typeof fnOrCtx === "function") {
       targetFn = fnOrCtx;
     } else if (fnOrCtx?.engine) {
-      targetFn = fnOrCtx.engine.functions.get(name.toLowerCase());
+      targetFn = fnOrCtx.engine.functions[name.toLowerCase()];
     }
 
     this.meta = (targetFn as any)?.phpMeta || parseJSFunctionMetadata(targetFn, name);
@@ -389,5 +380,20 @@ export class ReflectionClass {
   public async newInstanceWithoutConstructor(ctx: PHPContext): Promise<PHPObject> {
     const cls = this.phpClass || new PHPClass(this.name);
     return new PHPObject(cls);
+  }
+}
+
+export class ReflectionRuntime {
+  static classes = {
+    "reflectionclass": ReflectionClass,
+    "reflectionmethod": ReflectionMethod,
+    "reflectionproperty": ReflectionProperty,
+    "reflectionfunction": ReflectionFunction,
+    "reflectionparameter": ReflectionParameter,
+    "reflectiontype": ReflectionType,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerClasses(ReflectionRuntime.classes);
   }
 }

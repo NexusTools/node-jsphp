@@ -39,37 +39,10 @@ const php_serialize_1 = require("php-serialize");
 const PHPObject_1 = require("./PHPObject");
 const PHPError_1 = require("./PHPError");
 class VariablesRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("var_dump", (ctx, ...args) => VariablesRuntime.var_dump(ctx, ...args));
-        register("print_r", (ctx, value, returnValue = false) => VariablesRuntime.print_r(ctx, value, returnValue));
-        register("is_array", (ctx, value) => VariablesRuntime.is_array(value));
-        register("is_bool", (ctx, value) => VariablesRuntime.is_bool(value));
-        register("is_float", (ctx, value) => VariablesRuntime.is_float(value));
-        register("is_int", (ctx, value) => VariablesRuntime.is_int(value));
-        register("is_null", (ctx, value) => VariablesRuntime.is_null(value));
-        register("is_numeric", (ctx, value) => VariablesRuntime.is_numeric(value));
-        register("is_object", (ctx, value) => VariablesRuntime.is_object(value));
-        register("is_scalar", (ctx, value) => VariablesRuntime.is_scalar(value));
-        register("is_string", (ctx, value) => VariablesRuntime.is_string(value));
-        register("is_iterable", (ctx, value) => Array.isArray(value) || (value && typeof value === "object"));
-        register("is_countable", (ctx, value) => Array.isArray(value) || typeof value === "string");
-        register("is_resource", (ctx, value) => value && typeof value === "object" && Boolean(value.isResource));
-        register("gettype", (ctx, value) => VariablesRuntime.gettype(value));
-        register("get_class", (ctx, value) => value?.phpClass?.name || value?.constructor?.name || false);
-        register("get_object_vars", (ctx, value) => VariablesRuntime.get_object_vars(value));
-        register("serialize", (ctx, value) => VariablesRuntime.serialize(value));
-        register("uniqid", (ctx, prefix = "", moreEntropy = false) => {
-            const timestamp = Date.now().toString(16);
-            const entropy = crypto.randomBytes(moreEntropy ? 8 : 4).toString("hex");
-            return `${prefix}${timestamp}${entropy}`;
-        });
-        register("intval", (ctx, value, base = 10) => VariablesRuntime.intval(value, base));
-        register("floatval", (ctx, value) => VariablesRuntime.floatval(value));
-        register("strval", (ctx, value) => VariablesRuntime.strval(value));
-        register("boolval", (ctx, value) => VariablesRuntime.boolval(value));
-    }
-    static serialize(value) {
+    /**
+     * Serializes a value into a PHP-compatible serialized string representation.
+     */
+    static serialize(ctx, value) {
         const scope = Object.create(null);
         const active = new WeakSet();
         const prepare = (input) => {
@@ -108,6 +81,9 @@ class VariablesRuntime {
         };
         return (0, php_serialize_1.serialize)(prepare(value), scope);
     }
+    /**
+     * Dumps information about one or more variables.
+     */
     static var_dump(ctx, ...args) {
         for (const val of args) {
             if (val === null) {
@@ -144,6 +120,9 @@ class VariablesRuntime {
             }
         }
     }
+    /**
+     * Prints human-readable information about a variable.
+     */
     static print_r(ctx, val, returnVal = false) {
         let str = "";
         if (val === null)
@@ -161,20 +140,28 @@ class VariablesRuntime {
         ctx.echo(str);
         return true;
     }
-    static is_array(val) { return Array.isArray(val); }
-    static is_bool(val) { return typeof val === "boolean"; }
-    static is_float(val) { return typeof val === "number" && !Number.isInteger(val); }
-    static is_int(val) { return typeof val === "number" && Number.isInteger(val); }
-    static is_null(val) { return val === null || val === undefined; }
-    static is_numeric(val) {
+    /** Finds whether a variable is an array. */
+    static is_array(ctx, val) { return Array.isArray(val); }
+    /** Finds whether a variable is a boolean. */
+    static is_bool(ctx, val) { return typeof val === "boolean"; }
+    /** Finds whether a variable is a float. */
+    static is_float(ctx, val) { return typeof val === "number" && !Number.isInteger(val); }
+    /** Finds whether a variable is an integer. */
+    static is_int(ctx, val) { return typeof val === "number" && Number.isInteger(val); }
+    /** Finds whether a variable is NULL. */
+    static is_null(ctx, val) { return val === null || val === undefined; }
+    /** Finds whether a variable is a number or a numeric string. */
+    static is_numeric(ctx, val) {
         if (typeof val === "number")
             return !Number.isNaN(val);
         if (typeof val !== "string")
             return false;
         return !Number.isNaN(Number(val)) && !Number.isNaN(parseFloat(val));
     }
-    static is_object(val) { return typeof val === "function" || val instanceof PHPObject_1.PHPObject || (typeof val === "object" && val !== null && !Array.isArray(val)); }
-    static get_object_vars(value) {
+    /** Finds whether a variable is an object. */
+    static is_object(ctx, val) { return typeof val === "function" || val instanceof PHPObject_1.PHPObject || (typeof val === "object" && val !== null && !Array.isArray(val)); }
+    /** Gets the properties of the given object. */
+    static get_object_vars(ctx, value) {
         if (value instanceof PHPObject_1.PHPObject) {
             return Object.fromEntries([...value.properties].filter(([name]) => {
                 const metadata = value.phpClass.properties.get(name);
@@ -194,12 +181,21 @@ class VariablesRuntime {
         }
         return { ...value };
     }
-    static is_scalar(val) {
+    /** Finds whether a variable is a scalar. */
+    static is_scalar(ctx, val) {
         const t = typeof val;
         return t === "string" || t === "number" || t === "boolean";
     }
-    static is_string(val) { return typeof val === "string"; }
-    static gettype(val) {
+    /** Finds whether a variable is a string. */
+    static is_string(ctx, val) { return typeof val === "string"; }
+    /** Verify that the contents of a variable is an iterable value. */
+    static is_iterable(ctx, val) { return Array.isArray(val) || (val && typeof val === "object"); }
+    /** Verify that the contents of a variable is a countable value. */
+    static is_countable(ctx, val) { return Array.isArray(val) || typeof val === "string"; }
+    /** Finds whether a variable is a resource. */
+    static is_resource(ctx, val) { return val && typeof val === "object" && Boolean(val.isResource); }
+    /** Get the type of a variable. */
+    static gettype(ctx, val) {
         if (val === null || val === undefined)
             return "NULL";
         if (typeof val === "boolean")
@@ -214,16 +210,58 @@ class VariablesRuntime {
             return "object";
         return "object";
     }
-    static intval(val, base = 10) {
+    /** Returns the name of the class of an object. */
+    static get_class(ctx, val) {
+        return val?.phpClass?.name || val?.constructor?.name || false;
+    }
+    /** Gets a prefixed unique identifier based on the current time in microseconds. */
+    static uniqid(ctx, prefix = "", moreEntropy = false) {
+        const timestamp = Date.now().toString(16);
+        const entropy = crypto.randomBytes(moreEntropy ? 8 : 4).toString("hex");
+        return `${prefix}${timestamp}${entropy}`;
+    }
+    /** Get the integer value of a variable. */
+    static intval(ctx, val, base = 10) {
         const p = parseInt(String(val), base);
         return Number.isNaN(p) ? 0 : p;
     }
-    static floatval(val) {
+    /** Get float value of a variable. */
+    static floatval(ctx, val) {
         const f = parseFloat(String(val));
         return Number.isNaN(f) ? 0 : f;
     }
-    static strval(val) { return String(val ?? ""); }
-    static boolval(val) { return Boolean(val); }
+    /** Get string value of a variable. */
+    static strval(ctx, val) { return String(val ?? ""); }
+    /** Get the boolean value of a variable. */
+    static boolval(ctx, val) { return Boolean(val); }
+    static functions = {
+        "var_dump": VariablesRuntime.var_dump,
+        "print_r": VariablesRuntime.print_r,
+        "is_array": VariablesRuntime.is_array,
+        "is_bool": VariablesRuntime.is_bool,
+        "is_float": VariablesRuntime.is_float,
+        "is_int": VariablesRuntime.is_int,
+        "is_null": VariablesRuntime.is_null,
+        "is_numeric": VariablesRuntime.is_numeric,
+        "is_object": VariablesRuntime.is_object,
+        "is_scalar": VariablesRuntime.is_scalar,
+        "is_string": VariablesRuntime.is_string,
+        "is_iterable": VariablesRuntime.is_iterable,
+        "is_countable": VariablesRuntime.is_countable,
+        "is_resource": VariablesRuntime.is_resource,
+        "gettype": VariablesRuntime.gettype,
+        "get_class": VariablesRuntime.get_class,
+        "get_object_vars": VariablesRuntime.get_object_vars,
+        "serialize": VariablesRuntime.serialize,
+        "uniqid": VariablesRuntime.uniqid,
+        "intval": VariablesRuntime.intval,
+        "floatval": VariablesRuntime.floatval,
+        "strval": VariablesRuntime.strval,
+        "boolval": VariablesRuntime.boolval,
+    };
+    static register(engine) {
+        engine.registerFunctions(VariablesRuntime.functions);
+    }
 }
 exports.VariablesRuntime = VariablesRuntime;
 //# sourceMappingURL=Variables.js.map

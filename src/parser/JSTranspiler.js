@@ -34,212 +34,131 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.JSTranspiler = void 0;
-const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
 const crypto = __importStar(require("crypto"));
 const source_map_1 = require("source-map");
-const PHPParser_1 = require("./PHPParser");
-const ASTOptimizer_1 = require("./ASTOptimizer");
 const SourceMapRegistry_1 = require("../runtime/SourceMapRegistry");
-const PHPError_1 = require("../runtime/PHPError");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const engineParser = require("php-parser");
 class JSTranspiler {
     parser;
     currentClassName = "";
     currentNamespaceName = "";
     classImports = new Map();
     constructor() {
-        this.parser = new PHPParser_1.PHPParser();
+        this.parser = new engineParser({
+            parser: {
+                extractDoc: true,
+                phpVersion: "8.1",
+                suppressErrors: true,
+            },
+            ast: {
+                withPositions: true,
+            },
+        });
     }
-    transpile(sourceCode, filepath, options) {
+    transpile(code, filepath = "eval", options = {}) {
+        const codeHash = crypto.createHash("sha1").update(code).digest("hex");
+        const engineHash = options.engineSHA1 || "default";
+        const cacheFileName = `${codeHash}_${engineHash}.js`;
+        if (options.cacheDir) {
+            const cachedFilePath = path.join(options.cacheDir, cacheFileName);
+            if (fs.existsSync(cachedFilePath)) {
+                try {
+                    const cachedCode = fs.readFileSync(cachedFilePath, "utf8");
+                    return { code: cachedCode };
+                }
+                catch {
+                    // Ignore cache read error
+                }
+            }
+        }
+        const codeToParse = code.includes("<?") ? code : "<?php\n" + code;
+        const ast = this.parser.parseCode(codeToParse, filepath);
+        let finalAst = ast;
+        if (options.engine) {
+            const { ASTOptimizer } = require("./ASTOptimizer");
+            finalAst = ASTOptimizer.optimize(ast, options.engine);
+        }
+        const mapGen = new source_map_1.SourceMapGenerator({ file: filepath });
+        const lines = [];
+        const lineMap = new Map();
+        lines.push("module.exports = async function(ctx) {");
+        lines.push("  try {");
         this.currentClassName = "";
         this.currentNamespaceName = "";
-        this.classImports = new Map();
-        const resolvedPath = path.isAbsolute(filepath) ? path.resolve(filepath) : filepath;
-        const pathSHA1 = crypto.createHash("sha1").update(resolvedPath).digest("hex");
-        const cacheBase = (filepath === "eval" || options.cacheDir === null)
-            ? undefined
-            : (options.cacheDir || process.env.JSPHP_CACHE);
-        let cacheJSPath = "";
-        let cacheMapPath = "";
-        let lockPath = "";
-        let acquiredLock = false;
-        if (cacheBase) {
-            const targetDir = path.join(cacheBase, options.engineSHA1);
-            cacheJSPath = path.join(targetDir, `${pathSHA1}.js`);
-            cacheMapPath = path.join(targetDir, `${pathSHA1}.js.map`);
-            lockPath = path.join(targetDir, `${pathSHA1}.lock`);
-            if (fs.existsSync(cacheJSPath) && fs.existsSync(cacheMapPath)) {
-                try {
-                    const cachedCode = fs.readFileSync(cacheJSPath, "utf8");
-                    const cachedMap = fs.readFileSync(cacheMapPath, "utf8");
-                    const lineMap = new Map();
-                    SourceMapRegistry_1.SourceMapRegistry.register(filepath, lineMap);
-                    return { code: cachedCode, map: cachedMap, cached: true, lineMap };
-                }
-                catch (e) {
-                }
+        this.classImports.clear();
+        const bodyNodes = finalAst?.children || finalAst?.body || (Array.isArray(finalAst) ? finalAst : [finalAst]);
+        this.transpileNodeList(bodyNodes, lines, lineMap, mapGen, filepath, 4, "{main}");
+        lines.push("  } catch (err) {");
+        lines.push("    throw err;");
+        lines.push("  }");
+        lines.push("};");
+        const fullCode = lines.join("\n");
+        SourceMapRegistry_1.SourceMapRegistry.register(filepath, lineMap);
+        if (options.cacheDir) {
+            const lockPath = path.join(options.cacheDir, `${cacheFileName}.lock`);
+            try {
+                fs.mkdirSync(options.cacheDir, { recursive: true });
+                const fd = fs.openSync(lockPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY);
+                fs.closeSync(fd);
+                fs.writeFileSync(path.join(options.cacheDir, cacheFileName), fullCode, "utf8");
+                fs.unlinkSync(lockPath);
             }
-            const startTime = Date.now();
-            const lockTimeoutMs = 10000;
-            while (!acquiredLock && Date.now() - startTime < lockTimeoutMs) {
-                try {
-                    fs.mkdirSync(targetDir, { recursive: true });
-                    const fd = fs.openSync(lockPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY);
-                    fs.writeSync(fd, String(process.pid));
-                    fs.closeSync(fd);
-                    acquiredLock = true;
-                }
-                catch (err) {
-                    if (err.code === "EEXIST") {
-                        if (fs.existsSync(cacheJSPath) && fs.existsSync(cacheMapPath)) {
-                            try {
-                                const cachedCode = fs.readFileSync(cacheJSPath, "utf8");
-                                const cachedMap = fs.readFileSync(cacheMapPath, "utf8");
-                                const lineMap = new Map();
-                                SourceMapRegistry_1.SourceMapRegistry.register(filepath, lineMap);
-                                return { code: cachedCode, map: cachedMap, cached: true, lineMap };
-                            }
-                            catch (e) {
-                            }
-                        }
-                        try {
-                            if (fs.existsSync(lockPath)) {
-                                const pidStr = fs.readFileSync(lockPath, "utf8");
-                                const pid = parseInt(pidStr, 10);
-                                if (pid) {
-                                    try {
-                                        process.kill(pid, 0);
-                                    }
-                                    catch {
-                                        fs.unlinkSync(lockPath);
-                                    }
-                                }
-                            }
-                        }
-                        catch (e) {
-                            try {
-                                fs.unlinkSync(lockPath);
-                            }
-                            catch (e) { }
-                        }
-                        this.sleepSync(20);
-                    }
-                    else {
-                        break;
-                    }
-                }
+            catch {
+                // Ignore cache write error or lock contention
             }
         }
-        try {
-            const rawAst = this.parser.parse(sourceCode, filepath);
-            const optimizedAst = ASTOptimizer_1.ASTOptimizer.optimize(rawAst, options.engine);
-            const mapGen = new source_map_1.SourceMapGenerator({ file: `${path.basename(filepath)}.js` });
-            mapGen.setSourceContent(filepath, sourceCode);
-            const jsLines = [];
-            const lineMap = new Map();
-            const phpObjPath = JSON.stringify(path.resolve(__dirname, "../runtime/PHPObject"));
-            jsLines.push(`// Transpiled from PHP: ${filepath}`);
-            jsLines.push(`module.exports = async function(ctx) {`);
-            jsLines.push(`  const { PHPClass } = require(${phpObjPath});`);
-            this.transpileNodeList(optimizedAst.children || optimizedAst, jsLines, lineMap, mapGen, filepath, 1, "{main}");
-            jsLines.push(`};`);
-            let generatedCode = jsLines.join("\n");
-            const mapString = mapGen.toString();
-            const base64Map = Buffer.from(mapString, "utf8").toString("base64");
-            generatedCode += `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${base64Map}\n`;
-            if (cacheJSPath) {
-                try {
-                    const tmpJSPath = `${cacheJSPath}.${process.pid}.tmp`;
-                    const tmpMapPath = `${cacheMapPath}.${process.pid}.tmp`;
-                    fs.writeFileSync(tmpJSPath, generatedCode, "utf8");
-                    fs.writeFileSync(tmpMapPath, mapString, "utf8");
-                    fs.renameSync(tmpJSPath, cacheJSPath);
-                    fs.renameSync(tmpMapPath, cacheMapPath);
-                }
-                catch (e) {
-                }
-            }
-            SourceMapRegistry_1.SourceMapRegistry.register(filepath, lineMap);
-            return { code: generatedCode, map: mapString, cached: false, lineMap };
-        }
-        finally {
-            if (acquiredLock && lockPath && fs.existsSync(lockPath)) {
-                try {
-                    fs.unlinkSync(lockPath);
-                }
-                catch (e) {
-                }
-            }
-        }
+        return {
+            code: fullCode,
+            map: mapGen.toString(),
+        };
     }
-    sleepSync(ms) {
-        try {
-            const buf = new Int32Array(new SharedArrayBuffer(4));
-            Atomics.wait(buf, 0, 0, ms);
-        }
-        catch {
-            const end = Date.now() + ms;
-            while (Date.now() < end) { }
-        }
-    }
-    transpileNodeList(nodes, lines, lineMap, mapGen, filepath, indent, currentFuncName = "{main}") {
+    transpileNodeList(nodes, lines, lineMap, mapGen, filepath, indent, currentFunc) {
         if (!nodes)
             return;
-        const rawList = Array.isArray(nodes) ? nodes : [nodes];
-        const pad = "  ".repeat(indent);
-        let nodeList = rawList;
-        if (currentFuncName === "{main}") {
-            const imports = rawList.filter((node) => node?.kind === "usegroup");
-            const decls = rawList.filter((n) => n && (n.kind === "function" || n.kind === "class" || n.kind === "interface" || n.kind === "trait"));
-            const stmts = rawList.filter((n) => !n || (n.kind !== "usegroup" && n.kind !== "function" && n.kind !== "class" && n.kind !== "interface" && n.kind !== "trait"));
-            nodeList = [...imports, ...decls, ...stmts];
-        }
+        const nodeList = Array.isArray(nodes) ? nodes : [nodes];
         for (const node of nodeList) {
             if (!node)
                 continue;
-            const currentJsLine = lines.length + 1;
-            if (node.loc?.start) {
-                lineMap.set(currentJsLine, {
-                    file: filepath,
-                    line: node.loc.start.line,
-                    function: currentFuncName,
-                });
-                if (mapGen) {
-                    mapGen.addMapping({
-                        generated: {
-                            line: currentJsLine,
-                            column: pad.length,
-                        },
-                        source: filepath,
-                        original: {
-                            line: node.loc.start.line,
-                            column: node.loc.start.column || 0,
-                        },
-                    });
+            const startLine = lines.length + 1;
+            this.transpileStmt(node, lines, lineMap, mapGen, filepath, indent);
+            const endLine = lines.length;
+            const phpLine = node.loc?.start?.line;
+            if (phpLine) {
+                for (let l = startLine; l <= endLine; l++) {
+                    lineMap.set(l, { file: filepath, line: phpLine, function: currentFunc });
+                    if (mapGen) {
+                        mapGen.addMapping({
+                            generated: { line: l, column: 0 },
+                            original: { line: phpLine, column: 0 },
+                            source: filepath,
+                            name: currentFunc,
+                        });
+                    }
                 }
             }
-            this.transpileNode(node, filepath, pad, lines, lineMap, mapGen, currentFuncName);
         }
     }
-    transpileNode(node, filepath, pad, lines, lineMap, mapGen, currentFuncName = "{main}") {
+    transpileStmt(node, lines, lineMap, mapGen, filepath, indent) {
+        const pad = " ".repeat(indent);
         if (!node || typeof node !== "object")
             return;
         switch (node.kind) {
+            case "inline": {
+                lines.push(`${pad}await ctx.echo(${JSON.stringify(node.value || node.raw)});`);
+                break;
+            }
             case "namespace": {
-                const previousNamespaceName = this.currentNamespaceName;
-                const previousImports = this.classImports;
                 this.currentNamespaceName = this.getConstName(node.name || node.namespace || "");
-                this.classImports = new Map();
-                this.transpileNodeList(node.children || node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad), currentFuncName);
-                this.currentNamespaceName = previousNamespaceName;
-                this.classImports = previousImports;
+                const children = node.children || node.body || [];
+                this.transpileNodeList(children, lines, lineMap, mapGen, filepath, indent, "{main}");
                 break;
             }
             case "usegroup": {
                 for (const item of node.items || []) {
-                    if (item.type || node.type)
-                        continue;
-                    const importedName = [node.name, item.name].filter(Boolean).join("\\").replace(/^\\/, "");
+                    const importedName = this.getConstName(item.name || item);
                     const alias = this.getConstName(item.alias) || importedName.split("\\").pop();
                     this.classImports.set(alias.toLowerCase(), importedName);
                 }
@@ -247,84 +166,26 @@ class JSTranspiler {
             }
             case "echo":
             case "print": {
-                const exprs = node.expressions || node.arguments || [node.expression];
-                const args = exprs.filter(Boolean).map((a) => this.transpileExpr(a, filepath));
-                lines.push(`${pad}await ctx.echo(${args.join(" + ")});`);
-                break;
-            }
-            case "inline": {
-                const escaped = JSON.stringify(node.value || "");
-                lines.push(`${pad}await ctx.echo(${escaped});`);
-                break;
-            }
-            case "expressionstatement": {
-                const expr = this.transpileExpr(node.expression, filepath);
-                if (expr)
-                    lines.push(`${pad}${expr};`);
-                break;
-            }
-            case "assign": {
-                const value = this.transpileExpr(node.right, filepath);
-                if (node.left?.kind === "offsetlookup" && node.left.what?.kind === "offsetlookup" && node.left.what.what?.kind === "propertylookup") {
-                    const obj = this.transpileExpr(node.left.what.what.what, filepath);
-                    const prop = JSON.stringify(node.left.what.what.offset?.name || node.left.what.what.offset?.value || node.left.what.what.offset || "prop");
-                    const keys = [node.left.what.offset, node.left.offset].map((key) => this.transpileExpr(key, filepath));
-                    lines.push(`${pad}await ctx.setPropertyOffsets(${obj}, ${prop}, [${keys.join(", ")}], ${value});`);
-                    break;
-                }
-                if (node.left?.kind === "offsetlookup" && node.left.what?.kind === "variable") {
-                    const name = JSON.stringify(node.left.what.name?.name || node.left.what.name);
-                    const key = node.left.offset ? this.transpileExpr(node.left.offset, filepath) : "null";
-                    lines.push(`${pad}await ctx.setVarOffset(${name}, ${key}, ${value});`);
-                    break;
-                }
-                if (node.left?.kind === "offsetlookup" && node.left.what?.kind === "propertylookup") {
-                    const obj = this.transpileExpr(node.left.what.what, filepath);
-                    const prop = JSON.stringify(node.left.what.offset?.name || node.left.what.offset?.value || node.left.what.offset || "prop");
-                    const key = node.left.offset ? this.transpileExpr(node.left.offset, filepath) : "null";
-                    lines.push(`${pad}await ctx.setPropertyOffset(${obj}, ${prop}, ${key}, ${value});`);
-                    break;
-                }
-                if (node.left?.kind === "propertylookup") {
-                    const obj = this.transpileExpr(node.left.what, filepath);
-                    const prop = JSON.stringify(node.left.offset?.name || node.left.offset?.value || node.left.offset || "prop");
-                    lines.push(`${pad}await ctx.setProperty(${obj}, ${prop}, ${value});`);
-                    break;
-                }
-                const target = this.transpileTarget(node.left, filepath);
-                if (target.startsWith("ctx.setVar(")) {
-                    lines.push(`${pad}${target.replace(")", `, ${value})`)};`);
-                }
-                else {
-                    lines.push(`${pad}${target} = ${value};`);
-                }
-                break;
-            }
-            case "global": {
-                const vars = (node.items || []).map((v) => {
-                    const name = JSON.stringify(v.name?.name || v.name);
-                    return `${pad}ctx.bindGlobal(${name});`;
-                });
-                vars.forEach((v) => lines.push(v));
-                break;
-            }
-            case "static": {
-                for (const variable of node.variables || []) {
-                    const name = variable.variable?.name?.name || variable.variable?.name || variable.name?.name || variable.name;
-                    const valueNode = variable.defaultValue || variable.value;
-                    const value = valueNode ? this.transpileExpr(valueNode, filepath) : "undefined";
-                    lines.push(`${pad}ctx.initStaticVar(${JSON.stringify(currentFuncName)}, ${JSON.stringify(name)}, ${value});`);
-                }
+                const expressions = (node.arguments || node.expressions || [node.value || node.expr]).map((e) => this.transpileExpr(e, filepath));
+                lines.push(`${pad}await ctx.echo(${expressions.join(" + ")});`);
                 break;
             }
             case "if": {
                 const cond = this.transpileExpr(node.test, filepath);
                 lines.push(`${pad}if (ctx.isTruthy(${cond})) {`);
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
-                lines.push(`${pad}}`);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
                 if (node.alternate) {
-                    lines.push(`${pad}else {`);
-                    this.transpileNodeList(node.alternate?.children || node.alternate, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                    if (node.alternate.kind === "if") {
+                        lines.push(`${pad}} else`);
+                        this.transpileStmt(node.alternate, lines, lineMap, mapGen, filepath, indent);
+                    }
+                    else {
+                        lines.push(`${pad}} else {`);
+                        this.transpileNodeList(node.alternate?.children || node.alternate, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
+                        lines.push(`${pad}}`);
+                    }
+                }
+                else {
                     lines.push(`${pad}}`);
                 }
                 break;
@@ -332,112 +193,121 @@ class JSTranspiler {
             case "while": {
                 const cond = this.transpileExpr(node.test, filepath);
                 lines.push(`${pad}while (ctx.isTruthy(${cond})) {`);
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
                 lines.push(`${pad}}`);
                 break;
             }
-            case "switch": {
-                lines.push(`${pad}{`);
-                lines.push(`${pad}  const switchValue = ${this.transpileExpr(node.test, filepath)};`);
-                lines.push(`${pad}  switch (true) {`);
-                for (const branch of node.body?.children || []) {
-                    lines.push(branch.test
-                        ? `${pad}    case (switchValue == ${this.transpileExpr(branch.test, filepath)}):`
-                        : `${pad}    default:`);
-                    this.transpileNodeList(branch.body?.children || branch.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 3, currentFuncName);
-                }
-                lines.push(`${pad}  }`);
-                lines.push(`${pad}}`);
+            case "do": {
+                const cond = this.transpileExpr(node.test, filepath);
+                lines.push(`${pad}do {`);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
+                lines.push(`${pad}} while (ctx.isTruthy(${cond}));`);
                 break;
             }
             case "for": {
-                const init = (node.init || []).map((n) => {
-                    if (n.kind === "assign") {
-                        const left = this.transpileTarget(n.left, filepath);
-                        const right = this.transpileExpr(n.right, filepath);
-                        if (left.startsWith("ctx.setVar(")) {
-                            return left.replace(")", `, ${right})`);
-                        }
-                        return `${left} = ${right}`;
-                    }
-                    return this.transpileExpr(n, filepath);
-                }).join(", ");
-                const test = (node.test || []).map((n) => this.transpileExpr(n, filepath)).join(", ");
-                const inc = (node.increment || []).map((n) => {
-                    if (n.kind === "post" || n.kind === "pre") {
-                        const target = this.transpileTarget(n.what, filepath);
-                        const op = (n.type === "-" || n.type === 2 || n.type === "--") ? "- 1" : "+ 1";
-                        if (n.what?.kind === "variable") {
-                            const varName = JSON.stringify(n.what.name?.name || n.what.name);
-                            return `ctx.setVar(${varName}, (ctx.getVar(${varName}) || 0) ${op})`;
-                        }
-                        return `${target}${n.kind === "post" ? (op === "- 1" ? "--" : "++") : (op === "- 1" ? "--" : "++")}`;
-                    }
-                    if (n.kind === "assign") {
-                        const left = this.transpileTarget(n.left, filepath);
-                        const right = this.transpileExpr(n.right, filepath);
-                        if (left.startsWith("ctx.setVar(")) {
-                            return left.replace(")", `, ${right})`);
-                        }
-                        return `${left} = ${right}`;
-                    }
-                    return this.transpileExpr(n, filepath);
-                }).join(", ");
-                lines.push(`${pad}for (${init}; ctx.isTruthy(${test}); ${inc}) {`);
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                const init = (node.init || []).map((e) => this.transpileExpr(e, filepath)).join(", ");
+                const test = (node.test || []).map((e) => this.transpileExpr(e, filepath)).join(" && ") || "true";
+                const increment = (node.increment || []).map((e) => this.transpileExpr(e, filepath)).join(", ");
+                if (init)
+                    lines.push(`${pad}${init};`);
+                lines.push(`${pad}while (ctx.isTruthy(${test})) {`);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
+                if (increment)
+                    lines.push(`${pad}  ${increment};`);
                 lines.push(`${pad}}`);
                 break;
             }
             case "foreach": {
-                const target = this.transpileExpr(node.source, filepath);
-                const valueVar = JSON.stringify(node.value?.name?.name || node.value?.name || "val");
-                const keyVar = node.key ? JSON.stringify(node.key.name?.name || node.key.name) : null;
-                lines.push(`${pad}for (const [__k, __v] of Object.entries(${target} || {})) {`);
+                const source = this.transpileExpr(node.source, filepath);
+                const keyVar = node.key ? (node.key.name?.name || node.key.name || node.key.value) : null;
+                const valueVar = node.value ? (node.value.name?.name || node.value.name || node.value.value) : "value";
+                lines.push(`${pad}await (async () => {`);
+                lines.push(`${pad}  const __src = ${source};`);
+                lines.push(`${pad}  const __entries = Array.isArray(__src) ? __src.map((v, i) => [i, v]) : Object.entries(__src || {});`);
+                lines.push(`${pad}  for (const [__k, __v] of __entries) {`);
                 if (keyVar)
-                    lines.push(`${pad}  ctx.setVar(${keyVar}, __k);`);
-                lines.push(`${pad}  ctx.setVar(${valueVar}, __v);`);
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                    lines.push(`${pad}    ctx.setVar(${JSON.stringify(keyVar)}, __k);`);
+                lines.push(`${pad}    ctx.setVar(${JSON.stringify(valueVar)}, __v);`);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 4, "{main}");
+                lines.push(`${pad}  }`);
+                lines.push(`${pad}})();`);
+                break;
+            }
+            case "switch": {
+                const test = this.transpileExpr(node.test, filepath);
+                lines.push(`${pad}switch (${test}) {`);
+                for (const caseNode of node.body?.children || node.body || []) {
+                    if (caseNode.test) {
+                        const caseVal = this.transpileExpr(caseNode.test, filepath);
+                        lines.push(`${pad}  case ${caseVal}:`);
+                    }
+                    else {
+                        lines.push(`${pad}  default:`);
+                    }
+                    this.transpileNodeList(caseNode.body?.children || caseNode.body, lines, lineMap, mapGen, filepath, indent + 4, "{main}");
+                }
                 lines.push(`${pad}}`);
+                break;
+            }
+            case "return": {
+                const value = node.expr ? this.transpileExpr(node.expr, filepath) : "undefined";
+                lines.push(`${pad}return ${value};`);
+                break;
+            }
+            case "global": {
+                for (const v of node.items || []) {
+                    const varName = (v.name?.name || v.name || v).toString();
+                    lines.push(`${pad}ctx.bindGlobal(${JSON.stringify(varName)});`);
+                }
+                break;
+            }
+            case "static": {
+                for (const v of node.result || node.items || []) {
+                    const varName = (v.variable?.name?.name || v.variable?.name || v.variable || v.name?.name || v.name || v).toString();
+                    const valueNode = v.defaultValue || v.value;
+                    const value = valueNode ? this.transpileExpr(valueNode, filepath) : "undefined";
+                    lines.push(`${pad}ctx.initStaticVar(${JSON.stringify(this.currentClassName)}, ${JSON.stringify(varName)}, ${value});`);
+                }
+                break;
+            }
+            case "unset": {
+                for (const v of node.variables || node.expressions || []) {
+                    if (v.kind === "variable") {
+                        const varName = (v.name?.name || v.name).toString();
+                        lines.push(`${pad}delete ctx.vars[${JSON.stringify(varName)}];`);
+                    }
+                    else if (v.kind === "offsetlookup") {
+                        const obj = this.transpileExpr(v.what, filepath);
+                        const offset = this.transpileExpr(v.offset, filepath);
+                        lines.push(`${pad}delete (${obj})[${offset}];`);
+                    }
+                }
                 break;
             }
             case "try": {
                 lines.push(`${pad}try {`);
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
                 lines.push(`${pad}} catch (__err) {`);
-                if (node.catches && node.catches.length > 0) {
-                    const catchVar = node.catches[0].variable?.name?.name || node.catches[0].variable?.name || node.catches[0].variable || "e";
+                for (const catchNode of node.catches || []) {
+                    const catchVar = catchNode.variable ? (catchNode.variable.name?.name || catchNode.variable.name || catchNode.variable) : "e";
                     lines.push(`${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);`);
-                    this.transpileNodeList(node.catches[0].body?.children || node.catches[0].body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 1, currentFuncName);
+                    this.transpileNodeList(catchNode.body?.children || catchNode.body, lines, lineMap, mapGen, filepath, indent + 4, "{main}");
+                }
+                if (node.always) {
+                    lines.push(`${pad}} finally {`);
+                    this.transpileNodeList(node.always?.children || node.always, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
                 }
                 lines.push(`${pad}}`);
                 break;
             }
-            case "include": {
-                const target = this.transpileExpr(node.target || node.expr || node.what, filepath);
-                if (node.once) {
-                    lines.push(node.require
-                        ? `${pad}await ctx.requireOnce(${target});`
-                        : `${pad}await ctx.includeOnce(${target});`);
-                }
-                else {
-                    lines.push(node.require
-                        ? `${pad}await ctx.require(${target});`
-                        : `${pad}await ctx.include(${target});`);
-                }
-                break;
-            }
             case "throw": {
-                const expr = this.transpileExpr(node.what || node.expression || node.expr, filepath);
+                const expr = node.expr ? this.transpileExpr(node.expr, filepath) : "undefined";
                 lines.push(`${pad}throw ${expr};`);
                 break;
             }
-            case "exit": {
-                lines.push(`${pad}${this.transpileExpr(node, filepath)};`);
-                break;
-            }
-            case "return": {
-                const expr = node.expr ? this.transpileExpr(node.expr, filepath) : "undefined";
-                lines.push(`${pad}return ${expr};`);
+            case "expressionstatement": {
+                const expr = this.transpileExpr(node.expression || node.expr, filepath);
+                lines.push(`${pad}${expr};`);
                 break;
             }
             case "break": {
@@ -448,6 +318,12 @@ class JSTranspiler {
                 lines.push(`${pad}continue;`);
                 break;
             }
+            case "exit":
+            case "die": {
+                const status = node.status ? this.transpileExpr(node.status, filepath) : "0";
+                lines.push(`${pad}await ctx.callFunction("exit", [${status}]);`);
+                break;
+            }
             case "function": {
                 const funcName = (node.name?.name || node.name || "").toString().toLowerCase();
                 const visibility = (node.visibility || "public").toString();
@@ -455,7 +331,7 @@ class JSTranspiler {
                     const pName = (a.name?.name || a.name || "p").toString();
                     const hasDefault = Boolean(a.value);
                     const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
-                    return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
+                    return { name: pName, position: idx, byref: Boolean(a.byref || a.byRef), isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
                 });
                 const requiredCount = params.filter((p) => !p.hasDefault).length;
                 lines.push(`${pad}var __fn_${funcName} = async function(ctx, ...args) {`);
@@ -464,23 +340,24 @@ class JSTranspiler {
                 params.forEach((p, idx) => {
                     lines.push(`${pad}    ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
                 });
-                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 2, funcName);
+                this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, funcName);
                 lines.push(`${pad}  } finally {`);
                 lines.push(`${pad}    ctx.popScope();`);
                 lines.push(`${pad}  }`);
                 lines.push(`${pad}};`);
                 lines.push(`${pad}__fn_${funcName}.phpMeta = { name: ${JSON.stringify(funcName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
-                lines.push(`${pad}ctx.engine.functions.set(${JSON.stringify(funcName)}, __fn_${funcName});`);
+                lines.push(`${pad}ctx.engine.functions[${JSON.stringify(funcName)}] = __fn_${funcName};`);
                 break;
             }
             case "class": {
                 const className = (node.name?.name || node.name || "AnonymousClass").toString();
-                const qualifiedClassName = this.currentNamespaceName ? `${this.currentNamespaceName}\\${className}` : className;
+                const originalClassName = this.currentNamespaceName ? `${this.currentNamespaceName}\\${className}` : className;
+                const qualifiedClassName = originalClassName.toLowerCase();
                 const previousClassName = this.currentClassName;
                 this.currentClassName = qualifiedClassName;
                 const parentClass = node.extends ? `(await ctx.resolveClass(${this.transpileClassReference(node.extends, filepath)}))` : "undefined";
-                lines.push(`${pad}var __cls_${className} = new PHPClass(${JSON.stringify(qualifiedClassName)}, ${parentClass});`);
-                lines.push(`${pad}ctx.engine.classes.set(${JSON.stringify(qualifiedClassName.toLowerCase())}, __cls_${className});`);
+                lines.push(`${pad}var __cls_${className} = new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
+                lines.push(`${pad}ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${className};`);
                 const bodyItems = Array.isArray(node.body)
                     ? node.body
                     : Array.isArray(node.body?.children)
@@ -500,52 +377,40 @@ class JSTranspiler {
                         for (const property of item.properties || []) {
                             const name = property.name?.name || property.name;
                             const value = property.value ? this.transpileExpr(property.value, filepath) : "null";
-                            lines.push(`${pad}__cls_${className}.properties.set(${JSON.stringify(name)}, { name: ${JSON.stringify(name)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isReadOnly: ${Boolean(property.readonly)}, defaultValue: ${value} });`);
-                            if (item.isStatic)
-                                lines.push(`${pad}__cls_${className}.staticProperties.set(${JSON.stringify(name)}, __cls_${className}.properties.get(${JSON.stringify(name)}).defaultValue);`);
+                            lines.push(`${pad}__cls_${className}.properties.set(${JSON.stringify(name)}, { name: ${JSON.stringify(name)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isReadOnly: ${Boolean(item.isReadOnly)}, defaultValue: ${value} });`);
                         }
-                        continue;
                     }
-                    if (item && (item.kind === "method" || item.kind === "function")) {
-                        const mName = (item.name?.name || item.name || "").toString().toLowerCase();
+                    else if (item?.kind === "method") {
+                        const mName = (item.name?.name || item.name || "").toString();
                         const visibility = (item.visibility || "public").toString();
-                        const isStatic = Boolean(item.isStatic);
                         const params = (item.arguments || []).map((a, idx) => {
                             const pName = (a.name?.name || a.name || "p").toString();
                             const hasDefault = Boolean(a.value);
                             const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
-                            return { name: pName, position: idx, isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
+                            return { name: pName, position: idx, byref: Boolean(a.byref), isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
                         });
                         const requiredCount = params.filter((p) => !p.hasDefault).length;
-                        lines.push(`${pad}__cls_${className}.methods.set(${JSON.stringify(mName)}, {`);
-                        lines.push(`${pad}  name: ${JSON.stringify(mName)},`);
-                        lines.push(`${pad}  visibility: ${JSON.stringify(visibility)},`);
-                        lines.push(`${pad}  isStatic: ${isStatic},`);
-                        lines.push(`${pad}  numberOfParameters: ${params.length},`);
-                        lines.push(`${pad}  numberOfRequiredParameters: ${requiredCount},`);
-                        lines.push(`${pad}  parameters: ${JSON.stringify(params)},`);
-                        lines.push(`${pad}  fn: async function(ctx, ...args) {`);
-                        lines.push(`${pad}    ctx.pushScope();`);
-                        lines.push(`${pad}    try {`);
+                        lines.push(`${pad}var __method_${mName} = async function(ctx, ...args) {`);
+                        lines.push(`${pad}  ctx.pushScope();`);
+                        lines.push(`${pad}  try {`);
                         params.forEach((p, idx) => {
-                            lines.push(`${pad}      ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
+                            lines.push(`${pad}    ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
                         });
-                        this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen, filepath, indentLevel(pad) + 3, `${className}::${mName}`);
-                        lines.push(`${pad}    } finally {`);
-                        lines.push(`${pad}      ctx.popScope();`);
-                        lines.push(`${pad}    }`);
+                        this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen, filepath, indent + 4, mName);
+                        lines.push(`${pad}  } finally {`);
+                        lines.push(`${pad}    ctx.popScope();`);
                         lines.push(`${pad}  }`);
-                        lines.push(`${pad}});`);
+                        lines.push(`${pad}};`);
+                        lines.push(`${pad}__cls_${className}.methods.set(${JSON.stringify(mName.toLowerCase())}, { name: ${JSON.stringify(mName)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isAbstract: ${Boolean(item.isAbstract)}, isFinal: ${Boolean(item.isFinal)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)}, fn: __method_${mName} });`);
                     }
                 }
-                lines.push(`${pad}if (!ctx.engine.classes.has(${JSON.stringify(className.toLowerCase())})) ctx.engine.classes.set(${JSON.stringify(className.toLowerCase())}, __cls_${className});`);
+                lines.push(`${pad}if (!(${JSON.stringify(qualifiedClassName)} in ctx.engine.classes)) ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${className};`);
                 this.currentClassName = previousClassName;
                 break;
             }
             default: {
                 const expr = this.transpileExpr(node, filepath);
-                if (expr)
-                    lines.push(`${pad}${expr};`);
+                lines.push(`${pad}${expr};`);
                 break;
             }
         }
@@ -553,34 +418,30 @@ class JSTranspiler {
     orderClassConstants(body, className, filepath) {
         const constants = new Map();
         for (const item of body) {
-            if (item?.kind === "classconstant") {
-                for (const constant of item.constants || [])
-                    constants.set(this.getConstName(constant.name), constant);
-            }
+            if (item?.kind !== "classconstant")
+                continue;
+            for (const constant of item.constants || [])
+                constants.set(this.getConstName(constant.name), constant);
         }
-        const ordered = [];
         const visited = new Set();
         const pending = new Set();
+        const ordered = [];
         const visit = (name) => {
-            if (visited.has(name))
+            if (visited.has(name) || !constants.has(name))
                 return;
-            const constant = constants.get(name);
-            if (!constant)
+            if (pending.has(name))
                 return;
-            if (pending.has(name)) {
-                throw new PHPError_1.PHPFatalError(`Cannot declare self-referencing constant ${className}::${name}`, 0, filepath, constant.loc?.start?.line || 0);
-            }
             pending.add(name);
+            const constant = constants.get(name);
             const visitValue = (value) => {
                 if (!value || typeof value !== "object")
                     return;
-                if (value.kind === "staticlookup" && value.offset?.kind !== "variable" &&
-                    this.transpileClassReference(value.what, filepath) === JSON.stringify(className)) {
+                if (value.kind === "staticlookup" && value.offset && this.transpileClassReference(value.what, filepath) === JSON.stringify(className)) {
                     visit(this.getConstName(value.offset));
                 }
-                for (const [key, child] of Object.entries(value)) {
-                    if (key !== "loc")
-                        visitValue(child);
+                for (const key of Object.keys(value)) {
+                    if (key !== "loc" && typeof value[key] === "object")
+                        visitValue(value[key]);
                 }
             };
             visitValue(constant.value);
@@ -609,21 +470,21 @@ class JSTranspiler {
         if (node?.kind === "variable")
             return this.transpileExpr(node, filepath);
         const name = this.getConstName(node);
-        if (node?.kind === "selfreference" || name === "self")
-            return JSON.stringify(this.currentClassName);
-        if (node?.kind === "staticreference" || name === "static") {
-            return `(this.phpClass?.name || this.name || ${JSON.stringify(this.currentClassName)})`;
+        if (node?.kind === "selfreference" || name.toLowerCase() === "self")
+            return JSON.stringify(this.currentClassName.toLowerCase());
+        if (node?.kind === "staticreference" || name.toLowerCase() === "static") {
+            return `(this.phpClass?.name?.toLowerCase() || this.name?.toLowerCase() || ${JSON.stringify(this.currentClassName.toLowerCase())})`;
         }
-        if (node?.kind === "parentreference" || name === "parent") {
-            return `(await ctx.resolveClass(${JSON.stringify(this.currentClassName)})).parentClass.name`;
+        if (node?.kind === "parentreference" || name.toLowerCase() === "parent") {
+            return `(await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).parentClass.name.toLowerCase()`;
         }
         if (name.startsWith("\\") || node?.resolution === "fqn")
-            return JSON.stringify(name.replace(/^\\/, ""));
+            return JSON.stringify(name.replace(/^\\/, "").toLowerCase());
         const parts = name.split("\\");
         const importedName = this.classImports.get(parts[0].toLowerCase());
         if (importedName)
-            return JSON.stringify([importedName, ...parts.slice(1)].join("\\"));
-        return JSON.stringify(this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name);
+            return JSON.stringify([importedName, ...parts.slice(1)].join("\\").toLowerCase());
+        return JSON.stringify((this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name).toLowerCase());
     }
     transpileExpr(node, filepath = "eval") {
         if (!node || typeof node !== "object")
@@ -631,51 +492,15 @@ class JSTranspiler {
         switch (node.kind) {
             case "string":
                 return JSON.stringify(node.value);
-            case "encapsed": {
-                const parts = (node.value || node.parts || []).map((p) => {
-                    if (typeof p === "string")
-                        return JSON.stringify(p);
-                    const exprNode = p.expression || p;
-                    if (exprNode.kind === "string" || exprNode.kind === "inline")
-                        return JSON.stringify(exprNode.value || "");
-                    return `(String(${this.transpileExpr(exprNode, filepath)} ?? ""))`;
-                });
-                return `(${parts.length > 0 ? parts.join(" + ") : '""'})`;
-            }
             case "number":
                 return String(node.value);
             case "boolean":
                 return String(node.value);
             case "null":
+            case "nil":
                 return "null";
-            case "exit": {
-                const status = node.expression || node.status;
-                return `(await ctx.callFunction("exit", [${status ? this.transpileExpr(status, filepath) : "0"}]))`;
-            }
-            case "silent": {
-                const expression = this.transpileExpr(node.expr, filepath);
-                return `(await (async () => { const previousErrorReporting = ctx.errorReportingLevel; ctx.errorReportingLevel &= 4437; try { return ${expression}; } finally { ctx.errorReportingLevel = previousErrorReporting; } })())`;
-            }
-            case "cast": {
-                const value = this.transpileExpr(node.expr, filepath);
-                if (node.type === "bool")
-                    return `ctx.isTruthy(${value})`;
-                if (node.type === "int")
-                    return `(await ctx.callFunction("intval", [${value}]))`;
-                if (node.type === "float")
-                    return `(await ctx.callFunction("floatval", [${value}]))`;
-                if (node.type === "string" || node.type === "binary")
-                    return `(await ctx.callFunction("strval", [${value}]))`;
-                if (node.type === "array") {
-                    return `(await (async () => { const castValue = ${value}; return castValue == null ? [] : (typeof castValue === "object" ? castValue : [castValue]); })())`;
-                }
-                if (node.type === "object") {
-                    return `(await (async () => { const castValue = ${value}; return castValue == null ? {} : (typeof castValue === "object" ? castValue : { scalar: castValue }); })())`;
-                }
-                return `(${value}, null)`;
-            }
             case "magic": {
-                const m = String(node.value || "").toUpperCase();
+                const m = (node.value || node.name || "").toString();
                 if (m === "__DIR__")
                     return JSON.stringify(path.dirname(filepath));
                 if (m === "__FILE__")
@@ -686,7 +511,14 @@ class JSTranspiler {
             }
             case "name":
             case "constref": {
-                const constName = this.getConstName(node.name || node);
+                const rawName = this.getConstName(node.name || node);
+                if (rawName.toLowerCase() === "true")
+                    return "true";
+                if (rawName.toLowerCase() === "false")
+                    return "false";
+                if (rawName.toLowerCase() === "null")
+                    return "null";
+                const constName = rawName.toLowerCase();
                 return `(ctx.getConstant(${JSON.stringify(constName)}) ?? ${JSON.stringify(constName)})`;
             }
             case "closure":
@@ -699,143 +531,138 @@ class JSTranspiler {
                 });
                 const dummyLines = [];
                 const dummyLineMap = new Map();
-                this.transpileNodeList(node.body?.children || node.body, dummyLines, dummyLineMap, null, filepath, 2, "{closure}");
-                const paramSetup = params.map((p, idx) => {
-                    return `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`;
-                }).join("\n  ");
-                const bodyCode = dummyLines.join("\n");
-                return `(async function(ctx, ...args) {\n  ${paramSetup}\n${bodyCode}\n})`;
+                this.transpileNodeList(node.body?.children || node.body, dummyLines, dummyLineMap, null, filepath, 0, "closure");
+                return `(async (ctx, ...args) => {
+          ctx.pushScope();
+          try {
+            ${params.map((p, idx) => `ctx.setVar(${JSON.stringify(p.name)}, args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`).join("\n")}
+            ${dummyLines.join("\n")}
+          } finally {
+            ctx.popScope();
+          }
+        })`;
             }
-            case "variable":
-                if ((node.name?.name || node.name) === "this")
-                    return "this";
-                return `ctx.getVar(${JSON.stringify(node.name?.name || node.name)})`;
+            case "variable": {
+                const varName = (node.name?.name || node.name || "var").toString();
+                return `ctx.getVar(${JSON.stringify(varName)})`;
+            }
             case "assign": {
-                const val = this.transpileExpr(node.right, filepath);
-                if (node.left?.kind === "staticlookup") {
-                    const className = this.transpileClassReference(node.left.what, filepath);
-                    const property = JSON.stringify(this.getConstName(node.left.offset));
-                    return `(await ctx.setStaticProperty(${className}, ${property}, ${val}))`;
-                }
                 if (node.left?.kind === "offsetlookup") {
-                    let base = node.left;
-                    const keys = [];
-                    while (base.kind === "offsetlookup") {
-                        keys.unshift(base.offset ? this.transpileExpr(base.offset, filepath) : "null");
-                        base = base.what;
+                    const offsets = [];
+                    let current = node.left;
+                    while (current?.kind === "offsetlookup") {
+                        offsets.unshift(current.offset ? this.transpileExpr(current.offset, filepath) : "null");
+                        current = current.what;
                     }
-                    if (base.kind === "variable") {
-                        return `(ctx.setVarOffsets(${JSON.stringify(base.name?.name || base.name)}, [${keys.join(", ")}], ${val}))`;
+                    const val = this.transpileExpr(node.right, filepath);
+                    if (current?.kind === "variable") {
+                        const varName = (current.name?.name || current.name).toString();
+                        return `ctx.setVarOffsets(${JSON.stringify(varName)}, [${offsets.join(", ")}], ${val})`;
                     }
-                    if (base.kind === "propertylookup") {
-                        const obj = this.transpileExpr(base.what, filepath);
-                        const prop = JSON.stringify(base.offset?.name || base.offset?.value || "prop");
-                        return `(await ctx.setPropertyOffsets(${obj}, ${prop}, [${keys.join(", ")}], ${val}))`;
+                    if (current?.kind === "propertylookup") {
+                        const obj = this.transpileExpr(current.what, filepath);
+                        const prop = JSON.stringify(current.offset?.name || current.offset?.value || current.offset || "prop");
+                        return `(await ctx.setPropertyOffsets(${obj}, ${prop}, [${offsets.join(", ")}], ${val}))`;
                     }
-                    if (base.kind === "staticlookup") {
-                        const className = this.transpileClassReference(base.what, filepath);
-                        const prop = JSON.stringify(this.getConstName(base.offset));
-                        return `(await ctx.setStaticPropertyOffsets(${className}, ${prop}, [${keys.join(", ")}], ${val}))`;
+                    if (current?.kind === "staticlookup") {
+                        const className = this.transpileClassReference(current.what, filepath);
+                        const propName = this.getConstName(current.offset);
+                        return `(await ctx.setStaticPropertyOffsets(${className}, ${JSON.stringify(propName)}, [${offsets.join(", ")}], ${val}))`;
                     }
                 }
                 if (node.left?.kind === "propertylookup") {
                     const obj = this.transpileExpr(node.left.what, filepath);
                     const prop = JSON.stringify(node.left.offset?.name || node.left.offset?.value || node.left.offset || "prop");
+                    const val = this.transpileExpr(node.right, filepath);
                     return `(await ctx.setProperty(${obj}, ${prop}, ${val}))`;
                 }
-                const target = this.transpileTarget(node.left, filepath);
-                if (target.startsWith("ctx.setVar(")) {
-                    return target.replace(")", `, ${val})`);
+                if (node.left?.kind === "staticlookup") {
+                    const className = this.transpileClassReference(node.left.what, filepath);
+                    const propName = this.getConstName(node.left.offset);
+                    const val = this.transpileExpr(node.right, filepath);
+                    return `(await ctx.setStaticProperty(${className}, ${JSON.stringify(propName)}, ${val}))`;
                 }
-                return `(${target} = ${val})`;
-            }
-            case "assignref": {
                 const target = node.left?.kind === "variable"
                     ? JSON.stringify(node.left.name?.name || node.left.name)
-                    : JSON.stringify("tmp");
-                return `(ctx.setVar(${target}, ${this.transpileExpr(node.right, filepath)}))`;
+                    : null;
+                const val = this.transpileExpr(node.right, filepath);
+                if (target) {
+                    if (node.operator === "+=")
+                        return `ctx.setVar(${target}, (Number(ctx.getVar(${target})) || 0) + Number(${val}))`;
+                    if (node.operator === "-=")
+                        return `ctx.setVar(${target}, (Number(ctx.getVar(${target})) || 0) - Number(${val}))`;
+                    if (node.operator === ".=")
+                        return `ctx.setVar(${target}, String(ctx.getVar(${target}) ?? "") + String(${val}))`;
+                    return `ctx.setVar(${target}, ${val})`;
+                }
+                return `${this.transpileExpr(node.left, filepath)} = ${val}`;
             }
             case "array": {
                 const items = node.items || [];
-                const isAssoc = items.some((it) => it && it.key);
+                const isAssoc = items.some((item) => item?.key !== null && item?.key !== undefined);
                 if (isAssoc) {
-                    const pairs = items.map((it) => {
-                        const key = it.key ? this.transpileExpr(it.key, filepath) : JSON.stringify(it);
-                        const val = this.transpileExpr(it.value || it, filepath);
-                        return `[${key}]: ${val}`;
+                    const pairs = items.map((item) => {
+                        const k = item.key ? this.transpileExpr(item.key, filepath) : "null";
+                        const v = this.transpileExpr(item.value, filepath);
+                        return `[${k}, ${v}]`;
                     });
-                    return `({ ${pairs.join(", ")} })`;
+                    return `Object.fromEntries([${pairs.join(", ")}])`;
                 }
-                else {
-                    const list = items.map((it) => this.transpileExpr(it.value || it, filepath));
-                    return `([ ${list.join(", ")} ])`;
-                }
+                const vals = items.map((item) => this.transpileExpr(item.value || item, filepath));
+                return `[${vals.join(", ")}]`;
             }
-            case "match": {
-                const cond = this.transpileExpr(node.cond, filepath);
-                const arms = (node.arms || []).map((arm) => {
-                    const body = this.transpileExpr(arm.body, filepath);
-                    if (!arm.conds || arm.conds.length === 0) {
-                        return `return ${body};`;
-                    }
-                    const conds = arm.conds.map((c) => `__m === (${this.transpileExpr(c, filepath)})`).join(" || ");
-                    return `if (${conds}) return ${body};`;
-                });
-                return `(await (async () => { const __m = ${cond};\n  ${arms.join("\n  ")}\n  throw new Error("UnhandledMatchError");\n})())`;
+            case "offsetlookup": {
+                const obj = this.transpileExpr(node.what, filepath);
+                const offset = node.offset ? this.transpileExpr(node.offset, filepath) : "undefined";
+                return `(${obj})?.[${offset}]`;
+            }
+            case "propertylookup": {
+                const obj = this.transpileExpr(node.what, filepath);
+                const prop = JSON.stringify(node.offset?.name || node.offset?.value || node.offset || "prop");
+                return `(await ctx.getProperty(${obj}, ${prop}))`;
             }
             case "nullsafepropertylookup": {
                 const obj = this.transpileExpr(node.what, filepath);
-                const prop = JSON.stringify(node.offset?.name || node.offset?.value || "prop");
+                const prop = JSON.stringify(node.offset?.name || node.offset?.value || node.offset || "prop");
                 return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.getProperty(__o, ${prop}) : null; })())`;
             }
-            case "nullsafemethodcall": {
-                const obj = this.transpileExpr(node.what, filepath);
-                const method = JSON.stringify(node.name?.name || node.name || "method");
-                const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
-                return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.callMethod(__o, ${method}, [${args.join(", ")}]) : null; })())`;
+            case "encapsed": {
+                const parts = (node.value || []).map((part) => {
+                    if (typeof part === "string")
+                        return JSON.stringify(part);
+                    if (part.kind === "string" || part.kind === "number")
+                        return JSON.stringify(String(part.value));
+                    if (part.kind === "variable")
+                        return `String(ctx.getVar(${JSON.stringify(part.name?.name || part.name)}) ?? "")`;
+                    return `String(${this.transpileExpr(part, filepath)} ?? "")`;
+                });
+                return `(${parts.join(" + ")})`;
             }
-            case "offsetlookup": {
-                const target = this.transpileExpr(node.what, filepath);
-                const key = node.offset ? this.transpileExpr(node.offset, filepath) : "0";
-                return `(${target}?.[${key}])`;
-            }
-            case "retif": {
-                const test = this.transpileExpr(node.test, filepath);
-                const trueExpr = node.trueExpr ? this.transpileExpr(node.trueExpr, filepath) : test;
-                const falseExpr = this.transpileExpr(node.falseExpr, filepath);
-                return `(ctx.isTruthy(${test}) ? ${trueExpr} : ${falseExpr})`;
-            }
-            case "coalesce": {
-                const left = this.transpileExpr(node.left, filepath);
-                const right = this.transpileExpr(node.right, filepath);
-                return `(${left} ?? ${right})`;
+            case "pre":
+            case "post": {
+                if (node.what?.kind === "variable") {
+                    const varName = JSON.stringify(node.what.name?.name || node.what.name);
+                    const op = node.type;
+                    if (node.kind === "pre") {
+                        return `ctx.setVar(${varName}, (Number(ctx.getVar(${varName})) || 0) ${op === "++" ? "+ 1" : "- 1"})`;
+                    }
+                    return `((() => { const __old = Number(ctx.getVar(${varName})) || 0; ctx.setVar(${varName}, __old ${op === "++" ? "+ 1" : "- 1"}); return __old; })())`;
+                }
+                const expr = this.transpileExpr(node.what, filepath);
+                return `${expr}${node.type}`;
             }
             case "unary": {
                 const val = this.transpileExpr(node.what, filepath);
                 if (node.type === "!")
                     return `(!ctx.isTruthy(${val}))`;
-                return `(${node.type}${val})`;
-            }
-            case "post": {
-                const target = this.transpileTarget(node.what, filepath);
-                const op = (node.type === "-" || node.type === 2 || node.type === "--") ? "--" : "++";
-                if (node.what?.kind === "variable") {
-                    const varName = JSON.stringify(node.what.name?.name || node.what.name);
-                    return `((function(){let __t = (ctx.getVar(${varName}) || 0); ctx.setVar(${varName}, __t ${op === "++" ? "+ 1" : "- 1"}); return __t;})())`;
-                }
-                return `(${target}${op === "++" ? "++" : "--"})`;
-            }
-            case "pre": {
-                const target = this.transpileTarget(node.what, filepath);
-                const op = (node.type === "-" || node.type === 2 || node.type === "--") ? "--" : "++";
-                if (node.what?.kind === "variable") {
-                    const varName = JSON.stringify(node.what.name?.name || node.what.name);
-                    return `ctx.setVar(${varName}, (ctx.getVar(${varName}) || 0) ${op === "++" ? "+ 1" : "- 1"})`;
-                }
-                return `(${op === "++" ? "++" : "--"}${target})`;
+                if (node.type === "+")
+                    return `(+${val})`;
+                if (node.type === "-")
+                    return `(-${val})`;
+                return `${node.type}${val}`;
             }
             case "isset": {
-                const args = (node.variables || [node.variable]).map((v) => this.transpileExpr(v, filepath));
+                const args = (node.variables || node.arguments || [node.variable || node.expr]).map((v) => this.transpileExpr(v, filepath));
                 return `(${args.map((a) => `${a} !== undefined && ${a} !== null`).join(" && ")})`;
             }
             case "empty": {
@@ -855,7 +682,7 @@ class JSTranspiler {
                     return `((${left} < ${right}) ? -1 : ((${left} > ${right}) ? 1 : 0))`;
                 }
                 if (node.type === "instanceof") {
-                    const rightName = this.getConstName(node.right?.name || node.right);
+                    const rightName = this.getConstName(node.right?.name || node.right).toLowerCase();
                     return `ctx.isInstanceOf(${left}, ${JSON.stringify(rightName)})`;
                 }
                 const right = this.transpileExpr(node.right, filepath);
@@ -875,104 +702,96 @@ class JSTranspiler {
                         ? `(await ctx.requireOnce(${target}))`
                         : `(await ctx.includeOnce(${target}))`;
                 }
-                else {
-                    return node.require
-                        ? `(await ctx.require(${target}))`
-                        : `(await ctx.include(${target}))`;
-                }
+                return node.require
+                    ? `(await ctx.require(${target}))`
+                    : `(await ctx.include(${target}))`;
+            }
+            case "ternary": {
+                const test = this.transpileExpr(node.test, filepath);
+                const iftrue = node.trueExpr ? this.transpileExpr(node.trueExpr, filepath) : test;
+                const iffalse = this.transpileExpr(node.falseExpr, filepath);
+                return `(ctx.isTruthy(${test}) ? ${iftrue} : ${iffalse})`;
             }
             case "call": {
-                if (node.what?.kind === "staticlookup") {
-                    const className = this.transpileClassReference(node.what.what, filepath);
-                    const method = JSON.stringify(node.what.offset?.name || node.what.offset?.value || node.what.offset || "method");
-                    const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
-                    if (node.what.what?.kind === "parentreference") {
-                        return `(await ctx.callParentMethod(this, ${JSON.stringify(this.currentClassName)}, ${method}, [${args.join(", ")}]))`;
-                    }
-                    return `(await ctx.callStaticMethod(${className}, ${method}, [${args.join(", ")}]))`;
-                }
                 if (node.what?.kind === "propertylookup") {
                     const obj = this.transpileExpr(node.what.what, filepath);
-                    const method = JSON.stringify(node.what.offset?.name || node.what.offset?.value || node.what.offset || "method");
+                    const method = JSON.stringify((node.what.offset?.name || node.what.offset?.value || node.what.offset || "method").toString().toLowerCase());
                     const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
                     return `(await ctx.callMethod(${obj}, ${method}, [${args.join(", ")}]))`;
                 }
                 if (node.what?.kind === "nullsafepropertylookup") {
                     const obj = this.transpileExpr(node.what.what, filepath);
-                    const method = JSON.stringify(node.what.offset?.name || node.what.offset?.value || node.what.offset || "method");
+                    const method = JSON.stringify((node.what.offset?.name || node.what.offset?.value || node.what.offset || "method").toString().toLowerCase());
                     const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
                     return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.callMethod(__o, ${method}, [${args.join(", ")}]) : null; })())`;
                 }
-                const name = (node.what?.name || node.what?.value || "func").toString();
+                const name = (node.what?.name || node.what?.value || "func").toString().toLowerCase();
                 const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
-                if (name.toLowerCase() === "str_replace" && node.arguments?.length >= 4 && node.arguments[3]?.kind === "variable") {
-                    const countName = JSON.stringify(node.arguments[3].name?.name || node.arguments[3].name);
-                    return `(await (async () => { const __result = await ctx.callFunction("str_replace", [${args.slice(0, 3).join(", ")}]); ctx.setVar(${countName}, ctx.getInternalVar("lastStrReplaceCount") || 0); return __result; })())`;
-                }
-                if (["preg_match", "preg_match_all"].includes(name.toLowerCase()) && node.arguments?.[2]?.kind === "variable") {
-                    const matchesName = JSON.stringify(node.arguments[2].name?.name || node.arguments[2].name);
-                    return `(await (async () => { const result = await ctx.callFunction(${JSON.stringify(name)}, [${args.join(", ")}]); ctx.setVar(${matchesName}, ctx.getInternalVar("lastPregMatches") || []); return result; })())`;
-                }
-                if (name.toLowerCase() === "include") {
+                if (name === "include") {
                     return `(await ctx.include(${args.join(", ")}))`;
                 }
-                if (name.toLowerCase() === "include_once") {
+                if (name === "include_once") {
                     return `(await ctx.includeOnce(${args.join(", ")}))`;
                 }
-                if (name.toLowerCase() === "require") {
+                if (name === "require") {
                     return `(await ctx.require(${args.join(", ")}))`;
                 }
-                if (name.toLowerCase() === "require_once") {
+                if (name === "require_once") {
                     return `(await ctx.requireOnce(${args.join(", ")}))`;
                 }
-                return `(await ctx.callFunction(${JSON.stringify(name)}, [${args.join(", ")}]))`;
+                const references = (node.arguments || []).map((a) => a?.kind === "variable" ? (a.name?.name || a.name || "").toString() : null);
+                return `(await ctx.callFunction(${JSON.stringify(name)}, [${args.join(", ")}], ${JSON.stringify(references)}))`;
             }
             case "staticlookup": {
                 const className = this.transpileClassReference(node.what, filepath);
                 const member = this.getConstName(node.offset);
-                if (member === "class" && node.offset?.kind !== "variable")
+                if (member.toLowerCase() === "class" && node.offset?.kind !== "variable")
                     return className;
                 const accessor = node.offset?.kind === "variable" ? "getStaticProperty" : "getClassConstant";
                 return `(await ctx.${accessor}(${className}, ${JSON.stringify(member)}))`;
             }
-            case "propertylookup": {
-                const obj = this.transpileExpr(node.what, filepath);
-                const prop = JSON.stringify(node.offset?.name || node.offset?.value || "prop");
-                return `(await ctx.getProperty(${obj}, ${prop}))`;
+            case "null":
+            case "nil":
+            case "nullkeyword":
+                return "null";
+            case "exit":
+            case "die": {
+                const status = node.status || node.expr || node.value ? this.transpileExpr(node.status || node.expr || node.value, filepath) : "0";
+                return `(await ctx.callFunction("exit", [${status}]))`;
             }
-            case "methodcall": {
-                const obj = this.transpileExpr(node.what, filepath);
-                const method = JSON.stringify(node.name?.name || node.name || "method");
-                const args = (node.arguments || []).map((a) => this.transpileExpr(a, filepath));
-                return `(await ctx.callMethod(${obj}, ${method}, [${args.join(", ")}]))`;
+            case "retif":
+            case "ternary": {
+                const test = this.transpileExpr(node.test || node.cond, filepath);
+                const iftrue = (node.trueExpr || node.true || node.value) ? this.transpileExpr(node.trueExpr || node.true || node.value, filepath) : test;
+                const iffalse = this.transpileExpr(node.falseExpr || node.false || node.alternate, filepath);
+                return `(ctx.isTruthy(${test}) ? ${iftrue} : ${iffalse})`;
+            }
+            case "cast": {
+                const val = this.transpileExpr(node.expr || node.what || node.value, filepath);
+                const type = (node.type || node.raw || "").toLowerCase();
+                if (type === "bool" || type === "boolean")
+                    return `Boolean(${val})`;
+                if (type === "int" || type === "integer")
+                    return `(Number(parseInt(String(${val}), 10)) || 0)`;
+                if (type === "float" || type === "double" || type === "real")
+                    return `(Number(parseFloat(String(${val}))) || 0)`;
+                if (type === "string")
+                    return `String(${val} ?? "")`;
+                if (type === "array")
+                    return `(Array.isArray(${val}) ? ${val} : (${val} === null || ${val} === undefined) ? [] : [${val}])`;
+                if (type === "object")
+                    return `(typeof ${val} === "object" && ${val} !== null ? ${val} : { scalar: ${val} })`;
+                return val;
+            }
+            case "silent":
+            case "silence": {
+                const expr = this.transpileExpr(node.expr || node.what || node.inner, filepath);
+                return `(await (async () => { const __oldLevel = ctx.errorReportingLevel; ctx.errorReportingLevel = 0; try { return await (${expr}); } finally { ctx.errorReportingLevel = __oldLevel; } })())`;
             }
             default:
-                return "undefined";
+                throw new Error(`Not Implemented expression kind: ${node?.kind}`);
         }
-    }
-    transpileTarget(node, filepath) {
-        if (!node)
-            return "ctx.vars['tmp']";
-        if (node.kind === "variable") {
-            if ((node.name?.name || node.name) === "this")
-                return "this";
-            return `ctx.setVar(${JSON.stringify(node.name?.name || node.name)})`;
-        }
-        if (node.kind === "offsetlookup") {
-            const target = this.transpileExpr(node.what, filepath);
-            const key = node.offset ? this.transpileExpr(node.offset, filepath) : "0";
-            return `${target}[${key}]`;
-        }
-        if (node.kind === "propertylookup") {
-            const obj = this.transpileExpr(node.what, filepath);
-            const prop = JSON.stringify(node.offset?.name || node.offset?.value || "prop");
-            return `${obj}[${prop}]`;
-        }
-        return "ctx.vars['tmp']";
     }
 }
 exports.JSTranspiler = JSTranspiler;
-function indentLevel(pad) {
-    return pad.length / 2;
-}
 //# sourceMappingURL=JSTranspiler.js.map

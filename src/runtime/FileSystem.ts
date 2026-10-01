@@ -6,49 +6,19 @@ import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
 
 export class FileSystemRuntime {
-  public static register(engine: PHPEngine): void {
-    const register = engine.registerFunction.bind(engine);
-    for (const [name, value] of Object.entries({ GLOB_ERR: 1, GLOB_MARK: 2, GLOB_NOSORT: 4, GLOB_NOCHECK: 16, GLOB_NOESCAPE: 64, GLOB_BRACE: 1024, GLOB_ONLYDIR: 8192 })) {
-      engine.registerConstant(name, value);
-    }
-    register("glob", async (ctx: PHPContext, pattern: string, flags = 0) => FileSystemRuntime.glob(pattern, flags, ctx.cwd));
-    register("fileowner", async (ctx: PHPContext, filename: string) => FileSystemRuntime.fileowner(path.resolve(ctx.cwd, filename)));
-    register("fileperms", async (ctx: PHPContext, filename: string) => FileSystemRuntime.fileperms(path.resolve(ctx.cwd, filename)));
-    register("file", async (ctx: PHPContext, path: string, flags = 0) => await FileSystemRuntime.file(path, flags));
-    register("file_get_contents", async (ctx: PHPContext, path: string) => await FileSystemRuntime.file_get_contents(path));
-    register("file_put_contents", async (ctx: PHPContext, path: string, data: any, flags = 0) => await FileSystemRuntime.file_put_contents(path, data, flags));
-    register("file_exists", async (ctx: PHPContext, path: string) => await FileSystemRuntime.file_exists(path));
-    register("is_dir", async (ctx: PHPContext, path: string) => await FileSystemRuntime.is_dir(path));
-    register("is_file", async (ctx: PHPContext, path: string) => await FileSystemRuntime.is_file(path));
-    register("is_readable", async (ctx: PHPContext, path: string) => await FileSystemRuntime.is_readable(path));
-    register("is_writable", async (ctx: PHPContext, path: string) => await FileSystemRuntime.is_writable(path));
-    register("filesize", async (ctx: PHPContext, path: string) => await FileSystemRuntime.filesize(path));
-    register("filemtime", async (ctx: PHPContext, path: string) => await FileSystemRuntime.filemtime(path));
-    register("realpath", async (ctx: PHPContext, path: string) => await FileSystemRuntime.realpath(path));
-    register("basename", (ctx: PHPContext, path: string, suffix?: string) => FileSystemRuntime.basename(path, suffix));
-    register("dirname", (ctx: PHPContext, path: string) => FileSystemRuntime.dirname(path));
-    register("pathinfo", (ctx: PHPContext, path: string, flags = 15) => FileSystemRuntime.pathinfo(path, flags));
-    register("mkdir", async (ctx: PHPContext, path: string, mode = 0o777, recursive = false) => await FileSystemRuntime.mkdir(path, mode, recursive));
-    register("rmdir", async (ctx: PHPContext, path: string) => await FileSystemRuntime.rmdir(path));
-    register("unlink", async (ctx: PHPContext, path: string) => await FileSystemRuntime.unlink(path));
-    register("rename", async (ctx: PHPContext, oldPath: string, newPath: string) => await FileSystemRuntime.rename(oldPath, newPath));
-    register("copy", async (ctx: PHPContext, source: string, destination: string) => await FileSystemRuntime.copy(source, destination));
-    register("tempnam", async (ctx: PHPContext, directory: string, prefix: string) => await FileSystemRuntime.tempnam(directory, prefix));
-    register("sys_get_temp_dir", () => FileSystemRuntime.sys_get_temp_dir());
-    register("scandir", async (ctx: PHPContext, path: string) => await FileSystemRuntime.scandir(path));
-  }
-  public static async fileowner(filename: string): Promise<number | false> {
-    try { return (await fs.stat(filename)).uid; }
+  public static async fileowner(ctx: PHPContext, filename: string): Promise<number | false> {
+    try { return (await fs.stat(path.resolve(ctx.cwd, filename))).uid; }
     catch { return false; }
   }
 
-  public static async fileperms(filename: string): Promise<number | false> {
-    try { return (await fs.stat(filename)).mode; }
+  public static async fileperms(ctx: PHPContext, filename: string): Promise<number | false> {
+    try { return (await fs.stat(path.resolve(ctx.cwd, filename))).mode; }
     catch { return false; }
   }
 
-  public static async glob(pattern: string, flags = 0, cwd = process.cwd()): Promise<string[] | false> {
+  public static async glob(ctx: PHPContext, pattern: string, flags = 0): Promise<string[] | false> {
     try {
+      const cwd = ctx.cwd;
       const normalizedPattern = process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
       let matches = await matchGlob(normalizedPattern, {
         cwd,
@@ -72,7 +42,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async file(filepath: string, flags = 0): Promise<string[] | false> {
+  public static async file(ctx: PHPContext, filepath: string, flags = 0): Promise<string[] | false> {
     try {
       const content = await fs.readFile(filepath, "utf8");
       const lines = content.split("\n").map((line, idx, arr) => (idx < arr.length - 1 ? line + "\n" : line));
@@ -85,7 +55,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async file_get_contents(filepath: string): Promise<string | false> {
+  public static async file_get_contents(ctx: PHPContext, filepath: string): Promise<string | false> {
     try {
       return await fs.readFile(filepath, "utf8");
     } catch {
@@ -93,7 +63,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async file_put_contents(filepath: string, data: any, flags = 0): Promise<number | false> {
+  public static async file_put_contents(ctx: PHPContext, filepath: string, data: any, flags = 0): Promise<number | false> {
     try {
       const str = typeof data === "string" || Buffer.isBuffer(data) ? data : String(data ?? "");
       if (flags & 8) { // FILE_APPEND = 8
@@ -107,7 +77,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async file_exists(filepath: string): Promise<boolean> {
+  public static async file_exists(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       await fs.access(filepath);
       return true;
@@ -116,7 +86,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async is_dir(filepath: string): Promise<boolean> {
+  public static async is_dir(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       const stat = await fs.stat(filepath);
       return stat.isDirectory();
@@ -125,7 +95,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async is_file(filepath: string): Promise<boolean> {
+  public static async is_file(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       const stat = await fs.stat(filepath);
       return stat.isFile();
@@ -134,7 +104,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async is_readable(filepath: string): Promise<boolean> {
+  public static async is_readable(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       await fs.access(filepath, fs.constants.R_OK);
       return true;
@@ -143,7 +113,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async is_writable(filepath: string): Promise<boolean> {
+  public static async is_writable(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       await fs.access(filepath, fs.constants.W_OK);
       return true;
@@ -152,7 +122,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async filesize(filepath: string): Promise<number | false> {
+  public static async filesize(ctx: PHPContext, filepath: string): Promise<number | false> {
     try {
       const stat = await fs.stat(filepath);
       return stat.size;
@@ -161,7 +131,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async filemtime(filepath: string): Promise<number | false> {
+  public static async filemtime(ctx: PHPContext, filepath: string): Promise<number | false> {
     try {
       const stat = await fs.stat(filepath);
       return Math.floor(stat.mtimeMs / 1000);
@@ -170,7 +140,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async realpath(filepath: string): Promise<string | false> {
+  public static async realpath(ctx: PHPContext, filepath: string): Promise<string | false> {
     try {
       return await fs.realpath(filepath);
     } catch {
@@ -178,7 +148,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static basename(filepath: string, suffix?: string): string {
+  public static basename(ctx: PHPContext, filepath: string, suffix?: string): string {
     const normalized = String(filepath ?? "").replace(/\\/g, "/");
     let base = path.basename(normalized);
     if (suffix && base.endsWith(suffix)) {
@@ -187,11 +157,11 @@ export class FileSystemRuntime {
     return base;
   }
 
-  public static dirname(filepath: string): string {
+  public static dirname(ctx: PHPContext, filepath: string): string {
     return path.dirname(filepath);
   }
 
-  public static pathinfo(filepath: string, flags = 15): Record<string, string> {
+  public static pathinfo(ctx: PHPContext, filepath: string, flags = 15): Record<string, string> {
     const parsed = path.parse(filepath);
     return {
       dirname: parsed.dir,
@@ -201,7 +171,7 @@ export class FileSystemRuntime {
     };
   }
 
-  public static async mkdir(dirpath: string, mode = 0o777, recursive = false): Promise<boolean> {
+  public static async mkdir(ctx: PHPContext, dirpath: string, mode = 0o777, recursive = false): Promise<boolean> {
     try {
       await fs.mkdir(dirpath, { recursive, mode });
       return true;
@@ -210,7 +180,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async rmdir(dirpath: string): Promise<boolean> {
+  public static async rmdir(ctx: PHPContext, dirpath: string): Promise<boolean> {
     try {
       await fs.rmdir(dirpath);
       return true;
@@ -219,7 +189,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async unlink(filepath: string): Promise<boolean> {
+  public static async unlink(ctx: PHPContext, filepath: string): Promise<boolean> {
     try {
       await fs.unlink(filepath);
       return true;
@@ -228,7 +198,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async rename(oldname: string, newname: string): Promise<boolean> {
+  public static async rename(ctx: PHPContext, oldname: string, newname: string): Promise<boolean> {
     try {
       await fs.rename(oldname, newname);
       return true;
@@ -237,7 +207,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async copy(source: string, dest: string): Promise<boolean> {
+  public static async copy(ctx: PHPContext, source: string, dest: string): Promise<boolean> {
     try {
       await fs.copyFile(source, dest);
       return true;
@@ -246,7 +216,7 @@ export class FileSystemRuntime {
     }
   }
 
-  public static async tempnam(dir: string, prefix: string): Promise<string | false> {
+  public static async tempnam(ctx: PHPContext, dir: string, prefix: string): Promise<string | false> {
     try {
       const name = path.join(dir, `${prefix}${Math.random().toString(36).substring(2)}`);
       await fs.writeFile(name, "");
@@ -256,15 +226,58 @@ export class FileSystemRuntime {
     }
   }
 
-  public static sys_get_temp_dir(): string {
+  public static sys_get_temp_dir(ctx?: PHPContext): string {
     return os.tmpdir();
   }
 
-  public static async scandir(dirpath: string): Promise<string[] | false> {
+  public static async scandir(ctx: PHPContext, dirpath: string): Promise<string[] | false> {
     try {
       return await fs.readdir(dirpath);
     } catch {
       return false;
     }
+  }
+
+  static constants = {
+    GLOB_ERR: 1,
+    GLOB_MARK: 2,
+    GLOB_NOSORT: 4,
+    GLOB_NOCHECK: 16,
+    GLOB_NOESCAPE: 64,
+    GLOB_BRACE: 1024,
+    GLOB_ONLYDIR: 8192,
+  };
+
+  static functions = {
+    "glob": FileSystemRuntime.glob,
+    "fileowner": FileSystemRuntime.fileowner,
+    "fileperms": FileSystemRuntime.fileperms,
+    "file": FileSystemRuntime.file,
+    "file_get_contents": FileSystemRuntime.file_get_contents,
+    "file_put_contents": FileSystemRuntime.file_put_contents,
+    "file_exists": FileSystemRuntime.file_exists,
+    "is_dir": FileSystemRuntime.is_dir,
+    "is_file": FileSystemRuntime.is_file,
+    "is_readable": FileSystemRuntime.is_readable,
+    "is_writable": FileSystemRuntime.is_writable,
+    "filesize": FileSystemRuntime.filesize,
+    "filemtime": FileSystemRuntime.filemtime,
+    "realpath": FileSystemRuntime.realpath,
+    "basename": FileSystemRuntime.basename,
+    "dirname": FileSystemRuntime.dirname,
+    "pathinfo": FileSystemRuntime.pathinfo,
+    "mkdir": FileSystemRuntime.mkdir,
+    "rmdir": FileSystemRuntime.rmdir,
+    "unlink": FileSystemRuntime.unlink,
+    "rename": FileSystemRuntime.rename,
+    "copy": FileSystemRuntime.copy,
+    "tempnam": FileSystemRuntime.tempnam,
+    "sys_get_temp_dir": FileSystemRuntime.sys_get_temp_dir,
+    "scandir": FileSystemRuntime.scandir,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerConstants(FileSystemRuntime.constants);
+    engine.registerFunctions(FileSystemRuntime.functions);
   }
 }

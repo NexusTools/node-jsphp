@@ -1,14 +1,17 @@
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
+import { defineFunction } from "./Reflection";
 
 export class StringRuntime {
-  public static lastReplaceCount = 0;
-  public static strlen(str: any): number {
+
+  /** Gets string length. */
+  public static strlen(ctx: PHPContext, str: any): number {
     if (Buffer.isBuffer(str)) return str.length;
     return String(str ?? "").length;
   }
 
-  public static substr_count(haystack: any, needle: any, offset = 0, length?: number): number {
+  /** Count the number of substring occurrences. */
+  public static substr_count(ctx: PHPContext, haystack: any, needle: any, offset = 0, length?: number): number {
     const source = String(haystack ?? "").slice(offset, length === undefined ? undefined : offset + length);
     const search = String(needle ?? "");
     if (!search) return 0;
@@ -21,7 +24,8 @@ export class StringRuntime {
     return count;
   }
 
-  public static substr(str: string, start: number, length?: number): string {
+  /** Return part of a string. */
+  public static substr(ctx: PHPContext, str: string, start: number, length?: number): string {
     const s = String(str ?? "");
     if (start < 0) start = s.length + start;
     if (length !== undefined) {
@@ -31,9 +35,11 @@ export class StringRuntime {
     return s.substring(start);
   }
 
-  public static substr_replace(subject: any, replacement: any, offset: any, length?: any): string | string[] {
+  /** Replace text within a portion of a string. */
+  public static substr_replace(ctx: PHPContext, subject: any, replacement: any, offset: any, length?: any): string | string[] {
     if (Array.isArray(subject)) {
       return subject.map((value, index) => StringRuntime.substr_replace(
+        ctx,
         value,
         Array.isArray(replacement) ? replacement[index] ?? "" : replacement,
         Array.isArray(offset) ? offset[index] ?? 0 : offset,
@@ -51,27 +57,32 @@ export class StringRuntime {
     return source.slice(0, start) + String(inserted) + source.slice(end);
   }
 
-  public static strpos(haystack: string, needle: string, offset = 0): number | false {
+  /** Find the position of the first occurrence of a substring in a string. */
+  public static strpos(ctx: PHPContext, haystack: string, needle: string, offset = 0): number | false {
     const idx = String(haystack ?? "").indexOf(String(needle ?? ""), offset);
     return idx === -1 ? false : idx;
   }
 
-  public static stripos(haystack: string, needle: string, offset = 0): number | false {
+  /** Find the position of the first occurrence of a case-insensitive substring in a string. */
+  public static stripos(ctx: PHPContext, haystack: string, needle: string, offset = 0): number | false {
     const idx = String(haystack ?? "").toLowerCase().indexOf(String(needle ?? "").toLowerCase(), offset);
     return idx === -1 ? false : idx;
   }
 
-  public static strrpos(haystack: string, needle: string, offset = 0): number | false {
+  /** Find the position of the last occurrence of a substring in a string. */
+  public static strrpos(ctx: PHPContext, haystack: string, needle: string, offset = 0): number | false {
     const idx = String(haystack ?? "").lastIndexOf(String(needle ?? ""), offset || undefined);
     return idx === -1 ? false : idx;
   }
 
-  public static strripos(haystack: string, needle: string, offset = 0): number | false {
+  /** Find the position of the last occurrence of a case-insensitive substring in a string. */
+  public static strripos(ctx: PHPContext, haystack: string, needle: string, offset = 0): number | false {
     const idx = String(haystack ?? "").toLowerCase().lastIndexOf(String(needle ?? "").toLowerCase(), offset || undefined);
     return idx === -1 ? false : idx;
   }
 
-  public static strstr(haystack: string, needle: string, beforeNeedle = false): string | false {
+  /** Find the first occurrence of a string. */
+  public static strstr(ctx: PHPContext, haystack: string, needle: string, beforeNeedle = false): string | false {
     const s = String(haystack ?? "");
     const n = String(needle ?? "");
     const idx = s.indexOf(n);
@@ -79,10 +90,16 @@ export class StringRuntime {
     return beforeNeedle ? s.substring(0, idx) : s.substring(idx);
   }
 
-  public static str_replace(search: any, replace: any, subject: any): any {
-    StringRuntime.lastReplaceCount = 0;
+  /**
+   * Replace all occurrences of the search string with the replacement string.
+   * @param countRef Output variable passed by reference to receive replacement count.
+   */
+  public static str_replace(ctx: PHPContext, search: any, replace: any, subject: any, countRef?: any): any {
+    var replaceCount = 0;
     if (Array.isArray(subject)) {
-      return subject.map((s) => StringRuntime.str_replace(search, replace, s));
+      const res = subject.map((s) => StringRuntime.str_replace(ctx, search, replace, s, { set: (val: number) => { replaceCount += val; } }));
+      if (countRef && typeof countRef.set === "function") countRef.set(replaceCount);
+      return res;
     }
     let s = String(subject ?? "");
     const searches = Array.isArray(search) ? search : [search];
@@ -90,13 +107,18 @@ export class StringRuntime {
 
     searches.forEach((sch, i) => {
       const rep = replaces[i] !== undefined ? replaces[i] : replaces[replaces.length - 1] || "";
-      if (String(sch)) StringRuntime.lastReplaceCount += s.split(String(sch)).length - 1;
+      if (String(sch)) replaceCount += s.split(String(sch)).length - 1;
       s = s.split(String(sch)).join(String(rep));
     });
+
+    if (countRef && typeof countRef.set === "function") {
+      countRef.set(replaceCount);
+    }
     return s;
   }
 
-  public static strtr(subject: any, from: any, to?: any): string {
+  /** Translate characters or replace substrings. */
+  public static strtr(ctx: PHPContext, subject: any, from: any, to?: any): string {
     let result = String(subject ?? "");
     if (from && typeof from === "object" && !Array.isArray(from)) {
       for (const [search, replacement] of Object.entries(from)) result = result.split(search).join(String(replacement));
@@ -107,9 +129,10 @@ export class StringRuntime {
     return result.split(search).join(replacement);
   }
 
-  public static str_ireplace(search: any, replace: any, subject: any): any {
+  /** Case-insensitive version of str_replace. */
+  public static str_ireplace(ctx: PHPContext, search: any, replace: any, subject: any): any {
     if (Array.isArray(subject)) {
-      return subject.map((s) => StringRuntime.str_ireplace(search, replace, s));
+      return subject.map((s) => StringRuntime.str_ireplace(ctx, search, replace, s));
     }
     let s = String(subject ?? "");
     const searches = Array.isArray(search) ? search : [search];
@@ -123,7 +146,8 @@ export class StringRuntime {
     return s;
   }
 
-  public static sprintf(fmt: string, ...args: any[]): string {
+  /** Return a formatted string. */
+  public static sprintf(ctx: PHPContext, fmt: string, ...args: any[]): string {
     let i = 0;
     return String(fmt ?? "").replace(/%([%d s f g x X])/g, (_, spec) => {
       if (spec === "%") return "%";
@@ -136,7 +160,8 @@ export class StringRuntime {
     });
   }
 
-  public static explode(delimiter: string, string: string, limit?: number): string[] {
+  /** Split a string by a string. */
+  public static explode(ctx: PHPContext, delimiter: string, string: string, limit?: number): string[] {
     const res = String(string ?? "").split(delimiter);
     if (limit !== undefined && limit > 0 && res.length > limit) {
       return [...res.slice(0, limit - 1), res.slice(limit - 1).join(delimiter)];
@@ -144,64 +169,78 @@ export class StringRuntime {
     return res;
   }
 
-  public static implode(glue: string, pieces: any[]): string {
+  /** Join array elements with a string. */
+  public static implode(ctx: PHPContext, glue: string, pieces: any[]): string {
     return (pieces || []).join(glue);
   }
 
-  public static trim(str: string, charlist?: string): string {
+  /** Strip whitespace (or other characters) from the beginning and end of a string. */
+  public static trim(ctx: PHPContext, str: string, charlist?: string): string {
     let s = String(str ?? "");
     if (!charlist) return s.trim();
     const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`^[${mask}]+|[${mask}]+$`, "g"), "");
   }
 
-  public static ltrim(str: string, charlist?: string): string {
+  /** Strip whitespace (or other characters) from the beginning of a string. */
+  public static ltrim(ctx: PHPContext, str: string, charlist?: string): string {
     let s = String(str ?? "");
     if (!charlist) return s.trimStart();
     const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`^[${mask}]+`, "g"), "");
   }
 
-  public static rtrim(str: string, charlist?: string): string {
+  /** Strip whitespace (or other characters) from the end of a string. */
+  public static rtrim(ctx: PHPContext, str: string, charlist?: string): string {
     let s = String(str ?? "");
     if (!charlist) return s.trimEnd();
     const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`[${mask}]+$`, "g"), "");
   }
 
-  public static strtolower(str: string): string { return String(str ?? "").toLowerCase(); }
-  public static strtoupper(str: string): string { return String(str ?? "").toUpperCase(); }
-  public static ucfirst(str: string): string {
+  /** Make a string lowercase. */
+  public static strtolower(ctx: PHPContext, str: string): string { return String(str ?? "").toLowerCase(); }
+  /** Make a string uppercase. */
+  public static strtoupper(ctx: PHPContext, str: string): string { return String(str ?? "").toUpperCase(); }
+  /** Make a string's first character uppercase. */
+  public static ucfirst(ctx: PHPContext, str: string): string {
     const s = String(str ?? "");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  public static lcfirst(str: string): string {
+  /** Make a string's first character lowercase. */
+  public static lcfirst(ctx: PHPContext, str: string): string {
     const s = String(str ?? "");
     return s.charAt(0).toLowerCase() + s.slice(1);
   }
-  public static ucwords(str: string): string {
+  /** Uppercase the first character of each word in a string. */
+  public static ucwords(ctx: PHPContext, str: string): string {
     return String(str ?? "").replace(/\b\w/g, (l) => l.toUpperCase());
   }
 
-  public static strcmp(str1: string, str2: string): number {
+  /** Binary safe string comparison. */
+  public static strcmp(ctx: PHPContext, str1: string, str2: string): number {
     const s1 = String(str1 ?? "");
     const s2 = String(str2 ?? "");
     return s1.localeCompare(s2);
   }
 
-  public static strncmp(str1: any, str2: any, length: number): number {
-    return StringRuntime.strcmp(String(str1 ?? "").slice(0, length), String(str2 ?? "").slice(0, length));
+  /** Binary safe string comparison of the first n characters. */
+  public static strncmp(ctx: PHPContext, str1: any, str2: any, length: number): number {
+    return StringRuntime.strcmp(ctx, String(str1 ?? "").slice(0, length), String(str2 ?? "").slice(0, length));
   }
 
-  public static addslashes(str: string): string {
+  /** Quote string with slashes. */
+  public static addslashes(ctx: PHPContext, str: string): string {
     return String(str ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
   }
 
-  public static stripslashes(str: string): string {
+  /** Un-quotes a quoted string. */
+  public static stripslashes(ctx: PHPContext, str: string): string {
     return String(str ?? "").replace(/\\(['"\\0])/g, "$1");
   }
 
-  public static htmlspecialchars(str: string): string {
+  /** Convert special characters to HTML entities. */
+  public static htmlspecialchars(ctx: PHPContext, str: string): string {
     return String(str ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -210,7 +249,8 @@ export class StringRuntime {
       .replace(/'/g, "&#039;");
   }
 
-  public static htmlspecialchars_decode(str: string): string {
+  /** Convert special HTML entities back to characters. */
+  public static htmlspecialchars_decode(ctx: PHPContext, str: string): string {
     return String(str ?? "")
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
@@ -219,16 +259,19 @@ export class StringRuntime {
       .replace(/&#039;/g, "'");
   }
 
-  public static nl2br(str: string, isXhtml = true): string {
+  /** Inserts HTML line breaks before all newlines in a string. */
+  public static nl2br(ctx: PHPContext, str: string, isXhtml = true): string {
     const breakTag = isXhtml ? "<br />" : "<br>";
     return String(str ?? "").replace(/(\r\n|\n\r|\r|\n)/g, breakTag + "$1");
   }
 
-  public static str_repeat(input: string, multiplier: number): string {
+  /** Repeat a string. */
+  public static str_repeat(ctx: PHPContext, input: string, multiplier: number): string {
     return String(input ?? "").repeat(Math.max(0, multiplier));
   }
 
-  public static str_pad(input: string, padLength: number, padString = " ", padType = 1): string {
+  /** Pad a string to a certain length with another string. */
+  public static str_pad(ctx: PHPContext, input: string, padLength: number, padString = " ", padType = 1): string {
     let s = String(input ?? "");
     if (s.length >= padLength) return s;
     const needed = padLength - s.length;
@@ -242,7 +285,8 @@ export class StringRuntime {
     return s + pStr; // STR_PAD_RIGHT
   }
 
-  public static str_split(string: string, length = 1): string[] {
+  /** Convert a string to an array. */
+  public static str_split(ctx: PHPContext, string: string, length = 1): string[] {
     const s = String(string ?? "");
     const res: string[] = [];
     for (let i = 0; i < s.length; i += length) {
@@ -251,27 +295,33 @@ export class StringRuntime {
     return res;
   }
 
-  public static strrev(string: string): string {
+  /** Reverse a string. */
+  public static strrev(ctx: PHPContext, string: string): string {
     return String(string ?? "").split("").reverse().join("");
   }
 
-  public static chr(ascii: number): string {
+  /** Generate a single-byte string from a number. */
+  public static chr(ctx: PHPContext, ascii: number): string {
     return String.fromCharCode(ascii);
   }
 
-  public static ord(character: string): number {
+  /** Convert the first byte of a string to a value between 0 and 255. */
+  public static ord(ctx: PHPContext, character: string): number {
     return String(character ?? "").charCodeAt(0) || 0;
   }
 
-  public static bin2hex(string: string): string {
+  /** Convert binary data into hexadecimal representation. */
+  public static bin2hex(ctx: PHPContext, string: string): string {
     return Buffer.from(String(string ?? "")).toString("hex");
   }
 
-  public static hex2bin(hexString: string): string {
+  /** Decodes a hexadecimally encoded binary string. */
+  public static hex2bin(ctx: PHPContext, hexString: string): string {
     return Buffer.from(String(hexString ?? ""), "hex").toString("utf8");
   }
 
-  public static version_compare(v1: string, v2: string, op?: string): any {
+  /** Compares two "PHP-standardized" version number strings. */
+  public static version_compare(ctx: PHPContext, v1: string, v2: string, op?: string): any {
     const parse = (v: string) => (v || "").split(".").map((n) => parseInt(n, 10) || 0);
     const p1 = parse(v1);
     const p2 = parse(v2);
@@ -295,53 +345,118 @@ export class StringRuntime {
     }
   }
 
-  public static register(engine: PHPEngine): void {
-  const register = engine.registerFunction.bind(engine);
-  register("version_compare", (ctx: PHPContext, first: string, second: string, operator?: string) => StringRuntime.version_compare(first, second, operator));
-  register("strlen", (ctx: PHPContext, str: any) => StringRuntime.strlen(str));
-  register("substr_count", (ctx: PHPContext, haystack: any, needle: any, offset = 0, length?: number) => StringRuntime.substr_count(haystack, needle, offset, length));
-  register("substr", (ctx: PHPContext, str: string, start: number, length?: number) => StringRuntime.substr(str, start, length));
-  register("substr_replace", (ctx: PHPContext, subject: any, replacement: any, offset: any, length?: any) => StringRuntime.substr_replace(subject, replacement, offset, length));
-  register("strpos", (ctx: PHPContext, haystack: string, needle: string, offset = 0) => StringRuntime.strpos(haystack, needle, offset));
-  register("stripos", (ctx: PHPContext, haystack: string, needle: string, offset = 0) => StringRuntime.stripos(haystack, needle, offset));
-  register("strrpos", (ctx: PHPContext, haystack: string, needle: string, offset = 0) => StringRuntime.strrpos(haystack, needle, offset));
-  register("strripos", (ctx: PHPContext, haystack: string, needle: string, offset = 0) => StringRuntime.strripos(haystack, needle, offset));
-  register("strstr", (ctx: PHPContext, haystack: string, needle: string, before = false) => StringRuntime.strstr(haystack, needle, before));
-  register("str_replace", (ctx: PHPContext, search: any, replace: any, subject: any) => {
-    const result = StringRuntime.str_replace(search, replace, subject);
-    ctx.setInternalVar("lastStrReplaceCount", StringRuntime.lastReplaceCount);
-    return result;
-  });
-  register("strtr", (ctx: PHPContext, subject: any, from: any, to?: any) => StringRuntime.strtr(subject, from, to));
-  register("str_ireplace", (ctx: PHPContext, search: any, replace: any, subject: any) => StringRuntime.str_ireplace(search, replace, subject));
-  register("sprintf", (ctx: PHPContext, fmt: string, ...args: any[]) => StringRuntime.sprintf(fmt, ...args));
-  register("printf", async (ctx: PHPContext, fmt: string, ...args: any[]) => { const result = StringRuntime.sprintf(fmt, ...args); await ctx.echo(result); return result.length; });
-  register("vsprintf", (ctx: PHPContext, fmt: string, args: any[] = []) => StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : [])));
-  register("vprintf", async (ctx: PHPContext, fmt: string, args: any[] = []) => { const result = StringRuntime.sprintf(fmt, ...(Array.isArray(args) ? args : [])); await ctx.echo(result); return result.length; });
-  register("explode", (ctx: PHPContext, delimiter: string, str: string, limit?: number) => StringRuntime.explode(delimiter, str, limit));
-  register("implode", (ctx: PHPContext, glue: string, pieces: any[]) => StringRuntime.implode(glue, pieces));
-  register("trim", (ctx: PHPContext, str: string, chars?: string) => StringRuntime.trim(str, chars));
-  register("ltrim", (ctx: PHPContext, str: string, chars?: string) => StringRuntime.ltrim(str, chars));
-  register("rtrim", (ctx: PHPContext, str: string, chars?: string) => StringRuntime.rtrim(str, chars));
-  register("strtolower", (ctx: PHPContext, str: string) => StringRuntime.strtolower(str));
-  register("strtoupper", (ctx: PHPContext, str: string) => StringRuntime.strtoupper(str));
-  register("ucfirst", (ctx: PHPContext, str: string) => StringRuntime.ucfirst(str));
-  register("lcfirst", (ctx: PHPContext, str: string) => StringRuntime.lcfirst(str));
-  register("ucwords", (ctx: PHPContext, str: string) => StringRuntime.ucwords(str));
-  register("strcmp", (ctx: PHPContext, s1: string, s2: string) => StringRuntime.strcmp(s1, s2));
-  register("strncmp", (ctx: PHPContext, s1: any, s2: any, length: number) => StringRuntime.strncmp(s1, s2, length));
-  register("addslashes", (ctx: PHPContext, str: string) => StringRuntime.addslashes(str));
-  register("stripslashes", (ctx: PHPContext, str: string) => StringRuntime.stripslashes(str));
-  register("htmlspecialchars", (ctx: PHPContext, str: string) => StringRuntime.htmlspecialchars(str));
-  register("htmlspecialchars_decode", (ctx: PHPContext, str: string) => StringRuntime.htmlspecialchars_decode(str));
-  register("nl2br", (ctx: PHPContext, str: string, xhtml = true) => StringRuntime.nl2br(str, xhtml));
-  register("str_repeat", (ctx: PHPContext, str: string, mult: number) => StringRuntime.str_repeat(str, mult));
-  register("str_pad", (ctx: PHPContext, str: string, len: number, pad = " ", type = 1) => StringRuntime.str_pad(str, len, pad, type));
-  register("str_split", (ctx: PHPContext, str: string, len = 1) => StringRuntime.str_split(str, len));
-  register("strrev", (ctx: PHPContext, str: string) => StringRuntime.strrev(str));
-  register("chr", (ctx: PHPContext, ascii: number) => StringRuntime.chr(ascii));
-  register("ord", (ctx: PHPContext, char: string) => StringRuntime.ord(char));
-  register("bin2hex", (ctx: PHPContext, str: string) => StringRuntime.bin2hex(str));
-  register("hex2bin", (ctx: PHPContext, str: string) => StringRuntime.hex2bin(str));
+  /**
+   * Parses encoded query string into variables.
+   * @param result Output variable passed by reference to receive parsed key-value pairs.
+   */
+  public static parse_str(ctx: PHPContext, query: string, result?: any): void {
+    const parsed: Record<string, any> = Object.create(null);
+    for (const [name, value] of new URLSearchParams(String(query ?? ""))) {
+      const bracket = name.indexOf("[");
+      const rawBase = bracket < 0 ? name : name.slice(0, bracket);
+      const base = rawBase.replace(/[ .]/g, "_");
+      if (!base) continue;
+      const subKeys = Array.from(
+        name.slice(bracket < 0 ? name.length : bracket).matchAll(/\[([^\]]*)\]/g),
+        (match) => match[1]
+      );
+      const keys = [base, ...subKeys];
+      let target = parsed;
+      keys.forEach((part, index) => {
+        const key = part === ""
+          ? String(Math.max(-1, ...Object.keys(target).filter((entry) => /^(0|[1-9]\d*)$/.test(entry)).map(Number)) + 1)
+          : part;
+        if (index === keys.length - 1) {
+          target[key] = value;
+        } else {
+          if (!target[key] || typeof target[key] !== "object") {
+            target[key] = Object.create(null);
+          }
+          target = target[key];
+        }
+      });
+    }
+    const normalize = (value: any): any => {
+      if (!value || typeof value !== "object") return value;
+      const keys = Object.keys(value);
+      if (keys.length > 0 && keys.every((key, index) => key === String(index))) {
+        return keys.map((key) => normalize(value[key]));
+      }
+      const obj: Record<string, any> = {};
+      for (const key of keys) {
+        obj[key] = normalize(value[key]);
+      }
+      return obj;
+    };
+    const output = normalize(parsed);
+    ctx.setInternalVar("lastParseStrResult", output);
+
+    if (result && typeof result.set === "function") {
+      result.set(output);
+    } else if (result !== undefined && result !== null && typeof result === "object") {
+      for (const key of Object.keys(result)) delete result[key];
+      Object.assign(result, output);
+    } else {
+      for (const [k, v] of Object.entries(output)) {
+        ctx.setVar(k, v);
+      }
     }
   }
+
+  static functions = {
+    "parse_str": StringRuntime.parse_str,
+    "version_compare": StringRuntime.version_compare,
+    "strlen": StringRuntime.strlen,
+    "substr_count": StringRuntime.substr_count,
+    "substr": StringRuntime.substr,
+    "substr_replace": StringRuntime.substr_replace,
+    "strpos": StringRuntime.strpos,
+    "stripos": StringRuntime.stripos,
+    "strrpos": StringRuntime.strrpos,
+    "strripos": StringRuntime.strripos,
+    "strstr": StringRuntime.strstr,
+    "str_replace": StringRuntime.str_replace,
+    "strtr": StringRuntime.strtr,
+    "str_ireplace": StringRuntime.str_ireplace,
+    "sprintf": StringRuntime.sprintf,
+    "explode": StringRuntime.explode,
+    "implode": StringRuntime.implode,
+    "trim": StringRuntime.trim,
+    "ltrim": StringRuntime.ltrim,
+    "rtrim": StringRuntime.rtrim,
+    "strtolower": StringRuntime.strtolower,
+    "strtoupper": StringRuntime.strtoupper,
+    "ucfirst": StringRuntime.ucfirst,
+    "lcfirst": StringRuntime.lcfirst,
+    "ucwords": StringRuntime.ucwords,
+    "strcmp": StringRuntime.strcmp,
+    "strncmp": StringRuntime.strncmp,
+    "addslashes": StringRuntime.addslashes,
+    "stripslashes": StringRuntime.stripslashes,
+    "htmlspecialchars": StringRuntime.htmlspecialchars,
+    "htmlspecialchars_decode": StringRuntime.htmlspecialchars_decode,
+    "nl2br": StringRuntime.nl2br,
+    "str_repeat": StringRuntime.str_repeat,
+    "str_pad": StringRuntime.str_pad,
+    "str_split": StringRuntime.str_split,
+    "strrev": StringRuntime.strrev,
+    "chr": StringRuntime.chr,
+    "ord": StringRuntime.ord,
+    "bin2hex": StringRuntime.bin2hex,
+    "hex2bin": StringRuntime.hex2bin,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(StringRuntime.functions);
+  }
+}
+
+defineFunction(StringRuntime.parse_str, {
+  name: "parse_str",
+  parameters: [{ name: "query" }, { name: "result", byref: true }],
+});
+
+defineFunction(StringRuntime.str_replace, {
+  name: "str_replace",
+  parameters: [{ name: "search" }, { name: "replace" }, { name: "subject" }, { name: "count", byref: true }],
+});

@@ -10,7 +10,7 @@ describe("Enums Runtime Tests", () => {
         engine.close();
     });
     test("Enum class registration", async () => {
-        expect(engine.classes.has("enum")).toBe(true);
+        expect("enum" in engine.classes).toBe(true);
     });
 });
 //# sourceMappingURL=enums.test.js.map

@@ -1,6 +1,7 @@
 import { PHPExtension } from "../PHPExtension";
 import { PHPEngine } from "../PHPEngine";
 import { PHPContext } from "../PHPContext";
+import { defineFunction } from "../runtime/Reflection";
 
 export class PCREExtension extends PHPExtension {
   public readonly name = "pcre";
@@ -32,8 +33,9 @@ export class PCREExtension extends PHPExtension {
   }
 
   private storeMatches(ctx: PHPContext, target: any, matches: any[]): void {
-    ctx.setInternalVar("lastPregMatches", matches);
-    if (target && typeof target === "object") {
+    if (target && typeof target.set === "function") {
+      target.set(matches);
+    } else if (target && typeof target === "object") {
       for (const key of Object.keys(target)) delete target[key];
       if (Array.isArray(target)) target.length = 0;
       Object.assign(target, matches);
@@ -50,6 +52,10 @@ export class PCREExtension extends PHPExtension {
       PREG_INTERNAL_ERROR: 1,
     };
     this.functions = {
+      /**
+       * Perform a regular expression match.
+       * @param matchesObj Output variable passed by reference to receive match results.
+       */
       preg_match: (ctx: PHPContext, pattern: string, subject: string, matchesObj?: any, flags = 0, offset = 0) => {
         try {
           const input = String(subject ?? "");
@@ -65,6 +71,10 @@ export class PCREExtension extends PHPExtension {
           return false;
         }
       },
+      /**
+       * Perform a global regular expression match.
+       * @param matchesObj Output variable passed by reference to receive all match results.
+       */
       preg_match_all: (ctx: PHPContext, pattern: string, subject: string, matchesObj?: any, flags = 1, offset = 0) => {
         try {
           const input = String(subject ?? "");
@@ -125,5 +135,15 @@ export class PCREExtension extends PHPExtension {
       preg_last_error: (ctx: PHPContext) => ctx.getInternalVar("lastPregError") || 0,
       preg_last_error_msg: (ctx: PHPContext) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
     };
+
+    defineFunction(this.functions.preg_match, {
+      name: "preg_match",
+      parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
+    });
+
+    defineFunction(this.functions.preg_match_all, {
+      name: "preg_match_all",
+      parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
+    });
   }
 }

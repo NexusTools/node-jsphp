@@ -8,6 +8,7 @@ export interface PHPParameterMetadata {
   hasDefault: boolean;
   defaultValue?: any;
   type?: string;
+  byref?: boolean;
 }
 
 export interface PHPPropertyMetadata {

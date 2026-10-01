@@ -3,19 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPDateTime = exports.DateTimeRuntime = void 0;
 class DateTimeRuntime {
     static defaultTimezone = "UTC";
-    static register(engine) {
-        engine.registerFunction("time", () => DateTimeRuntime.time());
-        engine.registerFunction("microtime", (ctx, asFloat = false) => DateTimeRuntime.microtime(asFloat));
-        engine.registerFunction("date", (ctx, format, timestamp) => DateTimeRuntime.date(format, timestamp));
-        engine.registerFunction("strtotime", (ctx, value, now) => DateTimeRuntime.strtotime(value, now));
-        engine.registerFunction("date_default_timezone_get", () => DateTimeRuntime.date_default_timezone_get());
-        engine.registerFunction("date_default_timezone_set", (ctx, timezone) => DateTimeRuntime.date_default_timezone_set(timezone));
-        engine.registerClass("datetime", PHPDateTime);
-    }
-    static time() {
+    static time(ctx) {
         return Math.floor(Date.now() / 1000);
     }
-    static microtime(getAsFloat = false) {
+    static microtime(ctx, getAsFloat = false) {
         const now = Date.now();
         const sec = Math.floor(now / 1000);
         const msec = (now % 1000) / 1000;
@@ -23,7 +14,7 @@ class DateTimeRuntime {
             return sec + msec;
         return `${msec.toFixed(8)} ${sec}`;
     }
-    static date(format, timestamp) {
+    static date(ctx, format, timestamp) {
         const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
         let res = "";
         for (let i = 0; i < format.length; i++) {
@@ -57,7 +48,7 @@ class DateTimeRuntime {
         }
         return res;
     }
-    static strtotime(timeStr, now) {
+    static strtotime(ctx, timeStr, now) {
         try {
             const base = now !== undefined ? new Date(now * 1000) : new Date();
             const parsed = Date.parse(timeStr);
@@ -69,12 +60,27 @@ class DateTimeRuntime {
             return false;
         }
     }
-    static date_default_timezone_get() {
+    static date_default_timezone_get(ctx) {
         return DateTimeRuntime.defaultTimezone;
     }
-    static date_default_timezone_set(timezoneId) {
+    static date_default_timezone_set(ctx, timezoneId) {
         DateTimeRuntime.defaultTimezone = timezoneId;
         return true;
+    }
+    static functions = {
+        "time": DateTimeRuntime.time,
+        "microtime": DateTimeRuntime.microtime,
+        "date": DateTimeRuntime.date,
+        "strtotime": DateTimeRuntime.strtotime,
+        "date_default_timezone_get": DateTimeRuntime.date_default_timezone_get,
+        "date_default_timezone_set": DateTimeRuntime.date_default_timezone_set,
+    };
+    static classes = {
+        "datetime": () => PHPDateTime,
+    };
+    static register(engine) {
+        engine.registerFunctions(DateTimeRuntime.functions);
+        engine.registerClass("datetime", PHPDateTime);
     }
 }
 exports.DateTimeRuntime = DateTimeRuntime;
@@ -84,7 +90,7 @@ class PHPDateTime {
         this.date = timeStr === "now" ? new Date() : new Date(timeStr);
     }
     format(format) {
-        return DateTimeRuntime.date(format, Math.floor(this.date.getTime() / 1000));
+        return DateTimeRuntime.date(null, format, Math.floor(this.date.getTime() / 1000));
     }
     getTimestamp() {
         return Math.floor(this.date.getTime() / 1000);

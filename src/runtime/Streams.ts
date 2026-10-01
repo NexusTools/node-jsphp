@@ -17,20 +17,7 @@ export interface PHPFileStream {
 }
 
 export class StreamRuntime {
-  public static register(engine: PHPEngine): void {
-    const register = engine.registerFunction.bind(engine);
-    register("fopen", async (ctx: PHPContext, filename: string, mode: string) => StreamRuntime.fopen(ctx, filename, mode));
-    register("fclose", async (ctx: PHPContext, stream: PHPFileStream) => StreamRuntime.fclose(stream));
-    register("fread", async (ctx: PHPContext, stream: PHPFileStream, length: number) => StreamRuntime.fread(stream, length));
-    register("fwrite", async (ctx: PHPContext, stream: PHPFileStream, data: any, length?: number) => StreamRuntime.fwrite(stream, data, length));
-    register("fputs", async (ctx: PHPContext, stream: PHPFileStream, data: any, length?: number) => StreamRuntime.fwrite(stream, data, length));
-    register("stream_context_create", (ctx: PHPContext, options = {}) => StreamRuntime.stream_context_create(options));
-    register("stream_get_contents", async (ctx: PHPContext, stream: any, maximum = -1, offset = -1) => StreamRuntime.stream_get_contents(stream, maximum, offset));
-    register("stream_get_wrappers", () => StreamRuntime.stream_get_wrappers());
-    register("stream_is_local", (ctx: PHPContext, stream: any) => StreamRuntime.stream_is_local(stream));
-  }
-
-  public static stream_context_create(options: Record<string, any> = {}): PHPStreamContext {
+  public static stream_context_create(ctx: PHPContext | null, options: Record<string, any> = {}): PHPStreamContext {
     return new PHPStreamContext(options);
   }
 
@@ -51,7 +38,7 @@ export class StreamRuntime {
     }
   }
 
-  public static async fclose(stream: PHPFileStream): Promise<boolean> {
+  public static async fclose(ctx: PHPContext | null, stream: PHPFileStream): Promise<boolean> {
     if (!stream?.isResource) return false;
     try {
       await stream.handle.close();
@@ -62,7 +49,7 @@ export class StreamRuntime {
     }
   }
 
-  public static async fread(stream: PHPFileStream, length: number): Promise<string | false> {
+  public static async fread(ctx: PHPContext | null, stream: PHPFileStream, length: number): Promise<string | false> {
     if (!stream?.isResource || length < 0) return false;
     try {
       const buffer = Buffer.alloc(length);
@@ -73,7 +60,7 @@ export class StreamRuntime {
     }
   }
 
-  public static async fwrite(stream: PHPFileStream, data: any, length?: number): Promise<number | false> {
+  public static async fwrite(ctx: PHPContext | null, stream: PHPFileStream, data: any, length?: number): Promise<number | false> {
     if (!stream?.isResource) return false;
     try {
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""));
@@ -84,7 +71,7 @@ export class StreamRuntime {
     }
   }
 
-  public static async stream_get_contents(stream: any, maxLength = -1, offset = -1): Promise<string | false> {
+  public static async stream_get_contents(ctx: PHPContext | null, stream: any, maxLength = -1, offset = -1): Promise<string | false> {
     try {
       if (typeof stream === "string") {
         return await fs.readFile(stream, "utf8");
@@ -102,14 +89,30 @@ export class StreamRuntime {
     }
   }
 
-  public static stream_get_wrappers(): string[] {
+  public static stream_get_wrappers(ctx?: PHPContext): string[] {
     return ["file", "http", "https", "ftp", "ftps", "compress.zlib", "compress.bzip2", "php", "data", "glob", "phar"];
   }
 
-  public static stream_is_local(stream: any): boolean {
+  public static stream_is_local(ctx: PHPContext | null, stream: any): boolean {
     if (typeof stream === "string") {
       return !stream.includes("://") || stream.startsWith("file://");
     }
     return true;
+  }
+
+  static functions = {
+    "fopen": StreamRuntime.fopen,
+    "fclose": StreamRuntime.fclose,
+    "fread": StreamRuntime.fread,
+    "fwrite": StreamRuntime.fwrite,
+    "fputs": StreamRuntime.fwrite,
+    "stream_context_create": StreamRuntime.stream_context_create,
+    "stream_get_contents": StreamRuntime.stream_get_contents,
+    "stream_get_wrappers": StreamRuntime.stream_get_wrappers,
+    "stream_is_local": StreamRuntime.stream_is_local,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(StreamRuntime.functions);
   }
 }

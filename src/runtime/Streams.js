@@ -45,19 +45,7 @@ class PHPStreamContext {
 }
 exports.PHPStreamContext = PHPStreamContext;
 class StreamRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("fopen", async (ctx, filename, mode) => StreamRuntime.fopen(ctx, filename, mode));
-        register("fclose", async (ctx, stream) => StreamRuntime.fclose(stream));
-        register("fread", async (ctx, stream, length) => StreamRuntime.fread(stream, length));
-        register("fwrite", async (ctx, stream, data, length) => StreamRuntime.fwrite(stream, data, length));
-        register("fputs", async (ctx, stream, data, length) => StreamRuntime.fwrite(stream, data, length));
-        register("stream_context_create", (ctx, options = {}) => StreamRuntime.stream_context_create(options));
-        register("stream_get_contents", async (ctx, stream, maximum = -1, offset = -1) => StreamRuntime.stream_get_contents(stream, maximum, offset));
-        register("stream_get_wrappers", () => StreamRuntime.stream_get_wrappers());
-        register("stream_is_local", (ctx, stream) => StreamRuntime.stream_is_local(stream));
-    }
-    static stream_context_create(options = {}) {
+    static stream_context_create(ctx, options = {}) {
         return new PHPStreamContext(options);
     }
     static async fopen(ctx, filename, mode) {
@@ -78,7 +66,7 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fclose(stream) {
+    static async fclose(ctx, stream) {
         if (!stream?.isResource)
             return false;
         try {
@@ -90,7 +78,7 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fread(stream, length) {
+    static async fread(ctx, stream, length) {
         if (!stream?.isResource || length < 0)
             return false;
         try {
@@ -102,7 +90,7 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fwrite(stream, data, length) {
+    static async fwrite(ctx, stream, data, length) {
         if (!stream?.isResource)
             return false;
         try {
@@ -114,7 +102,7 @@ class StreamRuntime {
             return false;
         }
     }
-    static async stream_get_contents(stream, maxLength = -1, offset = -1) {
+    static async stream_get_contents(ctx, stream, maxLength = -1, offset = -1) {
         try {
             if (typeof stream === "string") {
                 return await fs.readFile(stream, "utf8");
@@ -133,14 +121,28 @@ class StreamRuntime {
             return false;
         }
     }
-    static stream_get_wrappers() {
+    static stream_get_wrappers(ctx) {
         return ["file", "http", "https", "ftp", "ftps", "compress.zlib", "compress.bzip2", "php", "data", "glob", "phar"];
     }
-    static stream_is_local(stream) {
+    static stream_is_local(ctx, stream) {
         if (typeof stream === "string") {
             return !stream.includes("://") || stream.startsWith("file://");
         }
         return true;
+    }
+    static functions = {
+        "fopen": StreamRuntime.fopen,
+        "fclose": StreamRuntime.fclose,
+        "fread": StreamRuntime.fread,
+        "fwrite": StreamRuntime.fwrite,
+        "fputs": StreamRuntime.fwrite,
+        "stream_context_create": StreamRuntime.stream_context_create,
+        "stream_get_contents": StreamRuntime.stream_get_contents,
+        "stream_get_wrappers": StreamRuntime.stream_get_wrappers,
+        "stream_is_local": StreamRuntime.stream_is_local,
+    };
+    static register(engine) {
+        engine.registerFunctions(StreamRuntime.functions);
     }
 }
 exports.StreamRuntime = StreamRuntime;

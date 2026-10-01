@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PCREExtension = void 0;
 const PHPExtension_1 = require("../PHPExtension");
+const Reflection_1 = require("../runtime/Reflection");
 class PCREExtension extends PHPExtension_1.PHPExtension {
     name = "pcre";
     compilePattern(pattern, global = false, offsets = false) {
@@ -35,8 +36,10 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
         return result;
     }
     storeMatches(ctx, target, matches) {
-        ctx.setInternalVar("lastPregMatches", matches);
-        if (target && typeof target === "object") {
+        if (target && typeof target.set === "function") {
+            target.set(matches);
+        }
+        else if (target && typeof target === "object") {
             for (const key of Object.keys(target))
                 delete target[key];
             if (Array.isArray(target))
@@ -54,6 +57,10 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
             PREG_INTERNAL_ERROR: 1,
         };
         this.functions = {
+            /**
+             * Perform a regular expression match.
+             * @param matchesObj Output variable passed by reference to receive match results.
+             */
             preg_match: (ctx, pattern, subject, matchesObj, flags = 0, offset = 0) => {
                 try {
                     const input = String(subject ?? "");
@@ -70,6 +77,10 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
                     return false;
                 }
             },
+            /**
+             * Perform a global regular expression match.
+             * @param matchesObj Output variable passed by reference to receive all match results.
+             */
             preg_match_all: (ctx, pattern, subject, matchesObj, flags = 1, offset = 0) => {
                 try {
                     const input = String(subject ?? "");
@@ -139,6 +150,14 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
             preg_last_error: (ctx) => ctx.getInternalVar("lastPregError") || 0,
             preg_last_error_msg: (ctx) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
         };
+        (0, Reflection_1.defineFunction)(this.functions.preg_match, {
+            name: "preg_match",
+            parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
+        });
+        (0, Reflection_1.defineFunction)(this.functions.preg_match_all, {
+            name: "preg_match_all",
+            parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
+        });
     }
 }
 exports.PCREExtension = PCREExtension;

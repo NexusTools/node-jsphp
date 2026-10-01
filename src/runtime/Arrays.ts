@@ -3,26 +3,26 @@ import type { PHPEngine } from "../PHPEngine";
 import { PHPFatalError } from "./PHPError";
 
 export class ArrayRuntime {
-  public static count(arrayOrCountable: any): number {
+  public static count(ctx: PHPContext, arrayOrCountable: any): number {
     if (!arrayOrCountable) return 0;
     if (Array.isArray(arrayOrCountable)) return arrayOrCountable.length;
     if (typeof arrayOrCountable === "object") return Object.keys(arrayOrCountable).length;
     return 1;
   }
 
-  public static array_keys(input: any): any[] {
+  public static array_keys(ctx: PHPContext, input: any): any[] {
     if (!input || typeof input !== "object") return [];
     if (Array.isArray(input)) return input.map((_, i) => i);
     return Object.keys(input);
   }
 
-  public static array_values(input: any): any[] {
+  public static array_values(ctx: PHPContext, input: any): any[] {
     if (!input || typeof input !== "object") return [];
     if (Array.isArray(input)) return [...input];
     return Object.values(input);
   }
 
-  public static array_flip(input: any): Record<string, any> {
+  public static array_flip(ctx: PHPContext, input: any): Record<string, any> {
     const res: Record<string, any> = {};
     if (!input || typeof input !== "object") return res;
     for (const [k, v] of Object.entries(input)) {
@@ -31,12 +31,12 @@ export class ArrayRuntime {
     return res;
   }
 
-  public static array_reverse(array: any[]): any[] {
+  public static array_reverse(ctx: PHPContext, array: any[]): any[] {
     if (!Array.isArray(array)) return [];
     return [...array].reverse();
   }
 
-  public static in_array(needle: any, haystack: any, strict = false): boolean {
+  public static in_array(ctx: PHPContext, needle: any, haystack: any, strict = false): boolean {
     if (!haystack) return false;
     const values = Array.isArray(haystack) ? haystack : Object.values(haystack);
     if (strict) {
@@ -45,7 +45,7 @@ export class ArrayRuntime {
     return values.some((v) => v == needle);
   }
 
-  public static array_search(needle: any, haystack: any, strict = false): any | false {
+  public static array_search(ctx: PHPContext, needle: any, haystack: any, strict = false): any | false {
     if (!haystack || typeof haystack !== "object") return false;
     const entries = Array.isArray(haystack)
       ? haystack.map((v, i) => [i, v])
@@ -59,12 +59,12 @@ export class ArrayRuntime {
     return false;
   }
 
-  public static array_key_exists(key: any, search: any): boolean {
+  public static array_key_exists(ctx: PHPContext, key: any, search: any): boolean {
     if (!search || typeof search !== "object") return false;
     return key in search;
   }
 
-  public static array_merge(...arrays: any[]): any {
+  public static array_merge(ctx: PHPContext, ...arrays: any[]): any {
     if (arrays.every((a) => Array.isArray(a))) {
       return ([] as any[]).concat(...arrays);
     }
@@ -77,7 +77,7 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_combine(keys: any[], values: any[]): Record<string, any> | false {
+  public static array_combine(ctx: PHPContext, keys: any[], values: any[]): Record<string, any> | false {
     if (!Array.isArray(keys) || !Array.isArray(values) || keys.length !== values.length) {
       return false;
     }
@@ -88,7 +88,7 @@ export class ArrayRuntime {
     return res;
   }
 
-  public static array_fill(startIndex: number, count: number, value: any): any[] | Record<string, any> {
+  public static array_fill(ctx: PHPContext, startIndex: number, count: number, value: any): any[] | Record<string, any> {
     if (count < 0) throw new PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
     if (count === 0 || startIndex === 0) return Array.from({ length: count }, () => value);
     const result: Record<string, any> = {};
@@ -96,7 +96,7 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_fill_keys(keys: any, value: any): Record<string, any> {
+  public static array_fill_keys(ctx: PHPContext, keys: any, value: any): Record<string, any> {
     const result: Record<string, any> = {};
     if (!keys || typeof keys !== "object") return result;
     for (const key of Array.isArray(keys) ? keys : Object.values(keys)) {
@@ -105,7 +105,7 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_intersect(array: any, ...others: any[]): any {
+  public static array_intersect(ctx: PHPContext, array: any, ...others: any[]): any {
     if (!array || typeof array !== "object") return [];
     const values = others.map((other) => new Set(Object.values(other || {})));
     if (values.length === 0) return Array.isArray(array) ? [...array] : { ...array };
@@ -119,7 +119,7 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_slice(array: any[], offset: number, length?: number): any[] {
+  public static array_slice(ctx: PHPContext, array: any[], offset: number, length?: number): any[] {
     if (!Array.isArray(array)) return [];
     if (length !== undefined) {
       return array.slice(offset, offset + length);
@@ -127,29 +127,29 @@ export class ArrayRuntime {
     return array.slice(offset);
   }
 
-  public static array_push(array: any[], ...varargs: any[]): number {
+  public static array_push(ctx: PHPContext, array: any[], ...varargs: any[]): number {
     if (!Array.isArray(array)) return 0;
     array.push(...varargs);
     return array.length;
   }
 
-  public static array_pop(array: any[]): any {
+  public static array_pop(ctx: PHPContext, array: any[]): any {
     if (!Array.isArray(array)) return null;
     return array.pop();
   }
 
-  public static array_shift(array: any[]): any {
+  public static array_shift(ctx: PHPContext, array: any[]): any {
     if (!Array.isArray(array)) return null;
     return array.shift();
   }
 
-  public static array_unshift(array: any[], ...varargs: any[]): number {
+  public static array_unshift(ctx: PHPContext, array: any[], ...varargs: any[]): number {
     if (!Array.isArray(array)) return 0;
     array.unshift(...varargs);
     return array.length;
   }
 
-  public static array_unique(array: any): any {
+  public static array_unique(ctx: PHPContext, array: any): any {
     if (!array || typeof array !== "object") {
       return Array.isArray(array) ? [] : {};
     }
@@ -167,24 +167,24 @@ export class ArrayRuntime {
     return res;
   }
 
-  public static array_column(array: any[], columnKey: string | number): any[] {
+  public static array_column(ctx: PHPContext, array: any[], columnKey: string | number): any[] {
     if (!Array.isArray(array)) return [];
     return array.map((item) => item?.[columnKey]).filter((v) => v !== undefined);
   }
 
-  public static sort(array: any[]): boolean {
+  public static sort(ctx: PHPContext, array: any[]): boolean {
     if (!Array.isArray(array)) return false;
     array.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
     return true;
   }
 
-  public static rsort(array: any[]): boolean {
+  public static rsort(ctx: PHPContext, array: any[]): boolean {
     if (!Array.isArray(array)) return false;
     array.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
     return true;
   }
 
-  public static ksort(array: any, flags = 0): boolean {
+  public static ksort(ctx: PHPContext, array: any, flags = 0): boolean {
     if (!array || typeof array !== "object") return false;
     const entries = Object.entries(array).sort(([left], [right]) => {
       if (flags === 1) return left.localeCompare(right);
@@ -251,50 +251,53 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_key_first(array: any): any | null {
+  public static array_key_first(ctx: PHPContext, array: any): any | null {
     if (!array || typeof array !== "object") return null;
     if (Array.isArray(array)) return array.length > 0 ? 0 : null;
     const keys = Object.keys(array);
     return keys.length > 0 ? keys[0] : null;
   }
 
-  public static array_key_last(array: any): any | null {
+  public static array_key_last(ctx: PHPContext, array: any): any | null {
     if (!array || typeof array !== "object") return null;
     if (Array.isArray(array)) return array.length > 0 ? array.length - 1 : null;
     const keys = Object.keys(array);
     return keys.length > 0 ? keys[keys.length - 1] : null;
   }
 
+  static functions = {
+    "count": ArrayRuntime.count,
+    "sizeof": ArrayRuntime.count,
+    "array_keys": ArrayRuntime.array_keys,
+    "array_values": ArrayRuntime.array_values,
+    "array_flip": ArrayRuntime.array_flip,
+    "array_reverse": ArrayRuntime.array_reverse,
+    "in_array": ArrayRuntime.in_array,
+    "array_search": ArrayRuntime.array_search,
+    "array_key_exists": ArrayRuntime.array_key_exists,
+    "key_exists": ArrayRuntime.array_key_exists,
+    "array_merge": ArrayRuntime.array_merge,
+    "array_combine": ArrayRuntime.array_combine,
+    "array_fill_keys": ArrayRuntime.array_fill_keys,
+    "array_fill": ArrayRuntime.array_fill,
+    "array_intersect": ArrayRuntime.array_intersect,
+    "array_slice": ArrayRuntime.array_slice,
+    "array_push": ArrayRuntime.array_push,
+    "array_pop": ArrayRuntime.array_pop,
+    "array_shift": ArrayRuntime.array_shift,
+    "array_unshift": ArrayRuntime.array_unshift,
+    "array_unique": ArrayRuntime.array_unique,
+    "array_column": ArrayRuntime.array_column,
+    "sort": ArrayRuntime.sort,
+    "rsort": ArrayRuntime.rsort,
+    "ksort": ArrayRuntime.ksort,
+    "array_map": ArrayRuntime.array_map,
+    "array_filter": ArrayRuntime.array_filter,
+    "array_key_first": ArrayRuntime.array_key_first,
+    "array_key_last": ArrayRuntime.array_key_last,
+  };
+
   public static register(engine: PHPEngine): void {
-  const register = engine.registerFunction.bind(engine);
-  register("count", (ctx: PHPContext, value: any) => ArrayRuntime.count(value));
-  register("sizeof", (ctx: PHPContext, value: any) => ArrayRuntime.count(value));
-  register("array_keys", (ctx: PHPContext, value: any) => ArrayRuntime.array_keys(value));
-  register("array_values", (ctx: PHPContext, value: any) => ArrayRuntime.array_values(value));
-  register("array_flip", (ctx: PHPContext, value: any) => ArrayRuntime.array_flip(value));
-  register("array_reverse", (ctx: PHPContext, value: any) => ArrayRuntime.array_reverse(value));
-  register("in_array", (ctx: PHPContext, needle: any, haystack: any, strict = false) => ArrayRuntime.in_array(needle, haystack, strict));
-  register("array_search", (ctx: PHPContext, needle: any, haystack: any, strict = false) => ArrayRuntime.array_search(needle, haystack, strict));
-  register("array_key_exists", (ctx: PHPContext, key: any, value: any) => ArrayRuntime.array_key_exists(key, value));
-  register("key_exists", (ctx: PHPContext, key: any, value: any) => ArrayRuntime.array_key_exists(key, value));
-  register("array_merge", (ctx: PHPContext, ...values: any[]) => ArrayRuntime.array_merge(...values));
-  register("array_combine", (ctx: PHPContext, keys: any[], values: any[]) => ArrayRuntime.array_combine(keys, values));
-  register("array_fill_keys", (ctx: PHPContext, keys: any, value: any) => ArrayRuntime.array_fill_keys(keys, value));
-  register("array_fill", (ctx: PHPContext, start: number, count: number, value: any) => ArrayRuntime.array_fill(start, count, value));
-  register("array_intersect", (ctx: PHPContext, value: any, ...others: any[]) => ArrayRuntime.array_intersect(value, ...others));
-  register("array_slice", (ctx: PHPContext, value: any[], offset: number, length?: number) => ArrayRuntime.array_slice(value, offset, length));
-  register("array_push", (ctx: PHPContext, value: any[], ...items: any[]) => ArrayRuntime.array_push(value, ...items));
-  register("array_pop", (ctx: PHPContext, value: any[]) => ArrayRuntime.array_pop(value));
-  register("array_shift", (ctx: PHPContext, value: any[]) => ArrayRuntime.array_shift(value));
-  register("array_unshift", (ctx: PHPContext, value: any[], ...items: any[]) => ArrayRuntime.array_unshift(value, ...items));
-  register("array_unique", (ctx: PHPContext, value: any) => ArrayRuntime.array_unique(value));
-  register("array_column", (ctx: PHPContext, value: any[], column: any) => ArrayRuntime.array_column(value, column));
-  register("sort", (ctx: PHPContext, value: any[]) => ArrayRuntime.sort(value));
-  register("rsort", (ctx: PHPContext, value: any[]) => ArrayRuntime.rsort(value));
-  register("ksort", (ctx: PHPContext, value: any, flags = 0) => ArrayRuntime.ksort(value, flags));
-  register("array_map", async (ctx: PHPContext, callback: any, ...values: any[]) => ArrayRuntime.array_map(ctx, callback, ...values));
-  register("array_filter", async (ctx: PHPContext, value: any, callback?: any, mode = 0) => ArrayRuntime.array_filter(ctx, value, callback, mode));
-  register("array_key_first", (ctx: PHPContext, value: any) => ArrayRuntime.array_key_first(value));
-  register("array_key_last", (ctx: PHPContext, value: any) => ArrayRuntime.array_key_last(value));
-    }
+    engine.registerFunctions(ArrayRuntime.functions);
   }
+}

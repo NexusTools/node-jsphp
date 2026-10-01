@@ -39,55 +39,25 @@ const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const glob_1 = require("glob");
 class FileSystemRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        for (const [name, value] of Object.entries({ GLOB_ERR: 1, GLOB_MARK: 2, GLOB_NOSORT: 4, GLOB_NOCHECK: 16, GLOB_NOESCAPE: 64, GLOB_BRACE: 1024, GLOB_ONLYDIR: 8192 })) {
-            engine.registerConstant(name, value);
-        }
-        register("glob", async (ctx, pattern, flags = 0) => FileSystemRuntime.glob(pattern, flags, ctx.cwd));
-        register("fileowner", async (ctx, filename) => FileSystemRuntime.fileowner(path.resolve(ctx.cwd, filename)));
-        register("fileperms", async (ctx, filename) => FileSystemRuntime.fileperms(path.resolve(ctx.cwd, filename)));
-        register("file", async (ctx, path, flags = 0) => await FileSystemRuntime.file(path, flags));
-        register("file_get_contents", async (ctx, path) => await FileSystemRuntime.file_get_contents(path));
-        register("file_put_contents", async (ctx, path, data, flags = 0) => await FileSystemRuntime.file_put_contents(path, data, flags));
-        register("file_exists", async (ctx, path) => await FileSystemRuntime.file_exists(path));
-        register("is_dir", async (ctx, path) => await FileSystemRuntime.is_dir(path));
-        register("is_file", async (ctx, path) => await FileSystemRuntime.is_file(path));
-        register("is_readable", async (ctx, path) => await FileSystemRuntime.is_readable(path));
-        register("is_writable", async (ctx, path) => await FileSystemRuntime.is_writable(path));
-        register("filesize", async (ctx, path) => await FileSystemRuntime.filesize(path));
-        register("filemtime", async (ctx, path) => await FileSystemRuntime.filemtime(path));
-        register("realpath", async (ctx, path) => await FileSystemRuntime.realpath(path));
-        register("basename", (ctx, path, suffix) => FileSystemRuntime.basename(path, suffix));
-        register("dirname", (ctx, path) => FileSystemRuntime.dirname(path));
-        register("pathinfo", (ctx, path, flags = 15) => FileSystemRuntime.pathinfo(path, flags));
-        register("mkdir", async (ctx, path, mode = 0o777, recursive = false) => await FileSystemRuntime.mkdir(path, mode, recursive));
-        register("rmdir", async (ctx, path) => await FileSystemRuntime.rmdir(path));
-        register("unlink", async (ctx, path) => await FileSystemRuntime.unlink(path));
-        register("rename", async (ctx, oldPath, newPath) => await FileSystemRuntime.rename(oldPath, newPath));
-        register("copy", async (ctx, source, destination) => await FileSystemRuntime.copy(source, destination));
-        register("tempnam", async (ctx, directory, prefix) => await FileSystemRuntime.tempnam(directory, prefix));
-        register("sys_get_temp_dir", () => FileSystemRuntime.sys_get_temp_dir());
-        register("scandir", async (ctx, path) => await FileSystemRuntime.scandir(path));
-    }
-    static async fileowner(filename) {
+    static async fileowner(ctx, filename) {
         try {
-            return (await fs.stat(filename)).uid;
+            return (await fs.stat(path.resolve(ctx.cwd, filename))).uid;
         }
         catch {
             return false;
         }
     }
-    static async fileperms(filename) {
+    static async fileperms(ctx, filename) {
         try {
-            return (await fs.stat(filename)).mode;
+            return (await fs.stat(path.resolve(ctx.cwd, filename))).mode;
         }
         catch {
             return false;
         }
     }
-    static async glob(pattern, flags = 0, cwd = process.cwd()) {
+    static async glob(ctx, pattern, flags = 0) {
         try {
+            const cwd = ctx.cwd;
             const normalizedPattern = process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
             let matches = await (0, glob_1.glob)(normalizedPattern, {
                 cwd,
@@ -116,7 +86,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file(filepath, flags = 0) {
+    static async file(ctx, filepath, flags = 0) {
         try {
             const content = await fs.readFile(filepath, "utf8");
             const lines = content.split("\n").map((line, idx, arr) => (idx < arr.length - 1 ? line + "\n" : line));
@@ -129,7 +99,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file_get_contents(filepath) {
+    static async file_get_contents(ctx, filepath) {
         try {
             return await fs.readFile(filepath, "utf8");
         }
@@ -137,7 +107,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file_put_contents(filepath, data, flags = 0) {
+    static async file_put_contents(ctx, filepath, data, flags = 0) {
         try {
             const str = typeof data === "string" || Buffer.isBuffer(data) ? data : String(data ?? "");
             if (flags & 8) { // FILE_APPEND = 8
@@ -152,7 +122,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file_exists(filepath) {
+    static async file_exists(ctx, filepath) {
         try {
             await fs.access(filepath);
             return true;
@@ -161,7 +131,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_dir(filepath) {
+    static async is_dir(ctx, filepath) {
         try {
             const stat = await fs.stat(filepath);
             return stat.isDirectory();
@@ -170,7 +140,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_file(filepath) {
+    static async is_file(ctx, filepath) {
         try {
             const stat = await fs.stat(filepath);
             return stat.isFile();
@@ -179,7 +149,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_readable(filepath) {
+    static async is_readable(ctx, filepath) {
         try {
             await fs.access(filepath, fs.constants.R_OK);
             return true;
@@ -188,7 +158,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_writable(filepath) {
+    static async is_writable(ctx, filepath) {
         try {
             await fs.access(filepath, fs.constants.W_OK);
             return true;
@@ -197,7 +167,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async filesize(filepath) {
+    static async filesize(ctx, filepath) {
         try {
             const stat = await fs.stat(filepath);
             return stat.size;
@@ -206,7 +176,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async filemtime(filepath) {
+    static async filemtime(ctx, filepath) {
         try {
             const stat = await fs.stat(filepath);
             return Math.floor(stat.mtimeMs / 1000);
@@ -215,7 +185,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async realpath(filepath) {
+    static async realpath(ctx, filepath) {
         try {
             return await fs.realpath(filepath);
         }
@@ -223,7 +193,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static basename(filepath, suffix) {
+    static basename(ctx, filepath, suffix) {
         const normalized = String(filepath ?? "").replace(/\\/g, "/");
         let base = path.basename(normalized);
         if (suffix && base.endsWith(suffix)) {
@@ -231,10 +201,10 @@ class FileSystemRuntime {
         }
         return base;
     }
-    static dirname(filepath) {
+    static dirname(ctx, filepath) {
         return path.dirname(filepath);
     }
-    static pathinfo(filepath, flags = 15) {
+    static pathinfo(ctx, filepath, flags = 15) {
         const parsed = path.parse(filepath);
         return {
             dirname: parsed.dir,
@@ -243,7 +213,7 @@ class FileSystemRuntime {
             filename: parsed.name,
         };
     }
-    static async mkdir(dirpath, mode = 0o777, recursive = false) {
+    static async mkdir(ctx, dirpath, mode = 0o777, recursive = false) {
         try {
             await fs.mkdir(dirpath, { recursive, mode });
             return true;
@@ -252,7 +222,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async rmdir(dirpath) {
+    static async rmdir(ctx, dirpath) {
         try {
             await fs.rmdir(dirpath);
             return true;
@@ -261,7 +231,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async unlink(filepath) {
+    static async unlink(ctx, filepath) {
         try {
             await fs.unlink(filepath);
             return true;
@@ -270,7 +240,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async rename(oldname, newname) {
+    static async rename(ctx, oldname, newname) {
         try {
             await fs.rename(oldname, newname);
             return true;
@@ -279,7 +249,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async copy(source, dest) {
+    static async copy(ctx, source, dest) {
         try {
             await fs.copyFile(source, dest);
             return true;
@@ -288,7 +258,7 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async tempnam(dir, prefix) {
+    static async tempnam(ctx, dir, prefix) {
         try {
             const name = path.join(dir, `${prefix}${Math.random().toString(36).substring(2)}`);
             await fs.writeFile(name, "");
@@ -298,16 +268,56 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static sys_get_temp_dir() {
+    static sys_get_temp_dir(ctx) {
         return os.tmpdir();
     }
-    static async scandir(dirpath) {
+    static async scandir(ctx, dirpath) {
         try {
             return await fs.readdir(dirpath);
         }
         catch {
             return false;
         }
+    }
+    static constants = {
+        GLOB_ERR: 1,
+        GLOB_MARK: 2,
+        GLOB_NOSORT: 4,
+        GLOB_NOCHECK: 16,
+        GLOB_NOESCAPE: 64,
+        GLOB_BRACE: 1024,
+        GLOB_ONLYDIR: 8192,
+    };
+    static functions = {
+        "glob": FileSystemRuntime.glob,
+        "fileowner": FileSystemRuntime.fileowner,
+        "fileperms": FileSystemRuntime.fileperms,
+        "file": FileSystemRuntime.file,
+        "file_get_contents": FileSystemRuntime.file_get_contents,
+        "file_put_contents": FileSystemRuntime.file_put_contents,
+        "file_exists": FileSystemRuntime.file_exists,
+        "is_dir": FileSystemRuntime.is_dir,
+        "is_file": FileSystemRuntime.is_file,
+        "is_readable": FileSystemRuntime.is_readable,
+        "is_writable": FileSystemRuntime.is_writable,
+        "filesize": FileSystemRuntime.filesize,
+        "filemtime": FileSystemRuntime.filemtime,
+        "realpath": FileSystemRuntime.realpath,
+        "basename": FileSystemRuntime.basename,
+        "dirname": FileSystemRuntime.dirname,
+        "pathinfo": FileSystemRuntime.pathinfo,
+        "mkdir": FileSystemRuntime.mkdir,
+        "rmdir": FileSystemRuntime.rmdir,
+        "unlink": FileSystemRuntime.unlink,
+        "rename": FileSystemRuntime.rename,
+        "copy": FileSystemRuntime.copy,
+        "tempnam": FileSystemRuntime.tempnam,
+        "sys_get_temp_dir": FileSystemRuntime.sys_get_temp_dir,
+        "scandir": FileSystemRuntime.scandir,
+    };
+    static register(engine) {
+        engine.registerConstants(FileSystemRuntime.constants);
+        engine.registerFunctions(FileSystemRuntime.functions);
     }
 }
 exports.FileSystemRuntime = FileSystemRuntime;

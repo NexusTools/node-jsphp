@@ -1,15 +1,12 @@
-import { PHPLineLocation } from "../runtime/SourceMapRegistry";
 import type { PHPEngine } from "../PHPEngine";
-export interface TranspilerOptions {
-    engineSHA1: string;
-    cacheDir?: string | null;
-    engine: PHPEngine;
+export interface TranspileOptions {
+    engineSHA1?: string;
+    cacheDir?: string;
+    engine?: PHPEngine;
 }
 export interface TranspilationResult {
     code: string;
-    map: string;
-    cached: boolean;
-    lineMap: Map<number, PHPLineLocation>;
+    map?: string;
 }
 export declare class JSTranspiler {
     private parser;
@@ -17,13 +14,11 @@ export declare class JSTranspiler {
     private currentNamespaceName;
     private classImports;
     constructor();
-    transpile(sourceCode: string, filepath: string, options: TranspilerOptions): TranspilationResult;
-    private sleepSync;
+    transpile(code: string, filepath?: string, options?: TranspileOptions): TranspilationResult;
     private transpileNodeList;
-    private transpileNode;
+    private transpileStmt;
     private orderClassConstants;
     private getConstName;
     private transpileClassReference;
     private transpileExpr;
-    private transpileTarget;
 }

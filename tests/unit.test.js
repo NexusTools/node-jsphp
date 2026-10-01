@@ -47,7 +47,7 @@ describe("PHPEngine & AST Unit Tests", () => {
     });
     test("Does not register WordPress userland functions as PHP built-ins", () => {
         for (const name of ["is_robots", "is_favicon", "is_feed", "is_trackback", "is_embed"]) {
-            expect(engine.functions.has(name)).toBe(false);
+            expect(name in engine.functions).toBe(false);
         }
     });
     test("Does not synchronously write execution traces by default", async () => {
@@ -210,6 +210,19 @@ describe("PHPEngine & AST Unit Tests", () => {
       echo add(10) . ';' . add(10, 20);
     `);
         expect(out).toBe("15;30");
+    });
+    test("Propagates by-reference output variables through nested PHP functions", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      function set_output(&$output) { $output = array('value' => 42); }
+      function forward_output(&$result) { set_output($result); $result['extra'] = 'yes'; }
+      function leave_unchanged($value) { $value = 'local'; }
+      forward_output($result);
+      $value = 'caller';
+      leave_unchanged($value);
+      echo $result['value'] . ';' . $result['extra'] . ';' . $value;
+    `);
+        expect(ctx.outputText).toBe("42;yes;caller");
     });
     test("Executes PHP class instantiation and method invocation", async () => {
         let out = "";

@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArrayRuntime = void 0;
 const PHPError_1 = require("./PHPError");
 class ArrayRuntime {
-    static count(arrayOrCountable) {
+    static count(ctx, arrayOrCountable) {
         if (!arrayOrCountable)
             return 0;
         if (Array.isArray(arrayOrCountable))
@@ -12,21 +12,21 @@ class ArrayRuntime {
             return Object.keys(arrayOrCountable).length;
         return 1;
     }
-    static array_keys(input) {
+    static array_keys(ctx, input) {
         if (!input || typeof input !== "object")
             return [];
         if (Array.isArray(input))
             return input.map((_, i) => i);
         return Object.keys(input);
     }
-    static array_values(input) {
+    static array_values(ctx, input) {
         if (!input || typeof input !== "object")
             return [];
         if (Array.isArray(input))
             return [...input];
         return Object.values(input);
     }
-    static array_flip(input) {
+    static array_flip(ctx, input) {
         const res = {};
         if (!input || typeof input !== "object")
             return res;
@@ -35,12 +35,12 @@ class ArrayRuntime {
         }
         return res;
     }
-    static array_reverse(array) {
+    static array_reverse(ctx, array) {
         if (!Array.isArray(array))
             return [];
         return [...array].reverse();
     }
-    static in_array(needle, haystack, strict = false) {
+    static in_array(ctx, needle, haystack, strict = false) {
         if (!haystack)
             return false;
         const values = Array.isArray(haystack) ? haystack : Object.values(haystack);
@@ -49,7 +49,7 @@ class ArrayRuntime {
         }
         return values.some((v) => v == needle);
     }
-    static array_search(needle, haystack, strict = false) {
+    static array_search(ctx, needle, haystack, strict = false) {
         if (!haystack || typeof haystack !== "object")
             return false;
         const entries = Array.isArray(haystack)
@@ -62,12 +62,12 @@ class ArrayRuntime {
         }
         return false;
     }
-    static array_key_exists(key, search) {
+    static array_key_exists(ctx, key, search) {
         if (!search || typeof search !== "object")
             return false;
         return key in search;
     }
-    static array_merge(...arrays) {
+    static array_merge(ctx, ...arrays) {
         if (arrays.every((a) => Array.isArray(a))) {
             return [].concat(...arrays);
         }
@@ -79,7 +79,7 @@ class ArrayRuntime {
         }
         return result;
     }
-    static array_combine(keys, values) {
+    static array_combine(ctx, keys, values) {
         if (!Array.isArray(keys) || !Array.isArray(values) || keys.length !== values.length) {
             return false;
         }
@@ -89,7 +89,7 @@ class ArrayRuntime {
         });
         return res;
     }
-    static array_fill(startIndex, count, value) {
+    static array_fill(ctx, startIndex, count, value) {
         if (count < 0)
             throw new PHPError_1.PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
         if (count === 0 || startIndex === 0)
@@ -99,7 +99,7 @@ class ArrayRuntime {
             result[startIndex + offset] = value;
         return result;
     }
-    static array_fill_keys(keys, value) {
+    static array_fill_keys(ctx, keys, value) {
         const result = {};
         if (!keys || typeof keys !== "object")
             return result;
@@ -108,7 +108,7 @@ class ArrayRuntime {
         }
         return result;
     }
-    static array_intersect(array, ...others) {
+    static array_intersect(ctx, array, ...others) {
         if (!array || typeof array !== "object")
             return [];
         const values = others.map((other) => new Set(Object.values(other || {})));
@@ -125,7 +125,7 @@ class ArrayRuntime {
         }
         return result;
     }
-    static array_slice(array, offset, length) {
+    static array_slice(ctx, array, offset, length) {
         if (!Array.isArray(array))
             return [];
         if (length !== undefined) {
@@ -133,29 +133,29 @@ class ArrayRuntime {
         }
         return array.slice(offset);
     }
-    static array_push(array, ...varargs) {
+    static array_push(ctx, array, ...varargs) {
         if (!Array.isArray(array))
             return 0;
         array.push(...varargs);
         return array.length;
     }
-    static array_pop(array) {
+    static array_pop(ctx, array) {
         if (!Array.isArray(array))
             return null;
         return array.pop();
     }
-    static array_shift(array) {
+    static array_shift(ctx, array) {
         if (!Array.isArray(array))
             return null;
         return array.shift();
     }
-    static array_unshift(array, ...varargs) {
+    static array_unshift(ctx, array, ...varargs) {
         if (!Array.isArray(array))
             return 0;
         array.unshift(...varargs);
         return array.length;
     }
-    static array_unique(array) {
+    static array_unique(ctx, array) {
         if (!array || typeof array !== "object") {
             return Array.isArray(array) ? [] : {};
         }
@@ -172,24 +172,24 @@ class ArrayRuntime {
         }
         return res;
     }
-    static array_column(array, columnKey) {
+    static array_column(ctx, array, columnKey) {
         if (!Array.isArray(array))
             return [];
         return array.map((item) => item?.[columnKey]).filter((v) => v !== undefined);
     }
-    static sort(array) {
+    static sort(ctx, array) {
         if (!Array.isArray(array))
             return false;
         array.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
         return true;
     }
-    static rsort(array) {
+    static rsort(ctx, array) {
         if (!Array.isArray(array))
             return false;
         array.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
         return true;
     }
-    static ksort(array, flags = 0) {
+    static ksort(ctx, array, flags = 0) {
         if (!array || typeof array !== "object")
             return false;
         const entries = Object.entries(array).sort(([left], [right]) => {
@@ -265,7 +265,7 @@ class ArrayRuntime {
         }
         return result;
     }
-    static array_key_first(array) {
+    static array_key_first(ctx, array) {
         if (!array || typeof array !== "object")
             return null;
         if (Array.isArray(array))
@@ -273,7 +273,7 @@ class ArrayRuntime {
         const keys = Object.keys(array);
         return keys.length > 0 ? keys[0] : null;
     }
-    static array_key_last(array) {
+    static array_key_last(ctx, array) {
         if (!array || typeof array !== "object")
             return null;
         if (Array.isArray(array))
@@ -281,37 +281,39 @@ class ArrayRuntime {
         const keys = Object.keys(array);
         return keys.length > 0 ? keys[keys.length - 1] : null;
     }
+    static functions = {
+        "count": ArrayRuntime.count,
+        "sizeof": ArrayRuntime.count,
+        "array_keys": ArrayRuntime.array_keys,
+        "array_values": ArrayRuntime.array_values,
+        "array_flip": ArrayRuntime.array_flip,
+        "array_reverse": ArrayRuntime.array_reverse,
+        "in_array": ArrayRuntime.in_array,
+        "array_search": ArrayRuntime.array_search,
+        "array_key_exists": ArrayRuntime.array_key_exists,
+        "key_exists": ArrayRuntime.array_key_exists,
+        "array_merge": ArrayRuntime.array_merge,
+        "array_combine": ArrayRuntime.array_combine,
+        "array_fill_keys": ArrayRuntime.array_fill_keys,
+        "array_fill": ArrayRuntime.array_fill,
+        "array_intersect": ArrayRuntime.array_intersect,
+        "array_slice": ArrayRuntime.array_slice,
+        "array_push": ArrayRuntime.array_push,
+        "array_pop": ArrayRuntime.array_pop,
+        "array_shift": ArrayRuntime.array_shift,
+        "array_unshift": ArrayRuntime.array_unshift,
+        "array_unique": ArrayRuntime.array_unique,
+        "array_column": ArrayRuntime.array_column,
+        "sort": ArrayRuntime.sort,
+        "rsort": ArrayRuntime.rsort,
+        "ksort": ArrayRuntime.ksort,
+        "array_map": ArrayRuntime.array_map,
+        "array_filter": ArrayRuntime.array_filter,
+        "array_key_first": ArrayRuntime.array_key_first,
+        "array_key_last": ArrayRuntime.array_key_last,
+    };
     static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("count", (ctx, value) => ArrayRuntime.count(value));
-        register("sizeof", (ctx, value) => ArrayRuntime.count(value));
-        register("array_keys", (ctx, value) => ArrayRuntime.array_keys(value));
-        register("array_values", (ctx, value) => ArrayRuntime.array_values(value));
-        register("array_flip", (ctx, value) => ArrayRuntime.array_flip(value));
-        register("array_reverse", (ctx, value) => ArrayRuntime.array_reverse(value));
-        register("in_array", (ctx, needle, haystack, strict = false) => ArrayRuntime.in_array(needle, haystack, strict));
-        register("array_search", (ctx, needle, haystack, strict = false) => ArrayRuntime.array_search(needle, haystack, strict));
-        register("array_key_exists", (ctx, key, value) => ArrayRuntime.array_key_exists(key, value));
-        register("key_exists", (ctx, key, value) => ArrayRuntime.array_key_exists(key, value));
-        register("array_merge", (ctx, ...values) => ArrayRuntime.array_merge(...values));
-        register("array_combine", (ctx, keys, values) => ArrayRuntime.array_combine(keys, values));
-        register("array_fill_keys", (ctx, keys, value) => ArrayRuntime.array_fill_keys(keys, value));
-        register("array_fill", (ctx, start, count, value) => ArrayRuntime.array_fill(start, count, value));
-        register("array_intersect", (ctx, value, ...others) => ArrayRuntime.array_intersect(value, ...others));
-        register("array_slice", (ctx, value, offset, length) => ArrayRuntime.array_slice(value, offset, length));
-        register("array_push", (ctx, value, ...items) => ArrayRuntime.array_push(value, ...items));
-        register("array_pop", (ctx, value) => ArrayRuntime.array_pop(value));
-        register("array_shift", (ctx, value) => ArrayRuntime.array_shift(value));
-        register("array_unshift", (ctx, value, ...items) => ArrayRuntime.array_unshift(value, ...items));
-        register("array_unique", (ctx, value) => ArrayRuntime.array_unique(value));
-        register("array_column", (ctx, value, column) => ArrayRuntime.array_column(value, column));
-        register("sort", (ctx, value) => ArrayRuntime.sort(value));
-        register("rsort", (ctx, value) => ArrayRuntime.rsort(value));
-        register("ksort", (ctx, value, flags = 0) => ArrayRuntime.ksort(value, flags));
-        register("array_map", async (ctx, callback, ...values) => ArrayRuntime.array_map(ctx, callback, ...values));
-        register("array_filter", async (ctx, value, callback, mode = 0) => ArrayRuntime.array_filter(ctx, value, callback, mode));
-        register("array_key_first", (ctx, value) => ArrayRuntime.array_key_first(value));
-        register("array_key_last", (ctx, value) => ArrayRuntime.array_key_last(value));
+        engine.registerFunctions(ArrayRuntime.functions);
     }
 }
 exports.ArrayRuntime = ArrayRuntime;

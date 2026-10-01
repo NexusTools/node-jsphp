@@ -2,31 +2,6 @@ import { SourceMapRegistry, PHPLineLocation } from "./SourceMapRegistry";
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
 
-export class ErrorRuntime {
-  public static register(engine: PHPEngine): void {
-    const register = engine.registerFunction.bind(engine);
-    register("debug_backtrace", (ctx: PHPContext) => ctx.getPHPBacktrace());
-    register("debug_print_backtrace", async (ctx: PHPContext) => {
-      const trace = ctx.getPHPBacktrace().map((frame: any, index: number) =>
-        `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`
-      ).join("");
-      await ctx.echo(trace);
-      return trace;
-    });
-    register("set_error_handler", (ctx: PHPContext, handler: any, levels = 32767) => ctx.setErrorHandler(handler, levels));
-    register("restore_error_handler", (ctx: PHPContext) => ctx.restoreErrorHandler());
-    register("trigger_error", async (ctx: PHPContext, message: string, level = 1024) => ctx.triggerError(message, level));
-    register("user_error", async (ctx: PHPContext, message: string, level = 1024) => ctx.triggerError(message, level));
-    register("error_reporting", (ctx: PHPContext, level?: number) => {
-      const previous = ctx.errorReportingLevel;
-      if (level !== undefined) ctx.errorReportingLevel = level;
-      return previous;
-    });
-    engine.registerClass("exception", PHPException);
-    engine.registerClass("errorexception", ErrorException);
-  }
-}
-
 export interface PHPStackFrame {
   file: string;
   line: number;
@@ -193,5 +168,57 @@ export class ErrorException extends PHPError {
 
   public getSeverity(): number {
     return this.severity;
+  }
+}
+
+export class ErrorRuntime {
+  public static debug_backtrace(ctx: PHPContext): any {
+    return ctx.getPHPBacktrace();
+  }
+
+  public static async debug_print_backtrace(ctx: PHPContext): Promise<string> {
+    const trace = ctx.getPHPBacktrace().map((frame: any, index: number) =>
+      `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`
+    ).join("");
+    await ctx.echo(trace);
+    return trace;
+  }
+
+  public static set_error_handler(ctx: PHPContext, handler: any, levels = 32767): any {
+    return ctx.setErrorHandler(handler, levels);
+  }
+
+  public static restore_error_handler(ctx: PHPContext): boolean {
+    return ctx.restoreErrorHandler();
+  }
+
+  public static async trigger_error(ctx: PHPContext, message: string, level = 1024): Promise<boolean> {
+    return await ctx.triggerError(message, level);
+  }
+
+  public static error_reporting(ctx: PHPContext, level?: number): number {
+    const previous = ctx.errorReportingLevel;
+    if (level !== undefined) ctx.errorReportingLevel = level;
+    return previous;
+  }
+
+  static functions = {
+    "debug_backtrace": ErrorRuntime.debug_backtrace,
+    "debug_print_backtrace": ErrorRuntime.debug_print_backtrace,
+    "set_error_handler": ErrorRuntime.set_error_handler,
+    "restore_error_handler": ErrorRuntime.restore_error_handler,
+    "trigger_error": ErrorRuntime.trigger_error,
+    "user_error": ErrorRuntime.trigger_error,
+    "error_reporting": ErrorRuntime.error_reporting,
+  };
+
+  static classes = {
+    "exception": PHPException,
+    "errorexception": ErrorException,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(ErrorRuntime.functions);
+    engine.registerClasses(ErrorRuntime.classes);
   }
 }

@@ -15,7 +15,7 @@ describe("Reflection Runtime Tests", () => {
     const ctx = engine.createContext();
     await ctx.eval("function my_fn($a, $b = 'default') { return $a; }");
 
-    const fn = engine.functions.get("my_fn");
+    const fn = engine.functions["my_fn"];
     expect(fn).toBeDefined();
 
     const refFn = new ReflectionFunction("my_fn", fn);

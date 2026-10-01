@@ -1,20 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReflectionClass = exports.ReflectionFunction = exports.ReflectionMethod = exports.ReflectionProperty = exports.ReflectionParameter = exports.ReflectionType = exports.Reflection = exports.ReflectionRuntime = void 0;
+exports.ReflectionRuntime = exports.ReflectionClass = exports.ReflectionFunction = exports.ReflectionMethod = exports.ReflectionProperty = exports.ReflectionParameter = exports.ReflectionType = exports.Reflection = void 0;
 exports.defineFunction = defineFunction;
 exports.parseJSFunctionMetadata = parseJSFunctionMetadata;
 const PHPObject_1 = require("./PHPObject");
-class ReflectionRuntime {
-    static register(engine) {
-        engine.registerClass("reflectionclass", ReflectionClass);
-        engine.registerClass("reflectionmethod", ReflectionMethod);
-        engine.registerClass("reflectionproperty", ReflectionProperty);
-        engine.registerClass("reflectionfunction", ReflectionFunction);
-        engine.registerClass("reflectionparameter", ReflectionParameter);
-        engine.registerClass("reflectiontype", ReflectionType);
-    }
-}
-exports.ReflectionRuntime = ReflectionRuntime;
 function defineFunction(fn, meta) {
     const params = (meta.parameters || []).map((p, idx) => {
         const hasDefault = p.hasDefault ?? p.isOptional ?? false;
@@ -25,6 +14,7 @@ function defineFunction(fn, meta) {
             hasDefault: hasDefault,
             defaultValue: p.defaultValue,
             type: p.type || "mixed",
+            byref: Boolean(p.byref),
         };
     });
     const requiredCount = params.filter((p) => !p.hasDefault).length;
@@ -268,7 +258,7 @@ class ReflectionFunction {
             targetFn = fnOrCtx;
         }
         else if (fnOrCtx?.engine) {
-            targetFn = fnOrCtx.engine.functions.get(name.toLowerCase());
+            targetFn = fnOrCtx.engine.functions[name.toLowerCase()];
         }
         this.meta = targetFn?.phpMeta || parseJSFunctionMetadata(targetFn, name);
     }
@@ -372,4 +362,18 @@ class ReflectionClass {
     }
 }
 exports.ReflectionClass = ReflectionClass;
+class ReflectionRuntime {
+    static classes = {
+        "reflectionclass": ReflectionClass,
+        "reflectionmethod": ReflectionMethod,
+        "reflectionproperty": ReflectionProperty,
+        "reflectionfunction": ReflectionFunction,
+        "reflectionparameter": ReflectionParameter,
+        "reflectiontype": ReflectionType,
+    };
+    static register(engine) {
+        engine.registerClasses(ReflectionRuntime.classes);
+    }
+}
+exports.ReflectionRuntime = ReflectionRuntime;
 //# sourceMappingURL=Reflection.js.map

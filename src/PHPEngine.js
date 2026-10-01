@@ -44,6 +44,7 @@ const crypto = __importStar(require("crypto"));
 const chokidar_1 = __importDefault(require("chokidar"));
 const PHPContext_1 = require("./PHPContext");
 const JSTranspiler_1 = require("./parser/JSTranspiler");
+const PHPObject_1 = require("./runtime/PHPObject");
 const Strings_1 = require("./runtime/Strings");
 const Arrays_1 = require("./runtime/Arrays");
 const FileSystem_1 = require("./runtime/FileSystem");
@@ -72,50 +73,50 @@ const hash_1 = require("./extensions/hash");
 const openssl_1 = require("./extensions/openssl");
 class PHPEngine {
     extensions = new Map();
-    constants = new Map();
-    functions = new Map();
-    classes = new Map();
-    internalVars = new Map();
+    constants = {};
+    functions = {};
+    classes = {};
+    internalVars = {};
     classResolvers = [];
     resolvingClasses = new WeakMap();
     compiledCache = new Map();
     watcher;
     transpiler;
     cacheDir;
+    static coreConstants = {
+        php_version: "8.5.0",
+        php_engine: "jsphp",
+        php_os: process.platform === "win32" ? "WINNT" : "Linux",
+        directory_separator: path.sep,
+        path_separator: process.platform === "win32" ? ";" : ":",
+        e_error: 1,
+        e_warning: 2,
+        e_parse: 4,
+        e_notice: 8,
+        e_core_error: 16,
+        e_core_warning: 32,
+        e_compile_error: 64,
+        e_compile_warning: 128,
+        e_user_error: 256,
+        e_user_warning: 512,
+        e_user_notice: 1024,
+        e_strict: 2048,
+        e_recoverable_error: 4096,
+        e_deprecated: 8192,
+        e_user_deprecated: 16384,
+        e_all: 32767,
+    };
     constructor(options = {}) {
         this.transpiler = new JSTranspiler_1.JSTranspiler();
         this.cacheDir = options.cacheDir === null
             ? null
             : (options.cacheDir || process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache"));
         // Set core PHP constants
-        this.constants.set("PHP_VERSION", "8.5.0");
-        this.constants.set("PHP_ENGINE", "jsphp");
-        this.constants.set("PHP_OS", process.platform === "win32" ? "WINNT" : "Linux");
-        this.constants.set("DIRECTORY_SEPARATOR", path.sep);
-        this.constants.set("PATH_SEPARATOR", process.platform === "win32" ? ";" : ":");
-        // PHP Error Level Constants
-        this.constants.set("E_ERROR", 1);
-        this.constants.set("E_WARNING", 2);
-        this.constants.set("E_PARSE", 4);
-        this.constants.set("E_NOTICE", 8);
-        this.constants.set("E_CORE_ERROR", 16);
-        this.constants.set("E_CORE_WARNING", 32);
-        this.constants.set("E_COMPILE_ERROR", 64);
-        this.constants.set("E_COMPILE_WARNING", 128);
-        this.constants.set("E_USER_ERROR", 256);
-        this.constants.set("E_USER_WARNING", 512);
-        this.constants.set("E_USER_NOTICE", 1024);
-        this.constants.set("E_STRICT", 2048);
-        this.constants.set("E_RECOVERABLE_ERROR", 4096);
-        this.constants.set("E_DEPRECATED", 8192);
-        this.constants.set("E_USER_DEPRECATED", 16384);
-        this.constants.set("E_ALL", 32767);
+        Object.assign(this.constants, PHPEngine.coreConstants);
         if (options.constants) {
-            for (const [key, val] of Object.entries(options.constants)) {
-                this.constants.set(key, val);
-            }
+            Object.assign(this.constants, options.constants);
         }
-        this.registerCoreFunctions();
+        this.registerFunctions(PHPEngine.coreFunctions);
         this.registerRuntimeImplementations();
         // Default extensions list if not explicitly provided
         const defaultExtensions = options.extensions || [
@@ -137,25 +138,60 @@ class PHPEngine {
             this.initWatcher();
         }
     }
+    /**
+     * Gets an internal variable value. The `name` parameter must be provided in lowercase.
+     */
     getInternalVar(name) {
-        return this.internalVars.get(name);
+        return this.internalVars[name];
     }
+    /**
+     * Sets an internal variable value. The `name` parameter must be provided in lowercase.
+     */
     setInternalVar(name, value) {
-        this.internalVars.set(name, value);
+        this.internalVars[name] = value;
     }
+    /**
+     * Registers a function. The `name` parameter must be provided in lowercase.
+     */
     registerFunction(name, fn) {
-        this.functions.set(name.toLowerCase(), fn);
+        this.functions[name] = fn;
+    }
+    /**
+     * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
+     */
+    registerFunctions(functions) {
+        for (const [key, fn] of Object.entries(functions)) {
+            this.functions[key.toLowerCase()] = fn;
+        }
     }
     registerConstant(name, value) {
-        this.constants.set(name, value);
-        this.constants.set(name.toUpperCase(), value);
+        const lower = name.toLowerCase();
+        this.constants[lower] = value;
+        this.constants[name] = value;
+    }
+    registerConstants(constants) {
+        for (const [key, value] of Object.entries(constants)) {
+            this.constants[key.toLowerCase()] = value;
+            this.constants[key] = value;
+        }
     }
     registerClass(name, value) {
-        this.classes.set(name.toLowerCase(), value);
+        this.classes[name.toLowerCase()] = value;
     }
+    registerClasses(classes) {
+        for (const [key, cls] of Object.entries(classes)) {
+            this.classes[key.toLowerCase()] = cls;
+        }
+    }
+    /**
+     * Registers a class resolver callback. Resolver should handle lowercase class names.
+     */
     registerClassResolver(resolver) {
         this.classResolvers.push(resolver);
     }
+    /**
+     * Resolves a class by name. The `name` parameter must be provided in lowercase.
+     */
     async resolveClass(name, ctx) {
         const shortName = String(name).split("\\").pop() || String(name);
         const resolutionKey = String(name).toLowerCase();
@@ -170,11 +206,11 @@ class PHPEngine {
         try {
             for (const resolver of this.classResolvers) {
                 await resolver(ctx, name);
-                const resolved = this.classes.get(resolutionKey) || this.classes.get(shortName.toLowerCase());
+                const resolved = this.classes[resolutionKey] || this.classes[shortName];
                 if (resolved)
                     return resolved;
             }
-            const resolved = this.classes.get(resolutionKey) || this.classes.get(shortName.toLowerCase());
+            const resolved = this.classes[resolutionKey] || this.classes[shortName];
             if (resolved)
                 return resolved;
             return undefined;
@@ -183,104 +219,71 @@ class PHPEngine {
             resolvingClasses.delete(resolutionKey);
         }
     }
+    /**
+     * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
+     */
     getConstant(name) {
-        if (!name || typeof name !== "string")
-            return undefined;
-        if (this.constants.has(name))
-            return this.constants.get(name);
-        if (this.constants.has(name.toUpperCase()))
-            return this.constants.get(name.toUpperCase());
-        if (this.constants.has(name.toLowerCase()))
-            return this.constants.get(name.toLowerCase());
-        return undefined;
+        return this.constants[name];
     }
-    registerCoreFunctions() {
-        // Core definition & state
-        this.functions.set("exit", (ctx, status = 0) => {
-            throw new PHPError_1.PHPExit(status);
-        });
-        this.functions.set("die", (ctx, status = 0) => {
-            throw new PHPError_1.PHPExit(status);
-        });
-        this.functions.set("call_user_func", async (ctx, callback, ...args) => {
+    static coreFunctions = {
+        "exit": (ctx, status = 0) => { throw new PHPError_1.PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
+        "die": (ctx, status = 0) => { throw new PHPError_1.PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
+        "call_user_func": async (ctx, callback, ...args) => {
             if (!callback)
                 return undefined;
-            if (typeof callback === "function") {
+            if (typeof callback === "function")
                 return await callback.apply(ctx, args);
-            }
-            if (typeof callback === "string") {
+            if (typeof callback === "string")
                 return await ctx.callFunction(callback, args);
-            }
-            if (Array.isArray(callback) && callback.length === 2) {
+            if (Array.isArray(callback) && callback.length === 2)
                 return await ctx.callMethod(callback[0], callback[1], args);
-            }
             return undefined;
-        });
-        this.functions.set("call_user_func_array", async (ctx, callback, args = []) => {
+        },
+        "call_user_func_array": async (ctx, callback, args = []) => {
             const arrArgs = Array.isArray(args) ? args : Object.values(args || {});
             if (!callback)
                 return undefined;
-            if (typeof callback === "function") {
+            if (typeof callback === "function")
                 return await callback.apply(ctx, arrArgs);
-            }
-            if (typeof callback === "string") {
+            if (typeof callback === "string")
                 return await ctx.callFunction(callback, arrArgs);
-            }
-            if (Array.isArray(callback) && callback.length === 2) {
-                return await ctx.callMethod(callback[0], callback[1], arrArgs);
-            }
+            if (Array.isArray(callback) && callback.length === 2)
+                return await ctx.callMethod(callback[0], callback[1], args);
             return undefined;
-        });
-        this.functions.set("define", async (ctx, name, value) => {
+        },
+        "define": async (ctx, name, value) => {
             if (ctx.hasConstant(name)) {
                 await ctx.triggerError(`Constant ${name} already defined`, 2);
                 return false;
             }
             ctx.defineConstant(name, value);
             return true;
-        });
-        this.functions.set("defined", (ctx, name) => {
-            return ctx.hasConstant(name);
-        });
-        this.functions.set("extension_loaded", (ctx, name) => {
-            if (!name || typeof name !== "string")
-                return false;
-            return this.extensions.has(name.toLowerCase());
-        });
-        this.functions.set("function_exists", (ctx, name) => {
-            if (!name || typeof name !== "string")
-                return false;
-            return this.functions.has(name.toLowerCase());
-        });
-        this.functions.set("class_exists", (ctx, name) => {
-            if (!name || typeof name !== "string")
-                return false;
-            return this.classes.has(name.toLowerCase());
-        });
-        this.functions.set("constant", (ctx, name) => {
-            return ctx.getConstant(name);
-        });
-        this.functions.set("assert", (ctx, assertion, description) => {
+        },
+        "defined": (ctx, name) => ctx.hasConstant(name),
+        "extension_loaded": (ctx, name) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
+        "function_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
+        "class_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.classes)),
+        "constant": (ctx, name) => ctx.getConstant(name),
+        "assert": (ctx, assertion, description) => {
             if (!assertion) {
-                if (description) {
+                if (description)
                     throw new PHPError_1.PHPFatalError(`Assertion failed: ${description}`);
-                }
                 return false;
             }
             return true;
-        });
-        this.functions.set("is_callable", (ctx, v) => {
+        },
+        "is_callable": (ctx, v) => {
             if (typeof v === "function")
                 return true;
             if (typeof v === "string")
-                return this.functions.has(v.toLowerCase());
+                return (v.toLowerCase() in ctx.functions);
             if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string") {
-                const cls = this.classes.get(v[0].toLowerCase());
-                return Boolean(cls && cls.methods && cls.methods.has(v[1].toLowerCase()));
+                const cls = ctx.classes[v[0].toLowerCase()];
+                return Boolean(cls && cls.methods && (cls.methods.has ? cls.methods.has(v[1].toLowerCase()) : (v[1].toLowerCase() in cls.methods)));
             }
             return false;
-        });
-        this.functions.set("ini_get", (ctx, option) => {
+        },
+        "ini_get": (ctx, option) => {
             const opt = (option || "").toLowerCase();
             if (opt === "display_errors")
                 return "1";
@@ -295,21 +298,15 @@ class PHPEngine {
             if (opt === "date.timezone")
                 return "UTC";
             return "";
-        });
-        this.functions.set("ini_set", (ctx, option, value) => {
-            return "";
-        });
-        this.functions.set("register_shutdown_function", (ctx, callback, ...args) => {
+        },
+        "ini_set": (ctx, option, value) => "",
+        "register_shutdown_function": (ctx, callback, ...args) => {
             ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
             return true;
-        });
-        this.functions.set("register_tick_function", (ctx, callback, ...args) => {
-            return true;
-        });
-        this.functions.set("unregister_tick_function", (ctx, callback) => {
-            return true;
-        });
-    }
+        },
+        "register_tick_function": (ctx, callback, ...args) => true,
+        "unregister_tick_function": (ctx, callback) => true,
+    };
     registerRuntimeImplementations() {
         Strings_1.StringRuntime.register(this);
         Arrays_1.ArrayRuntime.register(this);
@@ -329,24 +326,20 @@ class PHPEngine {
     registerExtension(extension) {
         this.extensions.set(extension.name.toLowerCase(), extension);
         extension.onInit(this);
-        for (const [key, val] of Object.entries(extension.constants)) {
-            this.constants.set(key, val);
-            this.constants.set(key.toUpperCase(), val);
-        }
-        for (const [key, func] of Object.entries(extension.functions)) {
-            this.functions.set(key.toLowerCase(), func);
-        }
-        for (const [key, cls] of Object.entries(extension.classes)) {
-            this.classes.set(key.toLowerCase(), cls);
-        }
+        if (extension.constants)
+            this.registerConstants(extension.constants);
+        if (extension.functions)
+            this.registerFunctions(extension.functions);
+        if (extension.classes)
+            this.registerClasses(extension.classes);
     }
     getConfigurationSHA1() {
         const sortedExts = Array.from(this.extensions.keys()).sort().join(",");
-        const sortedConsts = Array.from(this.constants.entries())
+        const sortedConsts = Object.entries(this.constants)
             .map(([k, v]) => `${k}=${v}`)
             .sort()
             .join(";");
-        return crypto.createHash("sha1").update(`v19|${sortedExts}|${sortedConsts}`).digest("hex");
+        return crypto.createHash("sha1").update(`v24|${sortedExts}|${sortedConsts}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);
@@ -370,13 +363,13 @@ class PHPEngine {
     async compileCode(code, filepath = "eval") {
         const transpilation = this.transpiler.transpile(code, filepath, {
             engineSHA1: this.getConfigurationSHA1(),
-            cacheDir: filepath === "eval" ? undefined : this.cacheDir,
+            cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
             engine: this,
         });
-        // Load compiled JS into Function wrapper
+        // Load compiled JS into Function wrapper with PHPClass in scope
         const moduleObj = { exports: {} };
-        const factory = new Function("module", "exports", "require", transpilation.code);
-        factory(moduleObj, moduleObj.exports, require);
+        const factory = new Function("module", "exports", "require", "PHPClass", transpilation.code);
+        factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass);
         return moduleObj.exports;
     }
     createContext(options = {}) {

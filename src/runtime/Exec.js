@@ -3,30 +3,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExecRuntime = void 0;
 const child_process_1 = require("child_process");
 const util_1 = require("util");
+const Reflection_1 = require("./Reflection");
 const execAsync = (0, util_1.promisify)(child_process_1.exec);
 class ExecRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("exec", async (ctx, command, output, status) => ExecRuntime.exec(ctx, command, output, status));
-        register("shell_exec", async (ctx, command) => ExecRuntime.shell_exec(ctx, command));
-        register("escapeshellarg", (ctx, argument) => ExecRuntime.escapeshellarg(argument));
-        register("escapeshellcmd", (ctx, command) => ExecRuntime.escapeshellcmd(command));
-    }
+    /**
+     * Execute an external program.
+     * @param outputArray Output variable passed by reference to receive output lines.
+     * @param returnVarObj Output variable passed by reference to receive exit status code.
+     */
     static async exec(ctx, command, outputArray, returnVarObj) {
         try {
             const { stdout } = await execAsync(command, { cwd: ctx.cwd });
             const lines = stdout.trimEnd().split(/\r?\n/);
-            if (Array.isArray(outputArray)) {
+            if (outputArray && typeof outputArray.set === "function") {
+                outputArray.set(lines);
+            }
+            else if (Array.isArray(outputArray)) {
                 outputArray.length = 0;
                 outputArray.push(...lines);
             }
-            if (returnVarObj && typeof returnVarObj === "object") {
+            if (returnVarObj && typeof returnVarObj.set === "function") {
+                returnVarObj.set(0);
+            }
+            else if (returnVarObj && typeof returnVarObj === "object") {
                 returnVarObj.val = 0;
             }
             return lines[lines.length - 1] || "";
         }
         catch (err) {
-            if (returnVarObj && typeof returnVarObj === "object") {
+            if (returnVarObj && typeof returnVarObj.set === "function") {
+                returnVarObj.set(err.status || 1);
+            }
+            else if (returnVarObj && typeof returnVarObj === "object") {
                 returnVarObj.val = err.status || 1;
             }
             return "";
@@ -41,12 +49,25 @@ class ExecRuntime {
             return null;
         }
     }
-    static escapeshellarg(arg) {
+    static escapeshellarg(ctx, arg) {
         return `'${String(arg ?? "").replace(/'/g, "'\\''")}'`;
     }
-    static escapeshellcmd(cmd) {
+    static escapeshellcmd(ctx, cmd) {
         return String(cmd ?? "").replace(/([#&;`|*?~<>^()\[\]{}$\\\x0A\xFF])/g, "\\$1");
+    }
+    static functions = {
+        "exec": ExecRuntime.exec,
+        "shell_exec": ExecRuntime.shell_exec,
+        "escapeshellarg": ExecRuntime.escapeshellarg,
+        "escapeshellcmd": ExecRuntime.escapeshellcmd,
+    };
+    static register(engine) {
+        engine.registerFunctions(ExecRuntime.functions);
     }
 }
 exports.ExecRuntime = ExecRuntime;
+(0, Reflection_1.defineFunction)(ExecRuntime.exec, {
+    name: "exec",
+    parameters: [{ name: "command" }, { name: "output", byref: true }, { name: "result_code", byref: true }],
+});
 //# sourceMappingURL=Exec.js.map

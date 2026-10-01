@@ -2,6 +2,11 @@ import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals";
 import { OutputBufferStack } from "./runtime/OutputBuffer";
+export declare class PHPReference {
+    readonly get: () => any;
+    readonly set: (value: any) => void;
+    constructor(get: () => any, set: (value: any) => void);
+}
 export interface PHPContextOptions {
     cwd?: string;
     env?: Record<string, string>;
@@ -28,11 +33,13 @@ export declare class PHPContext {
     cwd: string;
     env: Record<string, string>;
     vars: Record<string, any>;
-    constants: Map<string, any>;
+    constants: Record<string, any>;
+    functions: Record<string, Function>;
+    classes: Record<string, any>;
+    internalVars: Record<string, any>;
     private scopes;
     private globalBindings;
     private staticBindings;
-    internalVars: Map<string, any>;
     staticVars: Map<string, any>;
     superglobals: Superglobals;
     outputBuffer: OutputBufferStack;
@@ -69,19 +76,20 @@ export declare class PHPContext {
     private assignOffsets;
     private assignOffset;
     initStaticVar(scope: string, name: string, value: any): void;
-    isTruthy(value: any): boolean;
+    isTruthy(val: any): boolean;
     getProperty(obj: any, prop: string): Promise<any>;
     setProperty(obj: any, prop: string, value: any): Promise<any>;
     setPropertyOffset(obj: any, prop: string, key: any, value: any): Promise<any>;
     setPropertyOffsets(obj: any, prop: string, keys: any[], value: any): Promise<any>;
     callMethod(obj: any, method: string, args?: any[]): Promise<any>;
-    callFunction(name: string, args?: any[]): Promise<any>;
+    getVarRef(name: string): PHPReference;
+    referenceVariable(name: string): PHPReference;
+    callFunction(name: string, args?: any[], references?: (string | null)[]): Promise<any>;
     resolveClass(className: string): Promise<any>;
     getClassConstant(className: string, name: string): Promise<any>;
     getStaticProperty(className: string, name: string): Promise<any>;
     setStaticProperty(className: string, name: string, value: any): Promise<any>;
     setStaticPropertyOffsets(className: string, name: string, keys: any[], value: any): Promise<any>;
-    callParentMethod(receiver: any, className: string, method: string, args: any[]): Promise<any>;
     callStaticMethod(className: string, method: string, args?: any[]): Promise<any>;
     createObject(className: string, args?: any[]): Promise<any>;
     eval(code: string, filepath?: string): Promise<any>;

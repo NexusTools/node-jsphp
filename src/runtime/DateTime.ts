@@ -4,21 +4,11 @@ import type { PHPContext } from "../PHPContext";
 export class DateTimeRuntime {
   private static defaultTimezone = "UTC";
 
-  public static register(engine: PHPEngine): void {
-    engine.registerFunction("time", () => DateTimeRuntime.time());
-    engine.registerFunction("microtime", (ctx: PHPContext, asFloat = false) => DateTimeRuntime.microtime(asFloat));
-    engine.registerFunction("date", (ctx: PHPContext, format: string, timestamp?: number) => DateTimeRuntime.date(format, timestamp));
-    engine.registerFunction("strtotime", (ctx: PHPContext, value: string, now?: number) => DateTimeRuntime.strtotime(value, now));
-    engine.registerFunction("date_default_timezone_get", () => DateTimeRuntime.date_default_timezone_get());
-    engine.registerFunction("date_default_timezone_set", (ctx: PHPContext, timezone: string) => DateTimeRuntime.date_default_timezone_set(timezone));
-    engine.registerClass("datetime", PHPDateTime);
-  }
-
-  public static time(): number {
+  public static time(ctx?: PHPContext): number {
     return Math.floor(Date.now() / 1000);
   }
 
-  public static microtime(getAsFloat = false): string | number {
+  public static microtime(ctx?: PHPContext, getAsFloat = false): string | number {
     const now = Date.now();
     const sec = Math.floor(now / 1000);
     const msec = (now % 1000) / 1000;
@@ -26,7 +16,7 @@ export class DateTimeRuntime {
     return `${msec.toFixed(8)} ${sec}`;
   }
 
-  public static date(format: string, timestamp?: number): string {
+  public static date(ctx: PHPContext | null, format: string, timestamp?: number): string {
     const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
     let res = "";
     for (let i = 0; i < format.length; i++) {
@@ -45,7 +35,7 @@ export class DateTimeRuntime {
     return res;
   }
 
-  public static strtotime(timeStr: string, now?: number): number | false {
+  public static strtotime(ctx: PHPContext | null, timeStr: string, now?: number): number | false {
     try {
       const base = now !== undefined ? new Date(now * 1000) : new Date();
       const parsed = Date.parse(timeStr);
@@ -56,13 +46,31 @@ export class DateTimeRuntime {
     }
   }
 
-  public static date_default_timezone_get(): string {
+  public static date_default_timezone_get(ctx?: PHPContext): string {
     return DateTimeRuntime.defaultTimezone;
   }
 
-  public static date_default_timezone_set(timezoneId: string): boolean {
+  public static date_default_timezone_set(ctx: PHPContext | null, timezoneId: string): boolean {
     DateTimeRuntime.defaultTimezone = timezoneId;
     return true;
+  }
+
+  static functions = {
+    "time": DateTimeRuntime.time,
+    "microtime": DateTimeRuntime.microtime,
+    "date": DateTimeRuntime.date,
+    "strtotime": DateTimeRuntime.strtotime,
+    "date_default_timezone_get": DateTimeRuntime.date_default_timezone_get,
+    "date_default_timezone_set": DateTimeRuntime.date_default_timezone_set,
+  };
+
+  static classes = {
+    "datetime": () => PHPDateTime,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(DateTimeRuntime.functions);
+    engine.registerClass("datetime", PHPDateTime);
   }
 }
 
@@ -74,7 +82,7 @@ export class PHPDateTime {
   }
 
   public format(format: string): string {
-    return DateTimeRuntime.date(format, Math.floor(this.date.getTime() / 1000));
+    return DateTimeRuntime.date(null, format, Math.floor(this.date.getTime() / 1000));
   }
 
   public getTimestamp(): number {

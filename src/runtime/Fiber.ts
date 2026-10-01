@@ -1,12 +1,6 @@
 import type { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
 
-export class FiberRuntime {
-  public static register(engine: PHPEngine): void {
-    engine.registerClass("fiber", PHPFiber);
-  }
-}
-
 export class PHPFiberError extends Error {}
 export class PHPFiberExit extends Error {}
 
@@ -45,5 +39,15 @@ export class PHPFiber {
 
   public static async suspend(value: any = undefined): Promise<any> {
     return value;
+  }
+}
+
+export class FiberRuntime {
+  static classes = {
+    "fiber": PHPFiber,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerClasses(FiberRuntime.classes);
   }
 }

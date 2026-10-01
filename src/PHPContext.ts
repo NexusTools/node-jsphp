@@ -16,7 +16,7 @@ function logDebug(msg: string) {
   } catch (e) {}
 }
 
-class PHPReference {
+export class PHPReference {
   constructor(public readonly get: () => any, public readonly set: (value: any) => void) {}
 }
 
@@ -102,11 +102,13 @@ export class PHPContext {
   public cwd: string;
   public env: Record<string, string>;
   public vars: Record<string, any> = {};
-  public constants: Map<string, any> = new Map();
+  public constants: Record<string, any>;
+  public functions: Record<string, Function>;
+  public classes: Record<string, any>;
+  public internalVars: Record<string, any>;
   private scopes: Record<string, any>[] = [];
   private globalBindings: Set<string>[] = [];
   private staticBindings: Set<string>[] = [];
-  public internalVars: Map<string, any> = new Map();
   public staticVars: Map<string, any> = new Map();
   public superglobals: Superglobals;
   public outputBuffer: OutputBufferStack;
@@ -120,6 +122,10 @@ export class PHPContext {
 
   constructor(engine: PHPEngine, options: PHPContextOptions = {}) {
     this.engine = engine;
+    this.constants = Object.create(engine.constants);
+    this.functions = Object.create(engine.functions);
+    this.classes = Object.create(engine.classes);
+    this.internalVars = Object.create(engine.internalVars);
     this.cwd = options.cwd || process.cwd();
     this.env = options.env || (process.env as Record<string, string>);
     this.stdout = options.stdout || ((data: string) => { this.outputText += data; });
@@ -137,7 +143,7 @@ export class PHPContext {
     if (obj.phpClass instanceof PHPClass) {
       return obj.phpClass.isSubclassOf(String(className));
     }
-    const cls = this.engine.classes.get(String(className).toLowerCase());
+    const cls = this.classes[String(className).toLowerCase()];
     if (cls && typeof cls === "function") {
       return obj instanceof cls;
     }
@@ -239,14 +245,11 @@ export class PHPContext {
   }
 
   public getInternalVar(name: string): any {
-    if (this.internalVars.has(name)) {
-      return this.internalVars.get(name);
-    }
-    return this.engine.getInternalVar(name);
+    return this.internalVars[name];
   }
 
   public setInternalVar(name: string, value: any): void {
-    this.internalVars.set(name, value);
+    this.internalVars[name] = value;
   }
 
   public get responseHeaders(): Record<string, string> {
@@ -291,17 +294,16 @@ export class PHPContext {
   }
 
   public getConstant(name: string): any {
-    if (this.constants.has(name)) return this.constants.get(name);
-    return this.engine.getConstant(name);
+    return this.constants[name];
   }
 
   public hasConstant(name: string): boolean {
     if (!name || typeof name !== "string") return false;
-    return this.constants.has(name) || this.engine.constants.has(name) || this.engine.constants.has(name.toUpperCase());
+    return name in this.constants;
   }
 
   public defineConstant(name: string, val: any): void {
-    this.constants.set(name, val);
+    this.constants[name] = val;
   }
 
   public getVar(name: string): any {
@@ -407,11 +409,11 @@ export class PHPContext {
     }
   }
 
-  public isTruthy(value: any): boolean {
-    if (value === null || value === undefined || value === false) return false;
-    if (typeof value === "number") return value !== 0 && !Number.isNaN(value);
-    if (typeof value === "string") return value !== "" && value !== "0";
-    if (Array.isArray(value)) return value.length > 0;
+  public isTruthy(val: any): boolean {
+    if (val === null || val === undefined || val === false) return false;
+    if (typeof val === "number") return val !== 0 && !Number.isNaN(val);
+    if (typeof val === "string") return val !== "" && val !== "0";
+    if (Array.isArray(val)) return val.length > 0;
     return true;
   }
 
@@ -449,32 +451,50 @@ export class PHPContext {
 
   public async callMethod(obj: any, method: string, args: any[] = []): Promise<any> {
     logDebug(`CALL_METHOD: ${obj?.constructor?.name}::${method}`);
+    if (!obj || (typeof obj !== "object" && typeof obj !== "function")) return undefined;
+
     if (obj instanceof PHPObject) {
       const res = await obj.callMethod(this, method, args);
       logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
       return res;
     }
-    const metadata = obj?.phpClass?.methods?.get(method.toLowerCase());
+
+    const lowerMethod = method.toLowerCase();
+    const metadata = obj?.phpClass?.methods?.get(lowerMethod);
     if (metadata?.fn) return await metadata.fn.apply(obj, [this, ...args]);
-    if (obj && typeof obj[method] === "function") {
-      const res = await obj[method].apply(obj, args);
-      logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
-      return res;
+
+    if (typeof obj[method] === "function") {
+      return await obj[method].apply(obj, args);
     }
+
+    let target = obj;
+    while (target && target !== Object.prototype) {
+      for (const propName of Object.getOwnPropertyNames(target)) {
+        if (propName.toLowerCase() === lowerMethod && typeof obj[propName] === "function") {
+          return await obj[propName].apply(obj, args);
+        }
+      }
+      target = Object.getPrototypeOf(target);
+    }
+
     logDebug(`ERR_METHOD: ${obj?.constructor?.name}::${method}`);
     return undefined;
   }
 
-  private referenceVariable(name: string): PHPReference {
+  public getVarRef(name: string): PHPReference {
+    return this.referenceVariable(name);
+  }
+
+  public referenceVariable(name: string): PHPReference {
     const isGlobal = this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name);
     const scope = isGlobal || this.scopes.length === 0 ? this.vars : this.scopes[this.scopes.length - 1];
     if (scope[name] instanceof PHPReference) return scope[name];
-    return new PHPReference(() => scope[name], (value) => { scope[name] = value; });
+    return new PHPReference(() => scope[name], (value: any) => { scope[name] = value; });
   }
 
   public async callFunction(name: string, args: any[] = [], references: (string | null)[] = []): Promise<any> {
     logDebug(`CALL_FUNC: ${name}`);
-    const fn = this.engine.functions.get(name.toLowerCase());
+    const fn = this.functions[name.toLowerCase()] || this.functions[name];
     if (fn) {
       const parameters = (fn as any).phpMeta?.parameters || [];
       const callArguments = args.map((value, index) => parameters[index]?.byref && references[index]
@@ -489,21 +509,32 @@ export class PHPContext {
 
   public async resolveClass(className: string): Promise<any> {
     const normalizedName = String(className).replace(/^\\/, "").toLowerCase();
-    const resolvedClass = this.engine.classes.get(normalizedName) || await this.engine.resolveClass(className, this);
+    const resolvedClass = this.classes[normalizedName] || await this.engine.resolveClass(className, this);
     if (!resolvedClass) throw new PHPFatalError(`Class "${className}" not found`);
     return resolvedClass;
   }
 
   public async getClassConstant(className: string, name: string): Promise<any> {
     const resolvedClass = await this.resolveClass(className);
-    if (resolvedClass.constants?.has(name)) return resolvedClass.constants.get(name);
+    if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
+      return resolvedClass.constants.get ? resolvedClass.constants.get(name) : resolvedClass.constants[name];
+    }
     throw new PHPFatalError(`Undefined constant ${className}::${name}`);
   }
 
   public async getStaticProperty(className: string, name: string): Promise<any> {
     let resolvedClass = await this.resolveClass(className);
+    const cleanName = name.startsWith("$") ? name.slice(1) : name;
     while (resolvedClass) {
-      if (resolvedClass.staticProperties?.has(name)) return resolvedClass.staticProperties.get(name);
+      if (resolvedClass.properties) {
+        const prop = resolvedClass.properties.get ? resolvedClass.properties.get(cleanName) : resolvedClass.properties[cleanName];
+        if (prop && prop.isStatic) return prop.defaultValue;
+      }
+      if (resolvedClass.staticProperties) {
+        if (resolvedClass.staticProperties.has ? resolvedClass.staticProperties.has(cleanName) : (cleanName in resolvedClass.staticProperties)) {
+          return resolvedClass.staticProperties.get ? resolvedClass.staticProperties.get(cleanName) : resolvedClass.staticProperties[cleanName];
+        }
+      }
       resolvedClass = resolvedClass.parentClass;
     }
     throw new PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
@@ -511,10 +542,21 @@ export class PHPContext {
 
   public async setStaticProperty(className: string, name: string, value: any): Promise<any> {
     let resolvedClass = await this.resolveClass(className);
+    const cleanName = name.startsWith("$") ? name.slice(1) : name;
     while (resolvedClass) {
-      if (resolvedClass.staticProperties?.has(name)) {
-        resolvedClass.staticProperties.set(name, value);
-        return value;
+      if (resolvedClass.properties) {
+        const prop = resolvedClass.properties.get ? resolvedClass.properties.get(cleanName) : resolvedClass.properties[cleanName];
+        if (prop && prop.isStatic) {
+          prop.defaultValue = value;
+          return value;
+        }
+      }
+      if (resolvedClass.staticProperties) {
+        if (resolvedClass.staticProperties.has ? resolvedClass.staticProperties.has(cleanName) : (cleanName in resolvedClass.staticProperties)) {
+          if (resolvedClass.staticProperties.set) resolvedClass.staticProperties.set(cleanName, value);
+          else resolvedClass.staticProperties[cleanName] = value;
+          return value;
+        }
       }
       resolvedClass = resolvedClass.parentClass;
     }
@@ -530,26 +572,10 @@ export class PHPContext {
     return this.assignOffsets(target, keys, value);
   }
 
-  public async callParentMethod(receiver: any, className: string, method: string, args: any[]): Promise<any> {
-    const resolvedClass = await this.resolveClass(className);
-    const metadata = resolvedClass.parentClass?.methods?.get(method.toLowerCase());
-    if (metadata?.fn) return await metadata.fn.apply(receiver, [this, ...args]);
-    const nativeConstructor = resolvedClass.parentClass?.nativeConstructor;
-    if (nativeConstructor) {
-      if (method.toLowerCase() === "__construct") {
-        Object.defineProperties(receiver, Object.getOwnPropertyDescriptors(Reflect.construct(nativeConstructor, args)));
-        return;
-      }
-      const nativeMethod = nativeConstructor.prototype[method];
-      if (typeof nativeMethod === "function") return await nativeMethod.apply(receiver, args);
-    }
-    throw new PHPFatalError(`Call to undefined parent method ${className}::${method}()`);
-  }
-
   public async callStaticMethod(className: string, method: string, args: any[] = []): Promise<any> {
     const normalizedClassName = String(className).toLowerCase();
     const shortClassName = normalizedClassName.split("\\").pop() || normalizedClassName;
-    let cls = this.engine.classes.get(normalizedClassName) || this.engine.classes.get(shortClassName);
+    let cls = this.classes[normalizedClassName] || this.classes[shortClassName];
     if (!cls) cls = await this.engine.resolveClass(className, this);
     if (cls?.methods && typeof cls.methods.get === "function") {
       const metadata = cls.methods.get(String(method).toLowerCase());
@@ -561,7 +587,7 @@ export class PHPContext {
 
   public async createObject(className: string, args: any[] = []): Promise<any> {
     logDebug(`NEW: ${className}`);
-    const rawClass = this.engine.classes.get(className.toLowerCase());
+    const rawClass = this.classes[className.toLowerCase()];
     if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject)) {
       const obj = new (rawClass as any)(...args);
       if (obj instanceof PHPError) Object.defineProperty(obj, "phpClass", { value: new PHPClass(className, rawClass) });

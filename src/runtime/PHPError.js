@@ -1,31 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.ErrorRuntime = void 0;
+exports.ErrorRuntime = exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
 const SourceMapRegistry_1 = require("./SourceMapRegistry");
-class ErrorRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("debug_backtrace", (ctx) => ctx.getPHPBacktrace());
-        register("debug_print_backtrace", async (ctx) => {
-            const trace = ctx.getPHPBacktrace().map((frame, index) => `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`).join("");
-            await ctx.echo(trace);
-            return trace;
-        });
-        register("set_error_handler", (ctx, handler, levels = 32767) => ctx.setErrorHandler(handler, levels));
-        register("restore_error_handler", (ctx) => ctx.restoreErrorHandler());
-        register("trigger_error", async (ctx, message, level = 1024) => ctx.triggerError(message, level));
-        register("user_error", async (ctx, message, level = 1024) => ctx.triggerError(message, level));
-        register("error_reporting", (ctx, level) => {
-            const previous = ctx.errorReportingLevel;
-            if (level !== undefined)
-                ctx.errorReportingLevel = level;
-            return previous;
-        });
-        engine.registerClass("exception", PHPException);
-        engine.registerClass("errorexception", ErrorException);
-    }
-}
-exports.ErrorRuntime = ErrorRuntime;
 class PHPError extends Error {
     phpCode;
     phpFile;
@@ -157,4 +133,47 @@ class ErrorException extends PHPError {
     }
 }
 exports.ErrorException = ErrorException;
+class ErrorRuntime {
+    static debug_backtrace(ctx) {
+        return ctx.getPHPBacktrace();
+    }
+    static async debug_print_backtrace(ctx) {
+        const trace = ctx.getPHPBacktrace().map((frame, index) => `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`).join("");
+        await ctx.echo(trace);
+        return trace;
+    }
+    static set_error_handler(ctx, handler, levels = 32767) {
+        return ctx.setErrorHandler(handler, levels);
+    }
+    static restore_error_handler(ctx) {
+        return ctx.restoreErrorHandler();
+    }
+    static async trigger_error(ctx, message, level = 1024) {
+        return await ctx.triggerError(message, level);
+    }
+    static error_reporting(ctx, level) {
+        const previous = ctx.errorReportingLevel;
+        if (level !== undefined)
+            ctx.errorReportingLevel = level;
+        return previous;
+    }
+    static functions = {
+        "debug_backtrace": ErrorRuntime.debug_backtrace,
+        "debug_print_backtrace": ErrorRuntime.debug_print_backtrace,
+        "set_error_handler": ErrorRuntime.set_error_handler,
+        "restore_error_handler": ErrorRuntime.restore_error_handler,
+        "trigger_error": ErrorRuntime.trigger_error,
+        "user_error": ErrorRuntime.trigger_error,
+        "error_reporting": ErrorRuntime.error_reporting,
+    };
+    static classes = {
+        "exception": PHPException,
+        "errorexception": ErrorException,
+    };
+    static register(engine) {
+        engine.registerFunctions(ErrorRuntime.functions);
+        engine.registerClasses(ErrorRuntime.classes);
+    }
+}
+exports.ErrorRuntime = ErrorRuntime;
 //# sourceMappingURL=PHPError.js.map

@@ -1,19 +1,6 @@
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
 
-export class OutputBufferRuntime {
-  public static register(engine: PHPEngine): void {
-    const register = engine.registerFunction.bind(engine);
-    register("flush", (ctx: PHPContext) => { ctx.flushHeaders(); return true; });
-    register("ob_start", (ctx: PHPContext) => ctx.outputBuffer.start());
-    register("ob_get_clean", (ctx: PHPContext) => ctx.outputBuffer.getClean());
-    register("ob_get_contents", (ctx: PHPContext) => ctx.outputBuffer.getContents());
-    register("ob_flush", (ctx: PHPContext) => ctx.outputBuffer.flush());
-    register("ob_end_clean", (ctx: PHPContext) => ctx.outputBuffer.endClean());
-    register("ob_get_level", (ctx: PHPContext) => ctx.outputBuffer.getLevel());
-  }
-}
-
 export class OutputBufferStack {
   private buffers: string[] = [];
 
@@ -59,5 +46,21 @@ export class OutputBufferStack {
 
   public isActive(): boolean {
     return this.buffers.length > 0;
+  }
+}
+
+export class OutputBufferRuntime {
+  static functions = {
+    "flush": (ctx: PHPContext) => { ctx.flushHeaders(); return true; },
+    "ob_start": (ctx: PHPContext) => ctx.outputBuffer.start(),
+    "ob_get_clean": (ctx: PHPContext) => ctx.outputBuffer.getClean(),
+    "ob_get_contents": (ctx: PHPContext) => ctx.outputBuffer.getContents(),
+    "ob_flush": (ctx: PHPContext) => ctx.outputBuffer.flush(),
+    "ob_end_clean": (ctx: PHPContext) => ctx.outputBuffer.endClean(),
+    "ob_get_level": (ctx: PHPContext) => ctx.outputBuffer.getLevel(),
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(OutputBufferRuntime.functions);
   }
 }

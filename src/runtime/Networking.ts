@@ -3,80 +3,27 @@ import * as os from "os";
 import { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
 import { PHPWarning } from "./PHPError";
+import { defineFunction } from "./Reflection";
 
 export class NetworkingRuntime {
-  public static register(engine: PHPEngine): void {
-    const register = engine.registerFunction.bind(engine);
-    register("gethostname", () => NetworkingRuntime.gethostname());
-    register("gethostbyname", async (ctx: PHPContext, name: string) => NetworkingRuntime.gethostbyname(name));
-    register("gethostbyaddr", async (ctx: PHPContext, address: string) => NetworkingRuntime.gethostbyaddr(address));
-    register("ip2long", (ctx: PHPContext, address: string) => NetworkingRuntime.ip2long(address));
-    register("long2ip", (ctx: PHPContext, value: number) => NetworkingRuntime.long2ip(value));
-    register("parse_url", (ctx: PHPContext, url: string, component = -1) => NetworkingRuntime.parse_url(url, component));
-    register("parse_str", (ctx: PHPContext, query: string, result?: any) => NetworkingRuntime.parse_str(ctx, query, result));
-    register("urlencode", (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(value));
-    register("rawurlencode", (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(value, true));
-    register("urldecode", (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(value));
-    register("rawurldecode", (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(value, true));
-    register("http_build_query", (ctx: PHPContext, data: any, prefix = "", separator = "&") => NetworkingRuntime.http_build_query(data, prefix, separator));
-    register("header", (ctx: PHPContext, value: string, replace = true, code?: number) => NetworkingRuntime.header(ctx, value, replace, code));
-    register("setcookie", (ctx: PHPContext, name: string, value = "", expires = 0, path = "", domain = "", secure = false, httpOnly = false) => NetworkingRuntime.setcookie(ctx, name, value, expires, path, domain, secure, httpOnly));
-    register("setrawcookie", (ctx: PHPContext, name: string, value = "", expires = 0, path = "", domain = "", secure = false, httpOnly = false) => NetworkingRuntime.setrawcookie(ctx, name, value, expires, path, domain, secure, httpOnly));
-    register("header_remove", (ctx: PHPContext, name?: string) => NetworkingRuntime.header_remove(ctx, name));
-    register("headers_list", (ctx: PHPContext) => NetworkingRuntime.headers_list(ctx));
-    register("headers_sent", (ctx: PHPContext) => NetworkingRuntime.headers_sent(ctx));
-    register("http_response_code", (ctx: PHPContext, code?: number) => NetworkingRuntime.http_response_code(ctx, code));
-  }
 
-  public static parse_str(ctx: PHPContext, query: string, result?: any): void {
-    const parsed: Record<string, any> = Object.create(null);
-    for (const [name, value] of new URLSearchParams(String(query ?? ""))) {
-      const bracket = name.indexOf("[");
-      const base = (bracket < 0 ? name : name.slice(0, bracket)).replace(/[ .]/g, "_");
-      if (!base) continue;
-      const keys = [base, ...Array.from(name.slice(bracket < 0 ? name.length : bracket).matchAll(/\[([^\]]*)\]/g), (match) => match[1])];
-      let target = parsed;
-      keys.forEach((part, index) => {
-        const key = part === "" ? String(Math.max(-1, ...Object.keys(target).filter((entry) => /^(0|[1-9]\d*)$/.test(entry)).map(Number)) + 1) : part;
-        if (index === keys.length - 1) target[key] = value;
-        else {
-          if (!target[key] || typeof target[key] !== "object") target[key] = Object.create(null);
-          target = target[key];
-        }
-      });
-    }
-    const normalize = (value: any): any => {
-      if (!value || typeof value !== "object") return value;
-      const keys = Object.keys(value);
-      if (keys.length > 0 && keys.every((key, index) => key === String(index))) return keys.map((key) => normalize(value[key]));
-      for (const key of keys) value[key] = normalize(value[key]);
-      return value;
-    };
-    const output = normalize(parsed);
-    ctx.setInternalVar("lastParseStrResult", output);
-    if (result && typeof result === "object") {
-      for (const key of Object.keys(result)) delete result[key];
-      Object.defineProperties(result, Object.getOwnPropertyDescriptors(output));
-    }
-  }
-
-  public static urlencode(value: any, raw = false): string {
+  public static urlencode(ctx: PHPContext | null, value: any, raw = false): string {
     let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
     if (!raw) encoded = encoded.replace(/~/g, "%7E").replace(/%20/g, "+");
     return encoded;
   }
 
-  public static urldecode(value: any, raw = false): string {
+  public static urldecode(ctx: PHPContext | null, value: any, raw = false): string {
     let encoded = String(value ?? "").replace(/&/g, "%26");
     if (raw) encoded = encoded.replace(/\+/g, "%2B");
     return new URLSearchParams(`value=${encoded}`).get("value") || "";
   }
 
-  public static gethostname(): string {
+  public static gethostname(ctx?: PHPContext): string {
     return os.hostname();
   }
 
-  public static async gethostbyname(hostname: string): Promise<string> {
+  public static async gethostbyname(ctx: PHPContext | null, hostname: string): Promise<string> {
     try {
       const res = await dns.lookup(hostname, { family: 4 });
       return res.address;
@@ -85,7 +32,7 @@ export class NetworkingRuntime {
     }
   }
 
-  public static async gethostbyaddr(ip: string): Promise<string | false> {
+  public static async gethostbyaddr(ctx: PHPContext | null, ip: string): Promise<string | false> {
     try {
       const names = await dns.reverse(ip);
       return names[0] || false;
@@ -94,7 +41,7 @@ export class NetworkingRuntime {
     }
   }
 
-  public static ip2long(ip: string): number | false {
+  public static ip2long(ctx: PHPContext | null, ip: string): number | false {
     const parts = (ip || "").split(".");
     if (parts.length !== 4) return false;
     let num = 0;
@@ -106,7 +53,7 @@ export class NetworkingRuntime {
     return num >>> 0;
   }
 
-  public static long2ip(num: number): string | false {
+  public static long2ip(ctx: PHPContext | null, num: number): string | false {
     if (typeof num !== "number" || num < 0 || num > 4294967295) return false;
     return [
       (num >>> 24) & 255,
@@ -116,7 +63,7 @@ export class NetworkingRuntime {
     ].join(".");
   }
 
-  public static parse_url(urlStr: string, component = -1): any {
+  public static parse_url(ctx: PHPContext | null, urlStr: string, component = -1): any {
     try {
       const parsed = new URL(urlStr, "http://localhost");
       const obj: Record<string, any> = {
@@ -150,7 +97,7 @@ export class NetworkingRuntime {
     }
   }
 
-  public static http_build_query(data: any, numericPrefix = "", argSeparator = "&"): string {
+  public static http_build_query(ctx: PHPContext | null, data: any, numericPrefix = "", argSeparator = "&"): string {
     if (!data || typeof data !== "object") return "";
     const params = new URLSearchParams();
 
@@ -271,5 +218,30 @@ export class NetworkingRuntime {
       return true;
     }
     return ctx.response.statusCode;
+  }
+
+  static functions = {
+    "gethostname": NetworkingRuntime.gethostname,
+    "gethostbyname": NetworkingRuntime.gethostbyname,
+    "gethostbyaddr": NetworkingRuntime.gethostbyaddr,
+    "ip2long": NetworkingRuntime.ip2long,
+    "long2ip": NetworkingRuntime.long2ip,
+    "parse_url": NetworkingRuntime.parse_url,
+    "urlencode": (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(ctx, value),
+    "rawurlencode": (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(ctx, value, true),
+    "urldecode": (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(ctx, value),
+    "rawurldecode": (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(ctx, value, true),
+    "http_build_query": NetworkingRuntime.http_build_query,
+    "header": NetworkingRuntime.header,
+    "setcookie": NetworkingRuntime.setcookie,
+    "setrawcookie": NetworkingRuntime.setrawcookie,
+    "header_remove": NetworkingRuntime.header_remove,
+    "headers_list": NetworkingRuntime.headers_list,
+    "headers_sent": NetworkingRuntime.headers_sent,
+    "http_response_code": NetworkingRuntime.http_response_code,
+  };
+
+  public static register(engine: PHPEngine): void {
+    engine.registerFunctions(NetworkingRuntime.functions);
   }
 }

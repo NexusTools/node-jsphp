@@ -1,19 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OutputBufferStack = exports.OutputBufferRuntime = void 0;
-class OutputBufferRuntime {
-    static register(engine) {
-        const register = engine.registerFunction.bind(engine);
-        register("flush", (ctx) => { ctx.flushHeaders(); return true; });
-        register("ob_start", (ctx) => ctx.outputBuffer.start());
-        register("ob_get_clean", (ctx) => ctx.outputBuffer.getClean());
-        register("ob_get_contents", (ctx) => ctx.outputBuffer.getContents());
-        register("ob_flush", (ctx) => ctx.outputBuffer.flush());
-        register("ob_end_clean", (ctx) => ctx.outputBuffer.endClean());
-        register("ob_get_level", (ctx) => ctx.outputBuffer.getLevel());
-    }
-}
-exports.OutputBufferRuntime = OutputBufferRuntime;
+exports.OutputBufferRuntime = exports.OutputBufferStack = void 0;
 class OutputBufferStack {
     buffers = [];
     start() {
@@ -58,4 +45,19 @@ class OutputBufferStack {
     }
 }
 exports.OutputBufferStack = OutputBufferStack;
+class OutputBufferRuntime {
+    static functions = {
+        "flush": (ctx) => { ctx.flushHeaders(); return true; },
+        "ob_start": (ctx) => ctx.outputBuffer.start(),
+        "ob_get_clean": (ctx) => ctx.outputBuffer.getClean(),
+        "ob_get_contents": (ctx) => ctx.outputBuffer.getContents(),
+        "ob_flush": (ctx) => ctx.outputBuffer.flush(),
+        "ob_end_clean": (ctx) => ctx.outputBuffer.endClean(),
+        "ob_get_level": (ctx) => ctx.outputBuffer.getLevel(),
+    };
+    static register(engine) {
+        engine.registerFunctions(OutputBufferRuntime.functions);
+    }
+}
+exports.OutputBufferRuntime = OutputBufferRuntime;
 //# sourceMappingURL=OutputBuffer.js.map

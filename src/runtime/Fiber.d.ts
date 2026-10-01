@@ -1,8 +1,5 @@
 import type { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
-export declare class FiberRuntime {
-    static register(engine: PHPEngine): void;
-}
 export declare class PHPFiberError extends Error {
 }
 export declare class PHPFiberExit extends Error {
@@ -21,4 +18,10 @@ export declare class PHPFiber {
     isSuspended(): boolean;
     isTerminated(): boolean;
     static suspend(value?: any): Promise<any>;
+}
+export declare class FiberRuntime {
+    static classes: {
+        fiber: typeof PHPFiber;
+    };
+    static register(engine: PHPEngine): void;
 }

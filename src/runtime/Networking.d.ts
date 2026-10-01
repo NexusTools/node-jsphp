@@ -1,14 +1,15 @@
 import { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
 export declare class NetworkingRuntime {
-    static register(engine: PHPEngine): void;
-    static gethostname(): string;
-    static gethostbyname(hostname: string): Promise<string>;
-    static gethostbyaddr(ip: string): Promise<string | false>;
-    static ip2long(ip: string): number | false;
-    static long2ip(num: number): string | false;
-    static parse_url(urlStr: string, component?: number): any;
-    static http_build_query(data: any, numericPrefix?: string, argSeparator?: string): string;
+    static urlencode(ctx: PHPContext | null, value: any, raw?: boolean): string;
+    static urldecode(ctx: PHPContext | null, value: any, raw?: boolean): string;
+    static gethostname(ctx?: PHPContext): string;
+    static gethostbyname(ctx: PHPContext | null, hostname: string): Promise<string>;
+    static gethostbyaddr(ctx: PHPContext | null, ip: string): Promise<string | false>;
+    static ip2long(ctx: PHPContext | null, ip: string): number | false;
+    static long2ip(ctx: PHPContext | null, num: number): string | false;
+    static parse_url(ctx: PHPContext | null, urlStr: string, component?: number): any;
+    static http_build_query(ctx: PHPContext | null, data: any, numericPrefix?: string, argSeparator?: string): string;
     static header(ctx: PHPContext, headerStr: string, replace?: boolean, code?: number): void;
     static setcookie(ctx: PHPContext, name: string, value?: string, expires?: number, path?: string, domain?: string, secure?: boolean, httponly?: boolean): boolean;
     static setrawcookie(ctx: PHPContext, name: string, value?: string, expires?: number, path?: string, domain?: string, secure?: boolean, httponly?: boolean): boolean;
@@ -16,4 +17,25 @@ export declare class NetworkingRuntime {
     static headers_list(ctx: PHPContext): string[];
     static headers_sent(ctx: PHPContext): boolean;
     static http_response_code(ctx: PHPContext, code?: number): number | boolean;
+    static functions: {
+        gethostname: typeof NetworkingRuntime.gethostname;
+        gethostbyname: typeof NetworkingRuntime.gethostbyname;
+        gethostbyaddr: typeof NetworkingRuntime.gethostbyaddr;
+        ip2long: typeof NetworkingRuntime.ip2long;
+        long2ip: typeof NetworkingRuntime.long2ip;
+        parse_url: typeof NetworkingRuntime.parse_url;
+        urlencode: (ctx: PHPContext, value: any) => string;
+        rawurlencode: (ctx: PHPContext, value: any) => string;
+        urldecode: (ctx: PHPContext, value: any) => string;
+        rawurldecode: (ctx: PHPContext, value: any) => string;
+        http_build_query: typeof NetworkingRuntime.http_build_query;
+        header: typeof NetworkingRuntime.header;
+        setcookie: typeof NetworkingRuntime.setcookie;
+        setrawcookie: typeof NetworkingRuntime.setrawcookie;
+        header_remove: typeof NetworkingRuntime.header_remove;
+        headers_list: typeof NetworkingRuntime.headers_list;
+        headers_sent: typeof NetworkingRuntime.headers_sent;
+        http_response_code: typeof NetworkingRuntime.http_response_code;
+    };
+    static register(engine: PHPEngine): void;
 }

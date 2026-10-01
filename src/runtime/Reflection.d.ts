@@ -1,14 +1,12 @@
 import { PHPObject, PHPMethodMetadata, PHPPropertyMetadata } from "./PHPObject";
 import type { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
-export declare class ReflectionRuntime {
-    static register(engine: PHPEngine): void;
-}
 export interface FunctionMetaOptions {
     name: string;
     visibility?: "public" | "protected" | "private";
     parameters?: {
         name: string;
+        byref?: boolean;
         isOptional?: boolean;
         hasDefault?: boolean;
         defaultValue?: any;
@@ -119,4 +117,15 @@ export declare class ReflectionClass {
     newInstance(ctx: PHPContext, ...args: any[]): Promise<PHPObject>;
     newInstanceArgs(ctx: PHPContext, args?: any[]): Promise<PHPObject>;
     newInstanceWithoutConstructor(ctx: PHPContext): Promise<PHPObject>;
+}
+export declare class ReflectionRuntime {
+    static classes: {
+        reflectionclass: typeof ReflectionClass;
+        reflectionmethod: typeof ReflectionMethod;
+        reflectionproperty: typeof ReflectionProperty;
+        reflectionfunction: typeof ReflectionFunction;
+        reflectionparameter: typeof ReflectionParameter;
+        reflectiontype: typeof ReflectionType;
+    };
+    static register(engine: PHPEngine): void;
 }

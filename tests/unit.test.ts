@@ -16,7 +16,7 @@ describe("PHPEngine & AST Unit Tests", () => {
 
   test("Does not register WordPress userland functions as PHP built-ins", () => {
     for (const name of ["is_robots", "is_favicon", "is_feed", "is_trackback", "is_embed"]) {
-      expect(engine.functions.has(name)).toBe(false);
+      expect(name in engine.functions).toBe(false);
     }
   });
 
