@@ -1,5 +1,5 @@
 import type { PHPEngine } from "./PHPEngine";
-import { defineFunction, FunctionMetaOptions } from "./runtime/reflection/Reflection";
+import { defineFunction, FunctionMetaOptions } from "./runtime/Reflection";
 
 export abstract class PHPExtension {
   public abstract readonly name: string;

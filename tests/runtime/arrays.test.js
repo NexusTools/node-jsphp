@@ -50,5 +50,19 @@ describe("Arrays Runtime Tests", () => {
     `);
         expect(out).toBe("1,2,3;3,2,1;");
     });
+    test("array_fill supports starting indices and empty arrays", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      $values = array_fill(0, 3, true);
+      $offset = array_fill(5, 2, 'item');
+      $negative = array_fill(-2, 3, 'item');
+      $empty = array_fill(5, 0, 'item');
+    `);
+        expect(ctx.getVar("values")).toEqual([true, true, true]);
+        expect(ctx.getVar("offset")).toEqual({ 5: "item", 6: "item" });
+        expect(ctx.getVar("negative")).toEqual({ "-2": "item", "-1": "item", 0: "item" });
+        expect(ctx.getVar("empty")).toEqual([]);
+        await expect(ctx.callFunction("array_fill", [0, -1, "item"])).rejects.toThrow("must be greater than or equal to 0");
+    });
 });
 //# sourceMappingURL=arrays.test.js.map

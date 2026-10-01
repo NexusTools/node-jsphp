@@ -38,7 +38,7 @@ const http = __importStar(require("http"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
 const PHPEngine_1 = require("../PHPEngine");
-const PHPError_1 = require("../runtime/errors/PHPError");
+const PHPError_1 = require("../runtime/PHPError");
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
@@ -58,8 +58,8 @@ const MIME_TYPES = {
     ".woff2": "font/woff2",
     ".ttf": "font/ttf",
 };
-async function runHTTPServer(port = 8080, docRoot = process.cwd()) {
-    const engine = new PHPEngine_1.PHPEngine();
+async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
+    const engine = new PHPEngine_1.PHPEngine({ cacheDir: cacheDir || null });
     const absoluteCwd = path.resolve(docRoot);
     const server = http.createServer(async (req, res) => {
         const rawUrl = req.url || "/";
@@ -85,8 +85,17 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd()) {
             }
             // Parse POST body if present
             const bodyChunks = [];
-            req.on("data", (chunk) => bodyChunks.push(chunk));
-            await new Promise((resolve) => req.on("end", resolve));
+            const reqMethod = (req.method || "GET").toUpperCase();
+            if (reqMethod !== "GET" && reqMethod !== "HEAD") {
+                req.on("data", (chunk) => bodyChunks.push(chunk));
+                if (!req.readableEnded) {
+                    req.resume();
+                    await new Promise((resolve) => {
+                        req.on("end", resolve);
+                        req.on("error", () => resolve());
+                    });
+                }
+            }
             const postData = Buffer.concat(bodyChunks).toString("utf8");
             const postParams = {};
             if (postData && req.headers["content-type"]?.includes("application/x-www-form-urlencoded")) {
@@ -133,13 +142,14 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd()) {
                     // Normal exit/redirect
                 }
                 else {
+                    console.error("-> PHP FATAL ERROR CAUGHT:", err);
                     if (!res.headersSent) {
                         res.statusCode = 500;
                         res.setHeader("Content-Type", "text/html; charset=utf-8");
                     }
                     const stackTrace = typeof err.getPHPStackTraceString === "function"
                         ? err.getPHPStackTraceString()
-                        : (err.stack || String(err));
+                        : PHPError_1.PHPError.virtualizeJSStack(err.stack || String(err));
                     const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
                         `<h1>PHP Fatal Error</h1>` +
                         `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
@@ -189,8 +199,9 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd()) {
             }
         }
     });
+    server.on("close", () => engine.close());
     return new Promise((resolve) => {
-        server.listen(port, () => {
+        server.listen(port, "0.0.0.0", () => {
             console.log(`[jsphp-http-server] listening on http://127.0.0.1:${port}, document root: ${absoluteCwd}`);
             resolve(server);
         });

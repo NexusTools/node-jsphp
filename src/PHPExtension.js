@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPExtension = void 0;
-const Reflection_1 = require("./runtime/reflection/Reflection");
+const Reflection_1 = require("./runtime/Reflection");
 class PHPExtension {
     version = "8.5.0";
     constants = {};

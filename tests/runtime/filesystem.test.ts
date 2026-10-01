@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as fs from "fs/promises";
+import * as os from "os";
 import { PHPEngine } from "../../index";
 
 describe("FileSystem Runtime Tests", () => {
@@ -11,6 +12,30 @@ describe("FileSystem Runtime Tests", () => {
 
   afterEach(() => {
     engine.close();
+  });
+
+  test("glob supports request directories, brace expansion, and PHP flags", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "jsphp-glob-"));
+    try {
+      await fs.writeFile(path.join(directory, "alpha.mo"), "translation");
+      await fs.writeFile(path.join(directory, "beta.l10n.php"), "translation");
+      await fs.writeFile(path.join(directory, "ignore.txt"), "other");
+      await fs.mkdir(path.join(directory, "nested"));
+      const ctx = engine.createContext({ cwd: directory });
+      await ctx.eval(`
+        $files = glob('*.{mo,php}', GLOB_BRACE);
+        $missing = glob('*.missing', GLOB_NOCHECK);
+        $directories = glob('*', GLOB_ONLYDIR | GLOB_MARK);
+        $permissions = fileperms('alpha.mo');
+      `);
+      expect(ctx.getVar("files")).toEqual(["alpha.mo", "beta.l10n.php"]);
+      expect(ctx.getVar("missing")).toEqual(["*.missing"]);
+      expect(ctx.getVar("directories")).toEqual(["nested/"]);
+      expect(ctx.getVar("permissions")).toBe((await fs.stat(path.join(directory, "alpha.mo"))).mode);
+      expect(await ctx.callFunction("fileperms", ["missing-file"])).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("FileSystem async functions: file_get_contents, file_put_contents, file_exists, is_file, is_dir, is_readable, is_writable, filesize, filemtime, realpath, basename, dirname, pathinfo, mkdir, rmdir, unlink, rename, copy, tempnam, sys_get_temp_dir, scandir", async () => {

@@ -3,7 +3,7 @@ import { PHPContext, PHPContextOptions } from "./PHPContext";
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
     constants?: Record<string, any>;
-    cacheDir?: string;
+    cacheDir?: string | null;
     watch?: boolean;
 }
 export declare class PHPEngine {
@@ -12,6 +12,8 @@ export declare class PHPEngine {
     functions: Map<string, Function>;
     classes: Map<string, any>;
     internalVars: Map<string, any>;
+    private classResolvers;
+    private resolvingClasses;
     private compiledCache;
     private watcher?;
     private transpiler;
@@ -19,8 +21,14 @@ export declare class PHPEngine {
     constructor(options?: PHPEngineOptions);
     getInternalVar(name: string): any;
     setInternalVar(name: string, value: any): void;
+    registerFunction(name: string, fn: Function): void;
+    registerConstant(name: string, value: any): void;
+    registerClass(name: string, value: any): void;
+    registerClassResolver(resolver: (ctx: PHPContext, className: string) => any): void;
+    resolveClass(name: string, ctx: PHPContext): Promise<any>;
     getConstant(name: string): any;
     private registerCoreFunctions;
+    private registerRuntimeImplementations;
     registerExtension(extension: PHPExtension): void;
     getConfigurationSHA1(): string;
     compileFile(filepath: string): Promise<Function>;

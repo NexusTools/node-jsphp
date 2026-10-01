@@ -11,10 +11,10 @@ export {
   PHPWarning,
   PHPExit,
   ErrorException,
-} from "./src/runtime/errors/PHPError";
-export { PHPObject, PHPClass, PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./src/runtime/objects/PHPObject";
-export { Superglobals } from "./src/runtime/superglobals/Superglobals";
-export { OutputBufferStack } from "./src/runtime/output/OutputBuffer";
+} from "./src/runtime/PHPError";
+export { PHPObject, PHPClass, PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./src/runtime/PHPObject";
+export { Superglobals } from "./src/runtime/Superglobals";
+export { OutputBufferStack } from "./src/runtime/OutputBuffer";
 export { PHPParser } from "./src/parser/PHPParser";
 export { ASTOptimizer } from "./src/parser/ASTOptimizer";
 export { JSTranspiler } from "./src/parser/JSTranspiler";
@@ -30,11 +30,11 @@ export {
   ReflectionFunction,
   ReflectionParameter,
   ReflectionType,
-} from "./src/runtime/reflection/Reflection";
+} from "./src/runtime/Reflection";
 export {
   NodeJSExtension,
   NodeJSObject,
   NodeJSService,
   wrapJSValue,
   unwrapPHPValue,
-} from "./src/extensions/nodejs/nodejs";
+} from "./src/extensions/nodejs";

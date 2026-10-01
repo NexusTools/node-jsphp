@@ -36,12 +36,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPContext = exports.PHPResponse = void 0;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
+const fsSync = __importStar(require("fs"));
 const PHPEngine_1 = require("./PHPEngine");
-const Superglobals_1 = require("./runtime/superglobals/Superglobals");
-const OutputBuffer_1 = require("./runtime/output/OutputBuffer");
-const PHPError_1 = require("./runtime/errors/PHPError");
-const PHPObject_1 = require("./runtime/objects/PHPObject");
-const SourceMapRegistry_1 = require("./runtime/errors/SourceMapRegistry");
+const Superglobals_1 = require("./runtime/Superglobals");
+const OutputBuffer_1 = require("./runtime/OutputBuffer");
+const PHPError_1 = require("./runtime/PHPError");
+const PHPObject_1 = require("./runtime/PHPObject");
+const SourceMapRegistry_1 = require("./runtime/SourceMapRegistry");
+function logDebug(msg) {
+    if (process.env.JSPHP_DEBUG !== "1")
+        return;
+    try {
+        fsSync.appendFileSync(path.resolve(__dirname, "../debug.log"), msg + "\n");
+    }
+    catch (e) { }
+}
 class PHPResponse {
     statusCode = 200;
     headers = [];
@@ -102,7 +111,12 @@ class PHPContext {
     cwd;
     env;
     vars = {};
+    constants = new Map();
+    scopes = [];
+    globalBindings = [];
+    staticBindings = [];
     internalVars = new Map();
+    staticVars = new Map();
     superglobals;
     outputBuffer;
     response;
@@ -128,8 +142,8 @@ class PHPContext {
     isInstanceOf(obj, className) {
         if (!obj || typeof obj !== "object")
             return false;
-        if (obj instanceof PHPObject_1.PHPObject) {
-            return obj.phpClass.name.toLowerCase() === String(className).toLowerCase();
+        if (obj.phpClass instanceof PHPObject_1.PHPClass) {
+            return obj.phpClass.isSubclassOf(String(className));
         }
         const cls = this.engine.classes.get(String(className).toLowerCase());
         if (cls && typeof cls === "function") {
@@ -271,13 +285,21 @@ class PHPContext {
         }
     }
     getConstant(name) {
+        if (this.constants.has(name))
+            return this.constants.get(name);
         return this.engine.getConstant(name);
     }
+    hasConstant(name) {
+        if (!name || typeof name !== "string")
+            return false;
+        return this.constants.has(name) || this.engine.constants.has(name) || this.engine.constants.has(name.toUpperCase());
+    }
     defineConstant(name, val) {
-        this.engine.constants.set(name, val);
-        this.engine.constants.set(name.toUpperCase(), val);
+        this.constants.set(name, val);
     }
     getVar(name) {
+        if (name === "GLOBALS")
+            return this.vars;
         if (name.startsWith("_")) {
             switch (name) {
                 case "_GET": return this.superglobals.GET;
@@ -288,13 +310,98 @@ class PHPContext {
                 case "_ENV": return this.superglobals.ENV;
                 case "_REQUEST": return this.superglobals.REQUEST;
                 case "_SESSION": return this.superglobals.SESSION;
-                case "GLOBALS": return this.vars;
             }
+        }
+        if (this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name)) {
+            return this.vars[name];
+        }
+        for (let index = this.scopes.length - 1; index >= 0; index--) {
+            if (Object.prototype.hasOwnProperty.call(this.scopes[index], name))
+                return this.scopes[index][name];
         }
         return this.vars[name];
     }
     setVar(name, value) {
-        this.vars[name] = value;
+        const isGlobal = this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name);
+        const scope = isGlobal || this.scopes.length === 0 ? this.vars : this.scopes[this.scopes.length - 1];
+        scope[name] = value;
+        if (this.staticBindings.length > 0) {
+            for (const key of this.staticBindings[this.staticBindings.length - 1]) {
+                if (key.endsWith(`:${name}`))
+                    this.staticVars.set(key, value);
+            }
+        }
+        return value;
+    }
+    bindGlobal(name) {
+        if (this.globalBindings.length > 0)
+            this.globalBindings[this.globalBindings.length - 1].add(name);
+    }
+    pushScope() {
+        this.scopes.push({});
+        this.globalBindings.push(new Set());
+        this.staticBindings.push(new Set());
+    }
+    popScope() {
+        this.scopes.pop();
+        this.globalBindings.pop();
+        this.staticBindings.pop();
+    }
+    setVarOffset(name, key, value) {
+        return this.setVarOffsets(name, [key], value);
+    }
+    setVarOffsets(name, keys, value) {
+        let target = this.getVar(name);
+        if (target === undefined || target === null) {
+            target = [];
+            this.setVar(name, target);
+        }
+        return this.assignOffsets(target, keys, value);
+    }
+    assignOffsets(target, keys, value) {
+        for (const key of keys.slice(0, -1)) {
+            if (key === null) {
+                const child = [];
+                this.assignOffset(target, null, child);
+                target = child;
+            }
+            else {
+                if (target[key] === undefined || target[key] === null)
+                    target[key] = [];
+                target = target[key];
+            }
+        }
+        return this.assignOffset(target, keys[keys.length - 1], value);
+    }
+    assignOffset(target, key, value) {
+        if (key === null) {
+            key = Array.isArray(target) ? target.length : Math.max(-1, ...Object.keys(target).filter((entry) => /^(0|[1-9]\d*)$/.test(entry)).map(Number)) + 1;
+        }
+        target[key] = value;
+        return value;
+    }
+    initStaticVar(scope, name, value) {
+        const key = `${scope}:${name}`;
+        if (this.staticBindings.length > 0)
+            this.staticBindings[this.staticBindings.length - 1].add(key);
+        if (!this.staticVars.has(key)) {
+            this.staticVars.set(key, value);
+            this.setVar(name, value);
+        }
+        else {
+            this.setVar(name, this.staticVars.get(key));
+        }
+    }
+    isTruthy(value) {
+        if (value === null || value === undefined || value === false)
+            return false;
+        if (typeof value === "number")
+            return value !== 0 && !Number.isNaN(value);
+        if (typeof value === "string")
+            return value !== "" && value !== "0";
+        if (Array.isArray(value))
+            return value.length > 0;
+        return true;
     }
     async getProperty(obj, prop) {
         if (obj instanceof PHPObject_1.PHPObject) {
@@ -312,42 +419,157 @@ class PHPContext {
         else if (obj && typeof obj === "object") {
             obj[prop] = value;
         }
+        return value;
+    }
+    async setPropertyOffset(obj, prop, key, value) {
+        return await this.setPropertyOffsets(obj, prop, [key], value);
+    }
+    async setPropertyOffsets(obj, prop, keys, value) {
+        let target = await this.getProperty(obj, prop);
+        if (target === undefined || target === null) {
+            target = [];
+            await this.setProperty(obj, prop, target);
+        }
+        return this.assignOffsets(target, keys, value);
     }
     async callMethod(obj, method, args = []) {
+        logDebug(`CALL_METHOD: ${obj?.constructor?.name}::${method}`);
         if (obj instanceof PHPObject_1.PHPObject) {
-            return await obj.callMethod(this, method, args);
+            const res = await obj.callMethod(this, method, args);
+            logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
+            return res;
         }
+        const metadata = obj?.phpClass?.methods?.get(method.toLowerCase());
+        if (metadata?.fn)
+            return await metadata.fn.apply(obj, [this, ...args]);
         if (obj && typeof obj[method] === "function") {
-            return await obj[method].apply(obj, args);
+            const res = await obj[method].apply(obj, args);
+            logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
+            return res;
         }
+        logDebug(`ERR_METHOD: ${obj?.constructor?.name}::${method}`);
         return undefined;
     }
     async callFunction(name, args = []) {
+        logDebug(`CALL_FUNC: ${name}`);
         const fn = this.engine.functions.get(name.toLowerCase());
         if (fn) {
-            return await fn.apply(this, [this, ...args]);
+            const res = await fn.apply(this, [this, ...args]);
+            logDebug(`DONE_FUNC: ${name}`);
+            return res;
         }
+        logDebug(`ERR_FUNC: ${name}`);
         throw new PHPError_1.PHPFatalError(`Call to undefined function ${name}()`);
     }
+    async resolveClass(className) {
+        const normalizedName = String(className).replace(/^\\/, "").toLowerCase();
+        const resolvedClass = this.engine.classes.get(normalizedName) || await this.engine.resolveClass(className, this);
+        if (!resolvedClass)
+            throw new PHPError_1.PHPFatalError(`Class "${className}" not found`);
+        return resolvedClass;
+    }
+    async getClassConstant(className, name) {
+        const resolvedClass = await this.resolveClass(className);
+        if (resolvedClass.constants?.has(name))
+            return resolvedClass.constants.get(name);
+        throw new PHPError_1.PHPFatalError(`Undefined constant ${className}::${name}`);
+    }
+    async getStaticProperty(className, name) {
+        let resolvedClass = await this.resolveClass(className);
+        while (resolvedClass) {
+            if (resolvedClass.staticProperties?.has(name))
+                return resolvedClass.staticProperties.get(name);
+            resolvedClass = resolvedClass.parentClass;
+        }
+        throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
+    }
+    async setStaticProperty(className, name, value) {
+        let resolvedClass = await this.resolveClass(className);
+        while (resolvedClass) {
+            if (resolvedClass.staticProperties?.has(name)) {
+                resolvedClass.staticProperties.set(name, value);
+                return value;
+            }
+            resolvedClass = resolvedClass.parentClass;
+        }
+        throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
+    }
+    async setStaticPropertyOffsets(className, name, keys, value) {
+        let target = await this.getStaticProperty(className, name);
+        if (target === undefined || target === null) {
+            target = [];
+            await this.setStaticProperty(className, name, target);
+        }
+        return this.assignOffsets(target, keys, value);
+    }
+    async callParentMethod(receiver, className, method, args) {
+        const resolvedClass = await this.resolveClass(className);
+        const metadata = resolvedClass.parentClass?.methods?.get(method.toLowerCase());
+        if (metadata?.fn)
+            return await metadata.fn.apply(receiver, [this, ...args]);
+        const nativeConstructor = resolvedClass.parentClass?.nativeConstructor;
+        if (nativeConstructor) {
+            if (method.toLowerCase() === "__construct") {
+                Object.defineProperties(receiver, Object.getOwnPropertyDescriptors(Reflect.construct(nativeConstructor, args)));
+                return;
+            }
+            const nativeMethod = nativeConstructor.prototype[method];
+            if (typeof nativeMethod === "function")
+                return await nativeMethod.apply(receiver, args);
+        }
+        throw new PHPError_1.PHPFatalError(`Call to undefined parent method ${className}::${method}()`);
+    }
+    async callStaticMethod(className, method, args = []) {
+        const normalizedClassName = String(className).toLowerCase();
+        const shortClassName = normalizedClassName.split("\\").pop() || normalizedClassName;
+        let cls = this.engine.classes.get(normalizedClassName) || this.engine.classes.get(shortClassName);
+        if (!cls)
+            cls = await this.engine.resolveClass(className, this);
+        if (cls?.methods && typeof cls.methods.get === "function") {
+            const metadata = cls.methods.get(String(method).toLowerCase());
+            if (metadata?.fn)
+                return await metadata.fn.apply(cls, [this, ...args]);
+        }
+        if (cls && typeof cls[method] === "function")
+            return await cls[method](...args);
+        throw new PHPError_1.PHPFatalError(`Call to undefined static method ${className}::${method}()`);
+    }
     async createObject(className, args = []) {
+        logDebug(`NEW: ${className}`);
         const rawClass = this.engine.classes.get(className.toLowerCase());
         if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject_1.PHPObject)) {
-            return new rawClass(...args);
+            const obj = new rawClass(...args);
+            if (obj instanceof PHPError_1.PHPError)
+                Object.defineProperty(obj, "phpClass", { value: new PHPObject_1.PHPClass(className, rawClass) });
+            logDebug(`DONE_NEW: ${className}`);
+            return obj;
         }
         const phpClass = rawClass instanceof PHPObject_1.PHPClass ? rawClass : new PHPObject_1.PHPClass(className);
-        const obj = new PHPObject_1.PHPObject(phpClass);
+        const obj = phpClass.nativeConstructor ? Reflect.construct(phpClass.nativeConstructor, args) : new PHPObject_1.PHPObject(phpClass);
+        if (phpClass.nativeConstructor) {
+            Object.defineProperty(obj, "phpClass", { value: phpClass });
+            for (const [name, metadata] of phpClass.properties) {
+                if (!metadata.isStatic)
+                    obj[name] = metadata.defaultValue;
+            }
+        }
         const __construct = phpClass.methods ? phpClass.methods.get("__construct") : undefined;
         if (__construct?.fn) {
             await __construct.fn.apply(obj, [this, ...args]);
         }
-        return obj;
+        logDebug(`DONE_NEW: ${className}`);
+        return obj instanceof PHPObject_1.PHPObject ? obj.asProxy(this) : obj;
     }
     async eval(code, filepath = "eval") {
+        logDebug(`EVAL: ${filepath}`);
         try {
             const compiledFunc = await this.engine.compileCode(code, filepath);
-            return await compiledFunc(this);
+            const res = await compiledFunc(this);
+            logDebug(`DONE_EVAL: ${filepath}`);
+            return res;
         }
         catch (err) {
+            logDebug(`ERR_EVAL: ${err}`);
             if (err instanceof PHPError_1.PHPExit || err?.name === "PHPExit") {
                 return err.status;
             }
@@ -363,53 +585,52 @@ class PHPContext {
             return false;
         }
     }
+    normalizeFilePath(filepath) {
+        const resolved = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+        return resolved.replace(/\\/g, "/").toLowerCase();
+    }
     async include(filepath) {
-        const resolvedPath = path.isAbsolute(filepath)
-            ? filepath
-            : path.resolve(this.cwd, filepath);
+        const normPath = this.normalizeFilePath(filepath);
+        const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+        this.includedFiles.add(normPath);
+        logDebug(`INC: ${path.basename(resolvedPath)}`);
         if (!(await this.fileExists(resolvedPath))) {
             await this.triggerError(`include(${filepath}): Failed to open stream: No such file or directory`, 2);
             return false;
         }
         const compiledFunc = await this.engine.compileFile(resolvedPath);
-        return await compiledFunc(this);
+        const res = await compiledFunc(this);
+        logDebug(`DONE_INC: ${path.basename(resolvedPath)}`);
+        return res;
     }
     async includeOnce(filepath) {
-        const resolvedPath = path.isAbsolute(filepath)
-            ? filepath
-            : path.resolve(this.cwd, filepath);
-        if (this.includedFiles.has(resolvedPath)) {
+        const normPath = this.normalizeFilePath(filepath);
+        if (this.includedFiles.has(normPath)) {
             return true;
         }
-        if (!(await this.fileExists(resolvedPath))) {
-            await this.triggerError(`include_once(${filepath}): Failed to open stream: No such file or directory`, 2);
-            return false;
-        }
-        this.includedFiles.add(resolvedPath);
-        return await this.include(resolvedPath);
+        this.includedFiles.add(normPath);
+        return await this.include(filepath);
     }
     async require(filepath) {
-        const resolvedPath = path.isAbsolute(filepath)
-            ? filepath
-            : path.resolve(this.cwd, filepath);
+        const normPath = this.normalizeFilePath(filepath);
+        const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+        this.includedFiles.add(normPath);
+        logDebug(`REQ: ${path.basename(resolvedPath)}`);
         if (!(await this.fileExists(resolvedPath))) {
             throw new PHPError_1.PHPFatalError(`Fatal error: require(${filepath}): Failed opening required '${filepath}'`);
         }
         const compiledFunc = await this.engine.compileFile(resolvedPath);
-        return await compiledFunc(this);
+        const res = await compiledFunc(this);
+        logDebug(`DONE_REQ: ${path.basename(resolvedPath)}`);
+        return res;
     }
     async requireOnce(filepath) {
-        const resolvedPath = path.isAbsolute(filepath)
-            ? filepath
-            : path.resolve(this.cwd, filepath);
-        if (this.includedFiles.has(resolvedPath)) {
+        const normPath = this.normalizeFilePath(filepath);
+        if (this.includedFiles.has(normPath)) {
             return true;
         }
-        if (!(await this.fileExists(resolvedPath))) {
-            throw new PHPError_1.PHPFatalError(`Fatal error: require_once(${filepath}): Failed opening required '${filepath}'`);
-        }
-        this.includedFiles.add(resolvedPath);
-        return await this.require(resolvedPath);
+        this.includedFiles.add(normPath);
+        return await this.require(filepath);
     }
     static async runFile(filepath, options = {}) {
         const engine = new PHPEngine_1.PHPEngine();

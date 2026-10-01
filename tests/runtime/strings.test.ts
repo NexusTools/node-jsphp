@@ -41,6 +41,20 @@ describe("Strings Runtime Tests", () => {
     expect(out).toBe("hello JSPHP;hello JSPHP;a-b-c;hello;hello  ;  hello;");
   });
 
+  test("substr_replace handles replacement, insertion, negative ranges, and arrays", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      echo substr_replace('en_US.mo', '.l10n.php', -3) . ';';
+      echo substr_replace('abcdef', 'X', 2, 2) . ';';
+      echo substr_replace('abcdef', 'X', 2, 0) . ';';
+      echo substr_replace('abcdef', 'X', 1, -1) . ';';
+      echo substr_replace('abc', 'X', 20) . ';';
+      $replaced = substr_replace(array('abc', 'def'), array('X', 'Y'), array(1, 0), array(1, 2));
+    `);
+    expect(ctx.outputText).toBe("en_US.l10n.php;abXef;abXcdef;aXf;abcX;");
+    expect(ctx.getVar("replaced")).toEqual(["aXc", "Yf"]);
+  });
+
   test("String functions: strtolower, strtoupper, ucfirst, lcfirst, ucwords, addslashes, stripslashes, htmlspecialchars", async () => {
     let out = "";
     const ctx = engine.createContext({ stdout: (d) => { out += d; } });

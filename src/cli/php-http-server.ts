@@ -2,7 +2,7 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs/promises";
 import { PHPEngine } from "../PHPEngine";
-import { PHPExit } from "../runtime/errors/PHPError";
+import { PHPError, PHPExit } from "../runtime/PHPError";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -24,8 +24,8 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
 };
 
-export async function runHTTPServer(port: number = 8080, docRoot: string = process.cwd()): Promise<http.Server> {
-  const engine = new PHPEngine();
+export async function runHTTPServer(port: number = 8080, docRoot: string = process.cwd(), cacheDir?: string): Promise<http.Server> {
+  const engine = new PHPEngine({ cacheDir: cacheDir || null });
   const absoluteCwd = path.resolve(docRoot);
 
   const server = http.createServer(async (req, res) => {
@@ -57,9 +57,19 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
 
       // Parse POST body if present
       const bodyChunks: Buffer[] = [];
-      req.on("data", (chunk) => bodyChunks.push(chunk));
+      const reqMethod = (req.method || "GET").toUpperCase();
 
-      await new Promise<void>((resolve) => req.on("end", resolve));
+      if (reqMethod !== "GET" && reqMethod !== "HEAD") {
+        req.on("data", (chunk) => bodyChunks.push(chunk));
+        if (!req.readableEnded) {
+          req.resume();
+          await new Promise<void>((resolve) => {
+            req.on("end", resolve);
+            req.on("error", () => resolve());
+          });
+        }
+      }
+
       const postData = Buffer.concat(bodyChunks).toString("utf8");
       const postParams: Record<string, string> = {};
 
@@ -109,13 +119,14 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
         if (err instanceof PHPExit || err?.name === "PHPExit") {
           // Normal exit/redirect
         } else {
+          console.error("-> PHP FATAL ERROR CAUGHT:", err);
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("Content-Type", "text/html; charset=utf-8");
           }
           const stackTrace = typeof err.getPHPStackTraceString === "function"
             ? err.getPHPStackTraceString()
-            : (err.stack || String(err));
+            : PHPError.virtualizeJSStack(err.stack || String(err));
 
           const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
                             `<h1>PHP Fatal Error</h1>` +
@@ -167,8 +178,10 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
     }
   });
 
+  server.on("close", () => engine.close());
+
   return new Promise((resolve) => {
-    server.listen(port, () => {
+    server.listen(port, "0.0.0.0", () => {
       console.log(`[jsphp-http-server] listening on http://127.0.0.1:${port}, document root: ${absoluteCwd}`);
       resolve(server);
     });

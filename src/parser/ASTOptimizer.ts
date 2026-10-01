@@ -19,89 +19,33 @@ export class ASTOptimizer {
       return optimizedArray;
     }
 
-    // 1. Optimize constant references (name & constref) based on PHPEngine constants
-    if (ast.kind === "name" || ast.kind === "constref") {
-      let constName = "";
-      if (typeof ast.name === "string") {
-        constName = ast.name;
-      } else if (ast.name && typeof ast.name === "object") {
-        constName = (ast.name.name || ast.name.value || "").toString();
-      } else if (typeof ast.value === "string") {
-        constName = ast.value;
-      }
-      if (constName && engine) {
-        if (engine.constants.has(constName)) {
-          return ASTOptimizer.literalNode(engine.constants.get(constName), ast.loc);
-        }
-        if (engine.constants.has(constName.toUpperCase())) {
-          return ASTOptimizer.literalNode(engine.constants.get(constName.toUpperCase()), ast.loc);
-        }
-      }
-    }
-
-    // Process child nodes
+    // Process child nodes first
     for (const key of Object.keys(ast)) {
       if (key !== "kind" && key !== "loc" && typeof ast[key] === "object") {
         ast[key] = ASTOptimizer.optimize(ast[key], engine);
       }
     }
 
-    // 2. Optimize Call expressions based on PHPEngine configuration
+    // 1. Optimize Call expressions on compile-time immutable values
     if (ast.kind === "call" && ast.what) {
       const funcName = (ast.what.name || ast.what.value || "").toString().toLowerCase();
 
-      // extension_loaded("ext")
-      if (funcName === "extension_loaded" && ast.arguments && ast.arguments.length === 1) {
-        const arg = ast.arguments[0];
-        if (arg.kind === "string" && engine) {
-          const extName = arg.value.toLowerCase();
-          const isLoaded = engine.extensions.has(extName);
-          return { kind: "boolean", value: isLoaded, loc: ast.loc };
+      if (ast.arguments && ast.arguments.length === 1 && ast.arguments[0].kind === "string") {
+        const name = String(ast.arguments[0].value);
+        if (funcName === "extension_loaded") {
+          return { kind: "boolean", value: engine.extensions.has(name.toLowerCase()), loc: ast.loc };
         }
-      }
-
-      // class_exists("class_name")
-      if (funcName === "class_exists" && ast.arguments && ast.arguments.length === 1) {
-        const arg = ast.arguments[0];
-        if (arg.kind === "string" && engine) {
-          const clsName = arg.value.toLowerCase();
-          if (engine.classes.has(clsName)) {
+        if (funcName === "defined") {
+          if (engine.constants.has(name) || engine.constants.has(name.toUpperCase())) {
             return { kind: "boolean", value: true, loc: ast.loc };
           }
         }
-      }
-
-      // function_exists("func_name")
-      if (funcName === "function_exists" && ast.arguments && ast.arguments.length === 1) {
-        const arg = ast.arguments[0];
-        if (arg.kind === "string" && engine) {
-          const fnName = arg.value.toLowerCase();
-          if (engine.functions.has(fnName)) {
-            return { kind: "boolean", value: true, loc: ast.loc };
-          }
-        }
-      }
-
-      // defined("CONST_NAME")
-      if (funcName === "defined" && ast.arguments && ast.arguments.length === 1) {
-        const arg = ast.arguments[0];
-        if (arg.kind === "string" && engine) {
-          const constName = arg.value;
-          const isDefined = engine.constants.has(constName) || engine.constants.has(constName.toUpperCase()) || constName === "PHP_VERSION" || constName === "PHP_ENGINE";
-          return { kind: "boolean", value: isDefined, loc: ast.loc };
-        }
-      }
-
-      // constant("CONST_NAME")
-      if (funcName === "constant" && ast.arguments && ast.arguments.length === 1) {
-        const arg = ast.arguments[0];
-        if (arg.kind === "string" && engine) {
-          const cName = arg.value;
-          if (engine.constants.has(cName)) {
-            return ASTOptimizer.literalNode(engine.constants.get(cName), ast.loc);
-          }
-          if (engine.constants.has(cName.toUpperCase())) {
-            return ASTOptimizer.literalNode(engine.constants.get(cName.toUpperCase()), ast.loc);
+        if (funcName === "constant") {
+          const value = engine.getConstant(name);
+          if (value !== undefined) {
+            if (typeof value === "string") return { kind: "string", value, loc: ast.loc };
+            if (typeof value === "number") return { kind: "number", value: String(value), loc: ast.loc };
+            if (typeof value === "boolean") return { kind: "boolean", value, loc: ast.loc };
           }
         }
       }
@@ -129,37 +73,34 @@ export class ASTOptimizer {
       }
     }
 
-    // 3. Optimize If statements
+    // 2. Optimize If statements on literal booleans
     if (ast.kind === "if") {
       const cond = ast.test;
 
-      // if (true)
       if (cond && cond.kind === "boolean" && cond.value === true) {
         const bodyStatements = ASTOptimizer.extractStatements(ast.body);
         (bodyStatements as any).__unwrapped = true;
         return bodyStatements;
       }
 
-      // if (false)
       if (cond && cond.kind === "boolean" && cond.value === false) {
         if (ast.alternate) {
           const altStatements = ASTOptimizer.extractStatements(ast.alternate);
           (altStatements as any).__unwrapped = true;
           return altStatements;
         }
-        // No else branch: remove entire if statement
         return null;
       }
     }
 
-    // 4. Optimize unary boolean NOT !
+    // 3. Optimize unary boolean NOT !
     if (ast.kind === "unary" && ast.type === "!") {
       if (ast.what && ast.what.kind === "boolean") {
         return { kind: "boolean", value: !ast.what.value, loc: ast.loc };
       }
     }
 
-    // 5. Optimize binary boolean expressions &&, ||
+    // 4. Optimize binary boolean expressions &&, ||
     if (ast.kind === "binary") {
       if (ast.type === "&&") {
         if (ast.left.kind === "boolean" && ast.right.kind === "boolean") {
@@ -184,13 +125,5 @@ export class ASTOptimizer {
       return bodyNode;
     }
     return [bodyNode];
-  }
-
-  private static literalNode(value: any, loc: any): any {
-    if (typeof value === "boolean") return { kind: "boolean", value, loc };
-    if (typeof value === "number") return { kind: "number", value: String(value), loc };
-    if (typeof value === "string") return { kind: "string", value, loc };
-    if (value === null) return { kind: "null", loc };
-    return { kind: "string", value: String(value), loc };
   }
 }

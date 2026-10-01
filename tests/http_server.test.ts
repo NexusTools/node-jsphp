@@ -56,6 +56,11 @@ cause_error();
 `
     );
 
+    fs.writeFileSync(
+      path.join(docRoot, "unexpected_error.php"),
+      "<?php $value = 1; $value['invalid'] = 2;"
+    );
+
     server = await runHTTPServer(testPort, docRoot);
   });
 
@@ -125,5 +130,15 @@ cause_error();
     expect(res.body).toContain("PHP Fatal Error");
     expect(res.body).toContain("PHP Stack Trace");
     expect(res.body).toContain("undefined function");
+  });
+
+  test("Virtualizes unexpected runtime errors instead of exposing JavaScript frames", async () => {
+    const res = await makeRequest("/unexpected_error.php");
+    expect(res.status).toBe(500);
+    expect(res.body).toContain("PHP Stack Trace");
+    expect(res.body).not.toContain("eval at compileCode");
+    expect(res.body).not.toContain("PHPContext.js");
+    expect(res.body).not.toContain("PHPContext.ts");
+    expect(res.body).not.toContain("node:internal");
   });
 });

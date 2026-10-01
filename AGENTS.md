@@ -14,7 +14,7 @@ This document provides operational context, architecture directives, and guidanc
    TypeScript source files in `src/` compile to JavaScript `.js` and declaration `.d.ts` files placed directly alongside their corresponding `.ts` sources. Do NOT use a `dist/` or `out/` folder.
 
 4. **AST Optimization Rules**:
-   Ensure `ASTOptimizer` optimizes `extension_loaded(...)`, `defined(...)`, `constant(...)`, constant references (`name` / `constref`), and boolean expressions at compile time. Eliminate dead `if` branches prior to code generation.
+   Ensure `ASTOptimizer` optimizes `extension_loaded(...)`, `defined(...)`, `constant(...)` and more, constant references (`name` / `constref`), and boolean expressions at compile time. Eliminate dead `if` branches prior to code generation.
 
 5. **CLI & Server Binaries**:
    - `php` (`bin/php.js`): Single-file CLI execution binary.

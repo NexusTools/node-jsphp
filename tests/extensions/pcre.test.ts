@@ -20,4 +20,22 @@ describe("PCRE Extension Tests", () => {
     `);
     expect(out).toBe("MATCH;abcXdef;");
   });
+
+  test("preg_match_all supports delimiters, output captures, and match ordering", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      $count = preg_match_all('#([a-z]+)([0-9]+)#i', 'a1 B22', $matches);
+      $set_count = preg_match_all('~([a-z]+)([0-9]+)~i', 'a1 B22', $sets, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+      preg_match('/(a)(z)?/', 'a', $single, PREG_UNMATCHED_AS_NULL);
+      $empty_count = preg_match_all('/(?=a)/', 'aa');
+      echo preg_replace('#[0-9]#', 'X', 'a1b2');
+    `);
+    expect(ctx.getVar("count")).toBe(2);
+    expect(ctx.getVar("matches")).toEqual([["a1", "B22"], ["a", "B"], ["1", "22"]]);
+    expect(ctx.getVar("set_count")).toBe(2);
+    expect(ctx.getVar("sets")[1]).toEqual([["B22", 3], ["B", 3], ["22", 4]]);
+    expect(ctx.getVar("single")).toEqual(["a", "a", null]);
+    expect(ctx.getVar("empty_count")).toBe(2);
+    expect(ctx.outputText).toBe("aXbX");
+  });
 });
