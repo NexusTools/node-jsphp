@@ -309,7 +309,7 @@ export class JSTranspiler {
         lines.push(`${pad}} catch (__err) {`);
 
         for (const catchNode of node.catches || []) {
-          const catchVar = catchNode.variable ? (catchNode.variable.name?.name || catchNode.variable.name || catchNode.variable) : "e";
+          const catchVar = this.getConstName(catchNode.variable) || "e";
           lines.push(`${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);`);
           this.transpileNodeList(catchNode.body?.children || catchNode.body, lines, lineMap, mapGen, filepath, indent + 4, "{main}");
         }
@@ -323,7 +323,7 @@ export class JSTranspiler {
       }
 
       case "throw": {
-        const expr = node.expr ? this.transpileExpr(node.expr, filepath) : "undefined";
+        const expr = (node.expr || node.what) ? this.transpileExpr(node.expr || node.what, filepath) : "undefined";
         lines.push(`${pad}throw ${expr};`);
         break;
       }

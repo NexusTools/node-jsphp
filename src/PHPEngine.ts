@@ -219,24 +219,24 @@ export class PHPEngine {
     "call_user_func": async (ctx: PHPContext, callback: any, ...args: any[]) => {
       if (!callback) return undefined;
       if (typeof callback === "function") return await callback.apply(ctx, args);
-      if (typeof callback === "string") return await ctx.callFunction(callback, args);
-      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], callback[1], args);
+      if (typeof callback === "string") return await ctx.callFunction(callback.toLowerCase(), args);
+      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), args);
       return undefined;
     },
     "call_user_func_array": async (ctx: PHPContext, callback: any, args: any[] = []) => {
       const arrArgs = Array.isArray(args) ? args : Object.values(args || {});
       if (!callback) return undefined;
       if (typeof callback === "function") return await callback.apply(ctx, arrArgs);
-      if (typeof callback === "string") return await ctx.callFunction(callback, arrArgs);
-      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], callback[1], args);
+      if (typeof callback === "string") return await ctx.callFunction(callback.toLowerCase(), arrArgs);
+      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), arrArgs);
       return undefined;
     },
     "define": async (ctx: PHPContext, name: string, value: any) => {
-      if (ctx.hasConstant(name)) {
+      if (ctx.hasConstant(name.toLowerCase())) {
         await ctx.triggerError(`Constant ${name} already defined`, 2);
         return false;
       }
-      ctx.defineConstant(name, value);
+      ctx.defineConstant(name.toLowerCase(), value);
       return true;
     },
     "defined": (ctx: PHPContext, name: string) => ctx.hasConstant(name),

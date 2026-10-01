@@ -32,29 +32,71 @@ class NodeJSObject extends PHPObject_1.PHPObject {
         this.jsValue = jsValue;
     }
     async getProperty(ctx, name) {
-        if (this.jsValue && (typeof this.jsValue === "object" || typeof this.jsValue === "function")) {
-            const val = this.jsValue[name];
-            if (typeof val === "function") {
-                // Return a bound callable wrapper
-                const boundFn = val.bind(this.jsValue);
-                return wrapJSValue(boundFn);
+        if (!this.jsValue || (typeof this.jsValue !== "object" && typeof this.jsValue !== "function"))
+            return undefined;
+        const lowerName = name.toLowerCase();
+        let targetName = name;
+        if (!(name in this.jsValue)) {
+            let target = this.jsValue;
+            while (target && target !== Object.prototype) {
+                for (const prop of Object.getOwnPropertyNames(target)) {
+                    if (prop.toLowerCase() === lowerName) {
+                        targetName = prop;
+                        break;
+                    }
+                }
+                target = Object.getPrototypeOf(target);
             }
-            return wrapJSValue(val);
         }
-        return undefined;
+        const val = this.jsValue[targetName];
+        if (typeof val === "function") {
+            const boundFn = val.bind(this.jsValue);
+            return wrapJSValue(boundFn);
+        }
+        return wrapJSValue(val);
     }
     async setProperty(ctx, name, value) {
         if (this.jsValue && (typeof this.jsValue === "object" || typeof this.jsValue === "function")) {
-            this.jsValue[name] = unwrapPHPValue(value);
+            const lowerName = name.toLowerCase();
+            let targetName = name;
+            if (!(name in this.jsValue)) {
+                let target = this.jsValue;
+                while (target && target !== Object.prototype) {
+                    for (const prop of Object.getOwnPropertyNames(target)) {
+                        if (prop.toLowerCase() === lowerName) {
+                            targetName = prop;
+                            break;
+                        }
+                    }
+                    target = Object.getPrototypeOf(target);
+                }
+            }
+            this.jsValue[targetName] = unwrapPHPValue(value);
         }
     }
     async callMethod(ctx, name, args = []) {
-        if (this.jsValue && typeof this.jsValue[name] === "function") {
+        if (!this.jsValue)
+            return undefined;
+        const lowerName = name.toLowerCase();
+        let targetName = name;
+        if (typeof this.jsValue[name] !== "function") {
+            let target = this.jsValue;
+            while (target && target !== Object.prototype) {
+                for (const prop of Object.getOwnPropertyNames(target)) {
+                    if (prop.toLowerCase() === lowerName && typeof target[prop] === "function") {
+                        targetName = prop;
+                        break;
+                    }
+                }
+                target = Object.getPrototypeOf(target);
+            }
+        }
+        if (typeof this.jsValue[targetName] === "function") {
             const unwrappedArgs = args.map(unwrapPHPValue);
-            const res = await Promise.resolve(this.jsValue[name].apply(this.jsValue, unwrappedArgs));
+            const res = await Promise.resolve(this.jsValue[targetName].apply(this.jsValue, unwrappedArgs));
             return wrapJSValue(res);
         }
-        if (typeof this.jsValue === "function" && name === "__invoke") {
+        if (typeof this.jsValue === "function" && lowerName === "__invoke") {
             const unwrappedArgs = args.map(unwrapPHPValue);
             const res = await Promise.resolve(this.jsValue.apply(null, unwrappedArgs));
             return wrapJSValue(res);

@@ -32,10 +32,10 @@ class ASTOptimizer {
             if (ast.arguments && ast.arguments.length === 1 && ast.arguments[0].kind === "string") {
                 const name = String(ast.arguments[0].value);
                 if (funcName === "extension_loaded") {
-                    return { kind: "boolean", value: engine.extensions.has(name.toLowerCase()), loc: ast.loc };
+                    return { kind: "boolean", value: name.toLowerCase() in engine.extensions, loc: ast.loc };
                 }
                 if (funcName === "defined") {
-                    if (engine.constants.has(name) || engine.constants.has(name.toUpperCase())) {
+                    if (name.toLowerCase() in engine.constants) {
                         return { kind: "boolean", value: true, loc: ast.loc };
                     }
                 }
