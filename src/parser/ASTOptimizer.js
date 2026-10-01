@@ -32,23 +32,7 @@ class ASTOptimizer {
             if (ast.arguments && ast.arguments.length === 1 && ast.arguments[0].kind === "string") {
                 const name = String(ast.arguments[0].value);
                 if (funcName === "extension_loaded") {
-                    return { kind: "boolean", value: name.toLowerCase() in engine.extensions, loc: ast.loc };
-                }
-                if (funcName === "defined") {
-                    if (name.toLowerCase() in engine.constants) {
-                        return { kind: "boolean", value: true, loc: ast.loc };
-                    }
-                }
-                if (funcName === "constant") {
-                    const value = engine.getConstant(name);
-                    if (value !== undefined) {
-                        if (typeof value === "string")
-                            return { kind: "string", value, loc: ast.loc };
-                        if (typeof value === "number")
-                            return { kind: "number", value: String(value), loc: ast.loc };
-                        if (typeof value === "boolean")
-                            return { kind: "boolean", value, loc: ast.loc };
-                    }
+                    return { kind: "boolean", value: engine.extensions.has(name.toLowerCase()), loc: ast.loc };
                 }
             }
             // strlen("literal_string")

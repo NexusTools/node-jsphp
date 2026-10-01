@@ -23,10 +23,10 @@ class PHPError extends Error {
         }
     }
     getMessage() {
-        return this.message;
+        return this.message ?? this.properties?.get("message") ?? "";
     }
     getCode() {
-        return this.phpCode;
+        return this.phpCode ?? this.properties?.get("code") ?? 0;
     }
     getFile() {
         return this.phpFile;

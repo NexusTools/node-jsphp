@@ -107,15 +107,31 @@ class PHPObject {
         }
     }
     async callMethod(ctx, name, args) {
-        const methodMeta = this.phpClass.methods.get(name.toLowerCase());
-        if (methodMeta?.fn) {
-            return await methodMeta.fn.apply(this, [ctx, ...args]);
+        const lowerName = name.toLowerCase();
+        ctx.currentClassStack.push(this.phpClass);
+        try {
+            const methodMeta = this.phpClass.methods.get(lowerName);
+            if (methodMeta?.fn) {
+                return await methodMeta.fn.apply(this, [ctx, ...args]);
+            }
+            const __callMeta = this.phpClass.methods.get("__call");
+            if (__callMeta?.fn) {
+                return await __callMeta.fn.call(this, ctx, name, args);
+            }
+            let target = this;
+            while (target && target !== Object.prototype) {
+                for (const propName of Object.getOwnPropertyNames(target)) {
+                    if (propName.toLowerCase() === lowerName && typeof this[propName] === "function") {
+                        return await this[propName].apply(this, args);
+                    }
+                }
+                target = Object.getPrototypeOf(target);
+            }
+            throw new PHPError_1.PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
         }
-        const __callMeta = this.phpClass.methods.get("__call");
-        if (__callMeta?.fn) {
-            return await __callMeta.fn.call(this, ctx, name, args);
+        finally {
+            ctx.currentClassStack.pop();
         }
-        throw new PHPError_1.PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
     }
     async toString(ctx) {
         const __toStringMeta = this.phpClass.methods.get("__tostring");

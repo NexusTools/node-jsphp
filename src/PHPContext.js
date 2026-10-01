@@ -64,6 +64,7 @@ class PHPResponse {
     statusCode = 200;
     headers = [];
     headersSent = false;
+    /** Sets an HTTP response header. */
     setHeader(name, value, replace = true) {
         if (this.headersSent) {
             return;
@@ -76,6 +77,7 @@ class PHPResponse {
             this.statusCode = 302;
         }
     }
+    /** Removes an HTTP response header. */
     removeHeader(name) {
         if (this.headersSent) {
             return;
@@ -86,13 +88,16 @@ class PHPResponse {
         }
         this.headers = this.headers.filter((h) => h.name.toLowerCase() !== name.toLowerCase());
     }
+    /** Gets an HTTP response header value by name. */
     getHeader(name) {
         const found = this.headers.filter((h) => h.name.toLowerCase() === name.toLowerCase());
         return found.length > 0 ? found[found.length - 1].value : undefined;
     }
+    /** Gets all formatted HTTP response headers. */
     getHeadersList() {
         return this.headers.map((h) => `${h.name}: ${h.value}`);
     }
+    /** Sets a Set-Cookie HTTP header. */
     setCookie(name, value = "", expires = 0, path = "", domain = "", secure = false, httponly = false, raw = false) {
         if (this.headersSent) {
             return;
@@ -154,18 +159,27 @@ class PHPContext {
             this.errorReportingLevel = options.errorReporting;
         }
     }
+    currentClassStack = [];
+    get currentClass() {
+        return this.currentClassStack.length > 0 ? this.currentClassStack[this.currentClassStack.length - 1] : undefined;
+    }
+    /**
+     * Checks if an object is an instance of a class or interface.
+     * @param className Class or interface name in lowercase.
+     */
     isInstanceOf(obj, className) {
         if (!obj || typeof obj !== "object")
             return false;
         if (obj.phpClass instanceof PHPObject_1.PHPClass) {
-            return obj.phpClass.isSubclassOf(String(className));
+            return obj.phpClass.isSubclassOf(className);
         }
-        const cls = this.classes[String(className).toLowerCase()];
+        const cls = this.classes[className];
         if (cls && typeof cls === "function") {
             return obj instanceof cls;
         }
         return false;
     }
+    /** Gets virtualized PHP stack trace frames for error handling and backtraces. */
     getPHPBacktrace() {
         const err = new Error();
         const rawLines = (err.stack || "").split("\n");
@@ -210,17 +224,20 @@ class PHPContext {
         }
         return frames;
     }
+    /** Sets a user-defined error handler function. */
     setErrorHandler(handler, levels = 32767) {
         const prev = this.errorHandlerStack.length > 0 ? this.errorHandlerStack[this.errorHandlerStack.length - 1] : null;
         this.errorHandlerStack.push({ handler, levels });
         return prev ? prev.handler : null;
     }
+    /** Restores the previous error handler from the stack. */
     restoreErrorHandler() {
         if (this.errorHandlerStack.length > 0) {
             this.errorHandlerStack.pop();
         }
         return true;
     }
+    /** Triggers a userland error or warning. */
     async triggerError(message, level = 1024, file = "[INTERNAL]", line = 0) {
         if ((this.errorReportingLevel & level) === 0) {
             return false; // Suppressed
@@ -251,12 +268,15 @@ class PHPContext {
             return true;
         }
     }
+    /** Gets an internal variable value. */
     getInternalVar(name) {
         return this.internalVars[name];
     }
+    /** Sets an internal variable value. */
     setInternalVar(name, value) {
         this.internalVars[name] = value;
     }
+    /** Gets response headers as a key-value dictionary. */
     get responseHeaders() {
         const res = {};
         for (const h of this.response.headers) {
@@ -264,9 +284,11 @@ class PHPContext {
         }
         return res;
     }
+    /** Gets the current HTTP status code. */
     get statusCode() {
         return this.response.statusCode;
     }
+    /** Flushes response headers to the client. */
     flushHeaders() {
         if (this.response.headersSent)
             return;
@@ -276,6 +298,7 @@ class PHPContext {
             onFlush(this.response.statusCode, this.response.headers);
         }
     }
+    /** Writes output text to stdout or active output buffer. */
     async echo(data) {
         const str = String(data ?? "");
         if (this.outputBuffer.isActive()) {
@@ -296,17 +319,30 @@ class PHPContext {
             this.stdout.write(str);
         }
     }
+    /**
+     * Gets a constant value by lowercase or exact name.
+     * @param name Constant name in lowercase or exact key.
+     */
     getConstant(name) {
-        return this.constants[name];
+        return this.constants[name.toLowerCase()] ?? this.constants[name];
     }
+    /**
+     * Checks if a constant is defined.
+     * @param name Constant name in lowercase or exact key.
+     */
     hasConstant(name) {
         if (!name || typeof name !== "string")
             return false;
-        return name in this.constants;
+        return name.toLowerCase() in this.constants || name in this.constants;
     }
+    /**
+     * Defines a constant.
+     * @param name Constant name in lowercase or exact key.
+     */
     defineConstant(name, val) {
         this.constants[name] = val;
     }
+    /** Gets a variable value from the current or global scope. */
     getVar(name) {
         if (name === "GLOBALS")
             return this.vars;
@@ -335,6 +371,7 @@ class PHPContext {
         const value = this.vars[name];
         return value instanceof PHPReference ? value.get() : value;
     }
+    /** Sets a variable value in the current scope. */
     setVar(name, value) {
         const isGlobal = this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name);
         const scope = isGlobal || this.scopes.length === 0 ? this.vars : this.scopes[this.scopes.length - 1];
@@ -350,23 +387,28 @@ class PHPContext {
         }
         return value;
     }
+    /** Binds a variable name to global scope. */
     bindGlobal(name) {
         if (this.globalBindings.length > 0)
             this.globalBindings[this.globalBindings.length - 1].add(name);
     }
+    /** Pushes a new variable scope. */
     pushScope() {
         this.scopes.push({});
         this.globalBindings.push(new Set());
         this.staticBindings.push(new Set());
     }
+    /** Pops the current variable scope. */
     popScope() {
         this.scopes.pop();
         this.globalBindings.pop();
         this.staticBindings.pop();
     }
+    /** Sets a single array offset on a variable. */
     setVarOffset(name, key, value) {
         return this.setVarOffsets(name, [key], value);
     }
+    /** Sets nested array offsets on a variable. */
     setVarOffsets(name, keys, value) {
         let target = this.getVar(name);
         if (target === undefined || target === null) {
@@ -397,6 +439,7 @@ class PHPContext {
         target[key] = value;
         return value;
     }
+    /** Initializes a static variable in function scope. */
     initStaticVar(scope, name, value) {
         const key = `${scope}:${name}`;
         if (this.staticBindings.length > 0)
@@ -409,6 +452,7 @@ class PHPContext {
             this.setVar(name, this.staticVars.get(key));
         }
     }
+    /** Evaluates whether a value is truthy in PHP. */
     isTruthy(val) {
         if (val === null || val === undefined || val === false)
             return false;
@@ -420,6 +464,10 @@ class PHPContext {
             return val.length > 0;
         return true;
     }
+    /**
+     * Gets a property on an object or array.
+     * @param prop Property name in lowercase.
+     */
     async getProperty(obj, prop) {
         if (obj instanceof PHPObject_1.PHPObject) {
             return await obj.getProperty(this, prop);
@@ -429,6 +477,10 @@ class PHPContext {
         }
         return undefined;
     }
+    /**
+     * Sets a property on an object or array.
+     * @param prop Property name in lowercase.
+     */
     async setProperty(obj, prop, value) {
         if (obj instanceof PHPObject_1.PHPObject) {
             await obj.setProperty(this, prop, value);
@@ -438,9 +490,11 @@ class PHPContext {
         }
         return value;
     }
+    /** Sets a single property offset on an object. */
     async setPropertyOffset(obj, prop, key, value) {
         return await this.setPropertyOffsets(obj, prop, [key], value);
     }
+    /** Sets nested property offsets on an object. */
     async setPropertyOffsets(obj, prop, keys, value) {
         let target = await this.getProperty(obj, prop);
         if (target === undefined || target === null) {
@@ -449,6 +503,11 @@ class PHPContext {
         }
         return this.assignOffsets(target, keys, value);
     }
+    /**
+     * Calls a method on an object.
+     * Expects method name in lowercase.
+     * @param method Method name in lowercase.
+     */
     async callMethod(obj, method, args = []) {
         logDebug(`CALL_METHOD: ${obj?.constructor?.name}::${method}`);
         if (!obj || (typeof obj !== "object" && typeof obj !== "function"))
@@ -458,8 +517,7 @@ class PHPContext {
             logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
             return res;
         }
-        const lowerMethod = method.toLowerCase();
-        const metadata = obj?.phpClass?.methods?.get(lowerMethod);
+        const metadata = obj?.phpClass?.methods?.get ? obj.phpClass.methods.get(method) : obj?.phpClass?.methods?.[method];
         if (metadata?.fn)
             return await metadata.fn.apply(obj, [this, ...args]);
         if (typeof obj[method] === "function") {
@@ -468,7 +526,7 @@ class PHPContext {
         let target = obj;
         while (target && target !== Object.prototype) {
             for (const propName of Object.getOwnPropertyNames(target)) {
-                if (propName.toLowerCase() === lowerMethod && typeof obj[propName] === "function") {
+                if (propName.toLowerCase() === method && typeof obj[propName] === "function") {
                     return await obj[propName].apply(obj, args);
                 }
             }
@@ -477,23 +535,26 @@ class PHPContext {
         logDebug(`ERR_METHOD: ${obj?.constructor?.name}::${method}`);
         return undefined;
     }
+    /** Gets a PHPReference wrapper for a variable name. */
     getVarRef(name) {
-        return this.referenceVariable(name);
-    }
-    referenceVariable(name) {
         const isGlobal = this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name);
         const scope = isGlobal || this.scopes.length === 0 ? this.vars : this.scopes[this.scopes.length - 1];
         if (scope[name] instanceof PHPReference)
             return scope[name];
         return new PHPReference(() => scope[name], (value) => { scope[name] = value; });
     }
+    /**
+     * Calls a global function.
+     * Expects function name in lowercase.
+     * @param name Function name in lowercase.
+     */
     async callFunction(name, args = [], references = []) {
         logDebug(`CALL_FUNC: ${name}`);
-        const fn = this.functions[name.toLowerCase()] || this.functions[name];
+        const fn = this.functions[name];
         if (fn) {
             const parameters = fn.phpMeta?.parameters || [];
             const callArguments = args.map((value, index) => parameters[index]?.byref && references[index]
-                ? this.referenceVariable(references[index]) : value);
+                ? this.getVarRef(references[index]) : value);
             const res = await fn.apply(this, [this, ...callArguments]);
             logDebug(`DONE_FUNC: ${name}`);
             return res;
@@ -501,13 +562,22 @@ class PHPContext {
         logDebug(`ERR_FUNC: ${name}`);
         throw new PHPError_1.PHPFatalError(`Call to undefined function ${name}()`);
     }
+    /**
+     * Resolves a class by lowercase name.
+     * @param className Class name in lowercase.
+     */
     async resolveClass(className) {
-        const normalizedName = String(className).replace(/^\\/, "").toLowerCase();
+        const normalizedName = String(className).replace(/^\\/, "");
         const resolvedClass = this.classes[normalizedName] || await this.engine.resolveClass(className, this);
         if (!resolvedClass)
             throw new PHPError_1.PHPFatalError(`Class "${className}" not found`);
         return resolvedClass;
     }
+    /**
+     * Gets a static class constant.
+     * @param className Class name in lowercase.
+     * @param name Constant name in lowercase.
+     */
     async getClassConstant(className, name) {
         const resolvedClass = await this.resolveClass(className);
         if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
@@ -515,6 +585,11 @@ class PHPContext {
         }
         throw new PHPError_1.PHPFatalError(`Undefined constant ${className}::${name}`);
     }
+    /**
+     * Gets a static class property.
+     * @param className Class name in lowercase.
+     * @param name Property name in lowercase.
+     */
     async getStaticProperty(className, name) {
         let resolvedClass = await this.resolveClass(className);
         const cleanName = name.startsWith("$") ? name.slice(1) : name;
@@ -533,6 +608,11 @@ class PHPContext {
         }
         throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
     }
+    /**
+     * Sets a static class property.
+     * @param className Class name in lowercase.
+     * @param name Property name in lowercase.
+     */
     async setStaticProperty(className, name, value) {
         let resolvedClass = await this.resolveClass(className);
         const cleanName = name.startsWith("$") ? name.slice(1) : name;
@@ -557,6 +637,7 @@ class PHPContext {
         }
         throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
     }
+    /** Sets static property array offsets. */
     async setStaticPropertyOffsets(className, name, keys, value) {
         let target = await this.getStaticProperty(className, name);
         if (target === undefined || target === null) {
@@ -565,24 +646,50 @@ class PHPContext {
         }
         return this.assignOffsets(target, keys, value);
     }
-    async callStaticMethod(className, method, args = []) {
-        const normalizedClassName = String(className).toLowerCase();
-        const shortClassName = normalizedClassName.split("\\").pop() || normalizedClassName;
-        let cls = this.classes[normalizedClassName] || this.classes[shortClassName];
+    /**
+     * Calls a static method on a class.
+     * @param className Class name in lowercase.
+     * @param method Method name in lowercase.
+     */
+    async callStaticMethod(className, method, args = [], targetObj) {
+        const shortClassName = className.split("\\").pop() || className;
+        let cls = this.classes[className] || this.classes[shortClassName];
         if (!cls)
             cls = await this.engine.resolveClass(className, this);
-        if (cls?.methods && typeof cls.methods.get === "function") {
-            const metadata = cls.methods.get(String(method).toLowerCase());
-            if (metadata?.fn)
-                return await metadata.fn.apply(cls, [this, ...args]);
+        const calledClass = cls;
+        let targetClass = cls;
+        this.currentClassStack.push(calledClass);
+        try {
+            while (targetClass) {
+                if (targetClass.methods && typeof targetClass.methods.get === "function") {
+                    const metadata = targetClass.methods.get(method);
+                    if (metadata?.fn)
+                        return await metadata.fn.apply(targetObj || calledClass, [this, ...args]);
+                }
+                targetClass = targetClass.parentClass;
+            }
+            if (cls && typeof cls[method] === "function")
+                return await cls[method](...args);
+            if (method === "__construct" && typeof cls === "function") {
+                const instance = new cls(...args);
+                if (targetObj && typeof targetObj === "object") {
+                    Object.assign(targetObj, instance);
+                }
+                return instance;
+            }
+            throw new PHPError_1.PHPFatalError(`Call to undefined static method ${className}::${method}()`);
         }
-        if (cls && typeof cls[method] === "function")
-            return await cls[method](...args);
-        throw new PHPError_1.PHPFatalError(`Call to undefined static method ${className}::${method}()`);
+        finally {
+            this.currentClassStack.pop();
+        }
     }
+    /**
+     * Creates an instance of a class.
+     * @param className Class name in lowercase.
+     */
     async createObject(className, args = []) {
         logDebug(`NEW: ${className}`);
-        const rawClass = this.classes[className.toLowerCase()];
+        const rawClass = this.classes[className];
         if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject_1.PHPObject)) {
             const obj = new rawClass(...args);
             if (obj instanceof PHPError_1.PHPError)
@@ -606,6 +713,7 @@ class PHPContext {
         logDebug(`DONE_NEW: ${className}`);
         return obj instanceof PHPObject_1.PHPObject ? obj.asProxy(this) : obj;
     }
+    /** Evaluates PHP code in the context. */
     async eval(code, filepath = "eval") {
         logDebug(`EVAL: ${filepath}`);
         try {
@@ -635,6 +743,7 @@ class PHPContext {
         const resolved = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
         return resolved.replace(/\\/g, "/").toLowerCase();
     }
+    /** Includes a PHP file. */
     async include(filepath) {
         const normPath = this.normalizeFilePath(filepath);
         const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
@@ -649,6 +758,7 @@ class PHPContext {
         logDebug(`DONE_INC: ${path.basename(resolvedPath)}`);
         return res;
     }
+    /** Includes a PHP file if not already included. */
     async includeOnce(filepath) {
         const normPath = this.normalizeFilePath(filepath);
         if (this.includedFiles.has(normPath)) {
@@ -657,6 +767,7 @@ class PHPContext {
         this.includedFiles.add(normPath);
         return await this.include(filepath);
     }
+    /** Requires a PHP file. */
     async require(filepath) {
         const normPath = this.normalizeFilePath(filepath);
         const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
@@ -670,6 +781,7 @@ class PHPContext {
         logDebug(`DONE_REQ: ${path.basename(resolvedPath)}`);
         return res;
     }
+    /** Requires a PHP file if not already required. */
     async requireOnce(filepath) {
         const normPath = this.normalizeFilePath(filepath);
         if (this.includedFiles.has(normPath)) {
@@ -678,12 +790,14 @@ class PHPContext {
         this.includedFiles.add(normPath);
         return await this.require(filepath);
     }
+    /** Helper to create an engine, context, and execute a file. */
     static async runFile(filepath, options = {}) {
         const engine = new PHPEngine_1.PHPEngine();
         const ctx = engine.createContext(options);
         await ctx.require(filepath);
         return ctx;
     }
+    /** Helper to create an engine, context, and execute inline PHP code. */
     static async runCode(code, options = {}) {
         const engine = new PHPEngine_1.PHPEngine();
         const ctx = engine.createContext(options);

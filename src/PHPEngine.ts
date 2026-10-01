@@ -232,18 +232,19 @@ export class PHPEngine {
       return undefined;
     },
     "define": async (ctx: PHPContext, name: string, value: any) => {
-      if (ctx.hasConstant(name.toLowerCase())) {
+      const lower = String(name ?? "").toLowerCase();
+      if (ctx.hasConstant(lower)) {
         await ctx.triggerError(`Constant ${name} already defined`, 2);
         return false;
       }
-      ctx.defineConstant(name.toLowerCase(), value);
+      ctx.defineConstant(lower, value);
       return true;
     },
-    "defined": (ctx: PHPContext, name: string) => ctx.hasConstant(name),
+    "defined": (ctx: PHPContext, name: string) => ctx.hasConstant(String(name ?? "").toLowerCase()),
     "extension_loaded": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
     "function_exists": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
     "class_exists": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.classes)),
-    "constant": (ctx: PHPContext, name: string) => ctx.getConstant(name),
+    "constant": (ctx: PHPContext, name: string) => ctx.getConstant(String(name ?? "").toLowerCase()),
     "assert": (ctx: PHPContext, assertion: any, description?: string) => {
       if (!assertion) {
         if (description) throw new PHPFatalError(`Assertion failed: ${description}`);
@@ -311,7 +312,7 @@ export class PHPEngine {
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(";");
-    return crypto.createHash("sha1").update(`v24|${sortedExts}|${sortedConsts}`).digest("hex");
+    return crypto.createHash("sha1").update(`v26|${sortedExts}|${sortedConsts}`).digest("hex");
   }
 
   public async compileFile(filepath: string): Promise<Function> {

@@ -13,6 +13,8 @@ export declare class JSTranspiler {
     private currentClassName;
     private currentNamespaceName;
     private classImports;
+    private switchLabelCounter;
+    private switchLabelStack;
     constructor();
     transpile(code: string, filepath?: string, options?: TranspileOptions): TranspilationResult;
     private transpileNodeList;

@@ -252,18 +252,19 @@ class PHPEngine {
             return undefined;
         },
         "define": async (ctx, name, value) => {
-            if (ctx.hasConstant(name.toLowerCase())) {
+            const lower = String(name ?? "").toLowerCase();
+            if (ctx.hasConstant(lower)) {
                 await ctx.triggerError(`Constant ${name} already defined`, 2);
                 return false;
             }
-            ctx.defineConstant(name.toLowerCase(), value);
+            ctx.defineConstant(lower, value);
             return true;
         },
-        "defined": (ctx, name) => ctx.hasConstant(name),
+        "defined": (ctx, name) => ctx.hasConstant(String(name ?? "").toLowerCase()),
         "extension_loaded": (ctx, name) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
         "function_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
         "class_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.classes)),
-        "constant": (ctx, name) => ctx.getConstant(name),
+        "constant": (ctx, name) => ctx.getConstant(String(name ?? "").toLowerCase()),
         "assert": (ctx, assertion, description) => {
             if (!assertion) {
                 if (description)
@@ -339,7 +340,7 @@ class PHPEngine {
             .map(([k, v]) => `${k}=${v}`)
             .sort()
             .join(";");
-        return crypto.createHash("sha1").update(`v24|${sortedExts}|${sortedConsts}`).digest("hex");
+        return crypto.createHash("sha1").update(`v26|${sortedExts}|${sortedConsts}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);

@@ -130,15 +130,30 @@ export class PHPObject {
   }
 
   public async callMethod(ctx: PHPContext, name: string, args: any[]): Promise<any> {
-    const methodMeta = this.phpClass.methods.get(name.toLowerCase());
-    if (methodMeta?.fn) {
-      return await methodMeta.fn.apply(this, [ctx, ...args]);
+    const lowerName = name.toLowerCase();
+    ctx.currentClassStack.push(this.phpClass);
+    try {
+      const methodMeta = this.phpClass.methods.get(lowerName);
+      if (methodMeta?.fn) {
+        return await methodMeta.fn.apply(this, [ctx, ...args]);
+      }
+      const __callMeta = this.phpClass.methods.get("__call");
+      if (__callMeta?.fn) {
+        return await __callMeta.fn.call(this, ctx, name, args);
+      }
+      let target: any = this;
+      while (target && target !== Object.prototype) {
+        for (const propName of Object.getOwnPropertyNames(target)) {
+          if (propName.toLowerCase() === lowerName && typeof (this as any)[propName] === "function") {
+            return await (this as any)[propName].apply(this, args);
+          }
+        }
+        target = Object.getPrototypeOf(target);
+      }
+      throw new PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
+    } finally {
+      ctx.currentClassStack.pop();
     }
-    const __callMeta = this.phpClass.methods.get("__call");
-    if (__callMeta?.fn) {
-      return await __callMeta.fn.call(this, ctx, name, args);
-    }
-    throw new PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
   }
 
   public async toString(ctx: PHPContext): Promise<string> {

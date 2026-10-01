@@ -42,11 +42,11 @@ export class PHPError extends Error {
   }
 
   public getMessage(): string {
-    return this.message;
+    return this.message ?? (this as any).properties?.get("message") ?? "";
   }
 
   public getCode(): number {
-    return this.phpCode;
+    return this.phpCode ?? (this as any).properties?.get("code") ?? 0;
   }
 
   public getFile(): string {
