@@ -74,13 +74,19 @@ async function runCLI(args) {
                 rl.close();
                 return;
             }
-            if (trimmed) {
-                try {
-                    await ctx.eval(trimmed);
-                    process.stdout.write("\n");
+            try {
+                await ctx.eval(line, "php shell code");
+            }
+            catch (err) {
+                if (err.name === "PHPExit") {
+                    process.exit(err.status);
                 }
-                catch (err) {
-                    console.error(err.message || err);
+                else if (err.getPHPStackTraceString) {
+                    console.error("\nFatal error:", err.message);
+                    console.error(err.getPHPStackTraceString());
+                }
+                else {
+                    console.error(err);
                 }
             }
             rl.prompt();

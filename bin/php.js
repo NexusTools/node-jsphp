@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+require('source-map-support').install();
+
 const { runCLI } = require("../src/cli/php");
 
 runCLI(process.argv.slice(2)).catch((err) => {

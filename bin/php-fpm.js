@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+require('source-map-support').install();
+
 const { runFPM } = require("../src/cli/php-fpm");
 
 const port = parseInt(process.argv[2] || "9000", 10);

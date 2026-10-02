@@ -45,12 +45,16 @@ export async function runCLI(args: string[]): Promise<void> {
         rl.close();
         return;
       }
-      if (trimmed) {
-        try {
-          await ctx.eval(trimmed);
-          process.stdout.write("\n");
-        } catch (err: any) {
-          console.error(err.message || err);
+      try {
+        await ctx.eval(line, "php shell code");
+      } catch (err: any) {
+        if (err.name === "PHPExit") {
+          process.exit(err.status);
+        } else if (err.getPHPStackTraceString) {
+          console.error("\nFatal error:", err.message);
+          console.error(err.getPHPStackTraceString());
+        } else {
+          console.error(err);
         }
       }
       rl.prompt();

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+require('source-map-support').install();
+
 const { runHTTPServer } = require("../src/cli/php-http-server");
 
 const port = parseInt(process.argv[2] || "8080", 10);

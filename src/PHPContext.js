@@ -686,12 +686,11 @@ class PHPContext {
      */
     async callStaticMethod(className, method, args = [], targetObj, originalClassName) {
         const origClass = originalClassName || className;
-        const lowerClass = className.toLowerCase();
-        let cls = this.classes[className] || this.classes[lowerClass];
+        let cls = this.classes[className];
         if (!cls)
-            cls = await this.engine.resolveClass(lowerClass, origClass, this);
+            cls = await this.engine.resolveClass(className, origClass, this);
         if (!cls) {
-            const shortClassName = lowerClass.split("\\").pop() || lowerClass;
+            const shortClassName = className.split("\\").pop() || className;
             cls = this.classes[shortClassName];
         }
         if (!cls)

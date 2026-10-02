@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPEngine = void 0;
 const fs = __importStar(require("fs/promises"));
+const syncFs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const crypto = __importStar(require("crypto"));
@@ -78,6 +79,7 @@ class PHPEngine {
     classes = {};
     internalVars = {};
     classResolvers = [];
+    resolvingClasses = new Map();
     compiledCache = new Map();
     watcher;
     transpiler;
@@ -190,11 +192,52 @@ class PHPEngine {
         let resolved = ctx.classes[name] || ctx.classes[shortLower];
         if (resolved)
             return resolved;
-        for (const resolver of this.classResolvers) {
-            await resolver(ctx, orig);
-            resolved = ctx.classes[name] || ctx.classes[shortLower];
-            if (resolved)
-                return resolved;
+        let resolvingClasses = this.resolvingClasses.get(ctx);
+        if (!resolvingClasses) {
+            resolvingClasses = new Set();
+            this.resolvingClasses.set(ctx, resolvingClasses);
+        }
+        if (resolvingClasses.has(name))
+            return undefined;
+        resolvingClasses.add(name);
+        try {
+            for (const resolver of this.classResolvers) {
+                await resolver(ctx, orig);
+                resolved = ctx.classes[name] || ctx.classes[shortLower];
+                if (resolved)
+                    return resolved;
+            }
+            // Fallback file-based class resolver for WordPress / standard PHP file conventions
+            const candidates = [];
+            const parts = orig.split("\\");
+            if (parts.length > 1) {
+                if (parts[0].toLowerCase() === "wporg" && parts[1]?.toLowerCase() === "requests") {
+                    candidates.push(path.join(ctx.cwd, "wp-includes", "Requests", "src", ...parts.slice(2)) + ".php");
+                }
+                else if (parts[0].toLowerCase() === "wordpress" && parts[1]?.toLowerCase() === "aiclient") {
+                    candidates.push(path.join(ctx.cwd, "wp-includes", "ai-client", "adapters", `class-wp-${parts[parts.length - 1].toLowerCase().replace(/_/g, "-")}.php`));
+                    candidates.push(path.join(ctx.cwd, "wp-includes", "php-ai-client", "src", ...parts.slice(2)) + ".php");
+                }
+                candidates.push(path.join(ctx.cwd, "wp-includes", ...parts) + ".php");
+            }
+            const dashedName = shortLower.replace(/_/g, "-");
+            candidates.push(path.join(ctx.cwd, "wp-includes", `class-${dashedName}.php`), path.join(ctx.cwd, "wp-includes", `class-${shortLower}.php`), path.join(ctx.cwd, "wp-includes", `${shortName}.php`), path.join(ctx.cwd, "wp-admin", "includes", `class-${dashedName}.php`), path.join(ctx.cwd, "wp-admin", "includes", `class-${shortLower}.php`));
+            for (const candidate of candidates) {
+                if (syncFs.existsSync(candidate)) {
+                    try {
+                        await ctx.requireOnce(candidate);
+                        resolved = ctx.classes[name] || ctx.classes[shortLower];
+                        if (resolved)
+                            return resolved;
+                    }
+                    catch {
+                        // Ignore
+                    }
+                }
+            }
+        }
+        finally {
+            resolvingClasses.delete(name);
         }
         return undefined;
     }

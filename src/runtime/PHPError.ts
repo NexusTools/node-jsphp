@@ -121,14 +121,14 @@ export class PHPError extends Error {
       const matchJs = line.match(/at\s+(?:async\s+)?([^\s]+)\s+\((.*?):(\d+):(\d+)\)/) || line.match(/at\s+(?:async\s+)?(.*?):(\d+):(\d+)/);
       if (matchJs) {
         if (matchJs.length === 5) {
-            formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[2]}:${matchJs[3]}: ${matchJs[1]}()`);
+            formattedFrames.push(`    #${frameIdx++} ${matchJs[2]}:${matchJs[3]}: ${matchJs[1]}()`);
         } else {
-            formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[1]}:${matchJs[2]}: {main}()`);
+            formattedFrames.push(`    #${frameIdx++} ${matchJs[1]}:${matchJs[2]}: {main}()`);
         }
         continue;
       }
 
-      formattedFrames.push(`    #${frameIdx++} [JS] ${line.replace(/^at\s+/, "")}`);
+      formattedFrames.push(`    #${frameIdx++} ${line.replace(/^at\s+/, "")}`);
     }
 
     if (formattedFrames.length === 0) {

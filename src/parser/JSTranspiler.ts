@@ -104,8 +104,10 @@ export class JSTranspiler {
     const topFuncs = bodyNodes.filter((n: any) => n?.kind === "function");
     for (const funcNode of topFuncs) {
       const funcName = (funcNode.name?.name || funcNode.name || "").toString().toLowerCase();
+      const originalFuncName = (funcNode.name?.name || funcNode.name || "").toString();
       const safeFnId = funcName.replace(/[^a-zA-Z0-9_]/g, "_");
       lines.push(`    if (typeof __fn_${safeFnId} === "function") {`);
+      lines.push(`      if (Object.hasOwn(ctx.functions, ${JSON.stringify(funcName)})) throw new PHPFatalError(\`Cannot redeclare ${originalFuncName}()\`);`);
       lines.push(`      ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
       lines.push(`    }`);
     }
@@ -501,7 +503,6 @@ export class JSTranspiler {
         lines.push(`${pad}  }`);
         lines.push(`${pad}};`);
         lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
-        lines.push(`${pad}if (Object.hasOwn(ctx.functions, ${JSON.stringify(funcName)})) throw new PHPFatalError(\`Cannot redeclare ${originalFuncName}()\`);`);
         lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
         break;
       }
@@ -577,8 +578,9 @@ export class JSTranspiler {
             lines.push(`${pad}  }`);
             lines.push(`${pad}};`);
 
-            lines.push(`${pad}__cls_${safeClassId}.methods.set(${JSON.stringify(mName.toLowerCase())}, { name: ${JSON.stringify(mName)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isAbstract: ${Boolean(item.isAbstract)}, isFinal: ${Boolean(item.isFinal)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)}, fn: __method_${safeMId} });`);
-          } else throw new Error(`Class body item not implemented: ${item?.kind}`)
+          } else {
+            console.error(`Class body item not implemented: ${item?.kind}`);
+          }
         }
 
         lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
