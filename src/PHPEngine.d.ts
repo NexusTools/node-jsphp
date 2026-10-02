@@ -13,7 +13,6 @@ export declare class PHPEngine {
     classes: Record<string, any>;
     internalVars: Record<string, any>;
     private classResolvers;
-    private resolvingClasses;
     private compiledCache;
     private watcher?;
     private transpiler;

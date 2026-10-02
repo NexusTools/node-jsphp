@@ -23,9 +23,9 @@ class SPLExtension extends PHPExtension_1.PHPExtension {
         engine.registerClassResolver(async (ctx, requestedName) => {
             for (const callback of this.autoloaders) {
                 if (typeof callback === "string")
-                    await ctx.callFunction(callback, [requestedName]);
+                    await ctx.callFunction(callback.toLowerCase(), [requestedName]);
                 else if (Array.isArray(callback) && callback.length === 2)
-                    await ctx.callStaticMethod(callback[0], callback[1], [requestedName]);
+                    await ctx.callStaticMethod(String(callback[0]).toLowerCase(), String(callback[1]).toLowerCase(), [requestedName], undefined, String(callback[0]));
                 else if (typeof callback === "function")
                     await callback.apply(ctx, [ctx, requestedName]);
                 if (String(requestedName).toLowerCase() in engine.classes)

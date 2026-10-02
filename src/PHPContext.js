@@ -333,16 +333,12 @@ class PHPContext {
      * @param name Constant name in lowercase or exact key.
      */
     getConstant(name) {
-        return this.constants[name.toLowerCase()] ?? this.constants[name];
+        return this.constants[name] ?? this.engine.constants[name];
     }
-    /**
-     * Checks if a constant is defined.
-     * @param name Constant name in lowercase or exact key.
-     */
     hasConstant(name) {
         if (!name || typeof name !== "string")
             return false;
-        return name.toLowerCase() in this.constants || name in this.constants;
+        return name in this.constants || name in this.engine.constants;
     }
     /**
      * Defines a constant.
@@ -581,8 +577,7 @@ class PHPContext {
      */
     async callFunction(name, args = [], references = []) {
         logDebug(`CALL_FUNC: ${name}`);
-        const lowerName = name.toLowerCase();
-        const fn = this.functions[name] || this.functions[lowerName] || (this.engine.functions[name] || this.engine.functions[lowerName]);
+        const fn = this.functions[name] || this.engine.functions[name];
         if (fn) {
             const parameters = fn.phpMeta?.parameters || [];
             const callArguments = args.map((value, index) => parameters[index]?.byref && references[index]
@@ -601,11 +596,8 @@ class PHPContext {
      */
     async resolveClass(className, originalName) {
         const orig = originalName || className;
-        const lowerName = String(className).replace(/^\\/, "").toLowerCase();
-        const resolvedClass = this.classes[lowerName] || await this.engine.resolveClass(lowerName, orig, this);
-        if (!resolvedClass)
-            throw new PHPError_1.PHPFatalError(`Class "${orig}" not found`);
-        return resolvedClass;
+        const lower = className.toLowerCase();
+        return this.classes[className] || this.classes[lower] || await this.engine.resolveClass(lower, orig, this);
     }
     /**
      * Gets a static class constant.
@@ -615,25 +607,11 @@ class PHPContext {
      */
     async getClassConstant(className, name, originalClassName) {
         const origClass = originalClassName || className;
-        const lowerClass = className.toLowerCase();
-        const resolvedClass = await this.resolveClass(lowerClass, origClass);
-        if (resolvedClass.constants) {
-            if (resolvedClass.constants.get) {
-                if (resolvedClass.constants.has(name))
-                    return resolvedClass.constants.get(name);
-                for (const [k, v] of resolvedClass.constants.entries()) {
-                    if (k.toLowerCase() === name.toLowerCase())
-                        return v;
-                }
-            }
-            else {
-                if (name in resolvedClass.constants)
-                    return resolvedClass.constants[name];
-                for (const k of Object.keys(resolvedClass.constants)) {
-                    if (k.toLowerCase() === name.toLowerCase())
-                        return resolvedClass.constants[k];
-                }
-            }
+        const resolvedClass = await this.resolveClass(className, origClass);
+        if (!resolvedClass)
+            throw new PHPError_1.PHPFatalError(`Class "${origClass}" not found`);
+        if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
+            return resolvedClass.constants.get ? resolvedClass.constants.get(name) : resolvedClass.constants[name];
         }
         throw new PHPError_1.PHPFatalError(`Undefined constant ${origClass}::${name}`);
     }
@@ -644,6 +622,8 @@ class PHPContext {
      */
     async getStaticProperty(className, name) {
         let resolvedClass = await this.resolveClass(className);
+        if (!resolvedClass)
+            throw new PHPError_1.PHPFatalError(`Class "${className}" not found`);
         const cleanName = name.startsWith("$") ? name.slice(1) : name;
         while (resolvedClass) {
             if (resolvedClass.properties) {
@@ -707,8 +687,7 @@ class PHPContext {
     async callStaticMethod(className, method, args = [], targetObj, originalClassName) {
         const origClass = originalClassName || className;
         const lowerClass = className.toLowerCase();
-        const lowerMethod = method.toLowerCase();
-        let cls = this.classes[lowerClass];
+        let cls = this.classes[className] || this.classes[lowerClass];
         if (!cls)
             cls = await this.engine.resolveClass(lowerClass, origClass, this);
         if (!cls) {
@@ -723,7 +702,7 @@ class PHPContext {
         try {
             while (targetClass) {
                 if (targetClass.methods && typeof targetClass.methods.get === "function") {
-                    const metadata = targetClass.methods.get(lowerMethod);
+                    const metadata = targetClass.methods.get(method) || targetClass.methods.get(method.toLowerCase());
                     if (metadata?.fn)
                         return await metadata.fn.apply(targetObj || calledClass, [this, ...args]);
                 }
@@ -740,9 +719,9 @@ class PHPContext {
             }
             if (cls && typeof cls[method] === "function")
                 return await cls[method](...args);
-            if (cls && typeof cls[lowerMethod] === "function")
-                return await cls[lowerMethod](...args);
-            if (lowerMethod === "__construct" && typeof cls === "function") {
+            if (cls && typeof cls[method.toLowerCase()] === "function")
+                return await cls[method.toLowerCase()](...args);
+            if (method.toLowerCase() === "__construct" && typeof cls === "function") {
                 const instance = new cls(...args);
                 if (targetObj && typeof targetObj === "object") {
                     Object.assign(targetObj, instance);
@@ -764,7 +743,7 @@ class PHPContext {
         const origClass = originalClassName || className;
         logDebug(`NEW: ${className}`);
         const lowerClass = className.toLowerCase();
-        let rawClass = this.classes[lowerClass];
+        let rawClass = this.classes[className] || this.classes[lowerClass];
         if (!rawClass) {
             rawClass = await this.engine.resolveClass(lowerClass, origClass, this);
         }

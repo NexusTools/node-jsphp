@@ -91,10 +91,6 @@ export declare class PHPContext {
      * @param name Constant name in lowercase or exact key.
      */
     getConstant(name: string): any;
-    /**
-     * Checks if a constant is defined.
-     * @param name Constant name in lowercase or exact key.
-     */
     hasConstant(name: string): boolean;
     /**
      * Defines a constant.

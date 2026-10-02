@@ -66,6 +66,12 @@ class JSTranspiler {
         });
     }
     transpile(code, filepath = "eval", options = {}) {
+        this.currentNamespaceName = "";
+        this.currentNamespaceNameOriginal = "";
+        this.currentClassName = "";
+        this.currentClassNameOriginal = "";
+        this.classImports.clear();
+        this.classImportsOriginal.clear();
         const codeHash = crypto.createHash("sha1").update(code).digest("hex");
         const engineHash = options.engineSHA1 || "default";
         const cacheFileName = `${codeHash}_${engineHash}.js`;
@@ -113,7 +119,6 @@ class JSTranspiler {
             const safeFnId = funcName.replace(/[^a-zA-Z0-9_]/g, "_");
             lines.push(`    if (typeof __fn_${safeFnId} === "function") {`);
             lines.push(`      ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
-            lines.push(`      ctx.engine.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
             lines.push(`    }`);
         }
         this.transpileNodeList(bodyNodes, lines, lineMap, mapGen, filepath, 4, "{main}");
@@ -427,7 +432,6 @@ class JSTranspiler {
                 const qualifiedName = originalName.toLowerCase();
                 lines.push(`${pad}var __cls_${safeId} = ctx.engine.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
                 lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
-                lines.push(`${pad}ctx.engine.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
                 break;
             }
             case "function": {
@@ -463,7 +467,6 @@ class JSTranspiler {
                 lines.push(`${pad}};`);
                 lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
                 lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
-                lines.push(`${pad}ctx.engine.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
                 break;
             }
             case "class": {
@@ -478,7 +481,6 @@ class JSTranspiler {
                 const parentClass = node.extends ? `(await ctx.resolveClass(${this.transpileClassReferenceLower(node.extends, filepath)}, ${this.transpileClassReferenceOriginal(node.extends, filepath)}))` : "undefined";
                 lines.push(`${pad}var __cls_${safeClassId} = ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] || new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
                 lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
-                lines.push(`${pad}ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
                 const bodyItems = Array.isArray(node.body)
                     ? node.body
                     : Array.isArray(node.body?.children)
@@ -489,12 +491,10 @@ class JSTranspiler {
                                 ? node.children
                                 : (node.body ? [node.body] : []);
                 for (const constant of this.orderClassConstants(bodyItems, qualifiedClassName, filepath)) {
-                    const name = this.getConstName(constant.name);
+                    const name = this.getConstName(constant.name).toLowerCase();
                     lines.push(`${pad}__cls_${safeClassId}.constants.set(${JSON.stringify(name)}, ${this.transpileExpr(constant.value, filepath)});`);
                 }
                 for (const item of bodyItems) {
-                    if (item?.kind === "classconstant")
-                        continue;
                     if (item?.kind === "propertystatement") {
                         const visibility = (item.visibility || "public").toString();
                         for (const property of item.properties || []) {
@@ -535,9 +535,10 @@ class JSTranspiler {
                         lines.push(`${pad}};`);
                         lines.push(`${pad}__cls_${safeClassId}.methods.set(${JSON.stringify(mName.toLowerCase())}, { name: ${JSON.stringify(mName)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isAbstract: ${Boolean(item.isAbstract)}, isFinal: ${Boolean(item.isFinal)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)}, fn: __method_${safeMId} });`);
                     }
+                    else
+                        throw new Error(`Class body item not implemented: ${item?.kind}`);
                 }
                 lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
-                lines.push(`${pad}ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
                 this.currentClassName = previousClassName;
                 break;
             }
@@ -574,7 +575,7 @@ class JSTranspiler {
             if (item?.kind !== "classconstant")
                 continue;
             for (const constant of item.constants || [])
-                constants.set(this.getConstName(constant.name), constant);
+                constants.set(this.getConstName(constant.name).toLowerCase(), constant);
         }
         const visited = new Set();
         const pending = new Set();
@@ -590,7 +591,7 @@ class JSTranspiler {
                 if (!value || typeof value !== "object")
                     return;
                 if (value.kind === "staticlookup" && value.offset && this.transpileClassReference(value.what, filepath) === JSON.stringify(className)) {
-                    visit(this.getConstName(value.offset));
+                    visit(this.getConstName(value.offset).toLowerCase());
                 }
                 for (const key of Object.keys(value)) {
                     if (key !== "loc" && typeof value[key] === "object")

@@ -78,7 +78,6 @@ class PHPEngine {
     classes = {};
     internalVars = {};
     classResolvers = [];
-    resolvingClasses = new WeakMap();
     compiledCache = new Map();
     watcher;
     transpiler;
@@ -187,29 +186,18 @@ class PHPEngine {
         const orig = originalName || name;
         const shortName = String(orig).split("\\").pop() || String(orig);
         const shortLower = String(name).split("\\").pop() || String(name);
-        let resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
+        // the context classes uses the engine classes as it's prototype so there's no need to check the engine classes
+        let resolved = ctx.classes[name] || ctx.classes[shortLower];
         if (resolved)
             return resolved;
-        let resolvingClasses = this.resolvingClasses.get(ctx);
-        if (!resolvingClasses) {
-            resolvingClasses = new Set();
-            this.resolvingClasses.set(ctx, resolvingClasses);
+        for (const resolver of this.classResolvers) {
+            await resolver(ctx, orig);
+            // resolved classes are only ever defined in the context so only check the context
+            resolved = ctx.classes[name] || ctx.classes[shortLower];
+            if (resolved)
+                return resolved;
         }
-        if (resolvingClasses.has(name))
-            return undefined;
-        resolvingClasses.add(name);
-        try {
-            for (const resolver of this.classResolvers) {
-                await resolver(ctx, orig);
-                resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
-                if (resolved)
-                    return resolved;
-            }
-            return this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
-        }
-        finally {
-            resolvingClasses.delete(name);
-        }
+        return undefined;
     }
     /**
      * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
@@ -403,7 +391,7 @@ class PHPEngine {
             .map(([k, v]) => `${k}=${v}`)
             .sort()
             .join(";");
-        return crypto.createHash("sha1").update(`v67|${sortedExts}|${sortedConsts}`).digest("hex");
+        return crypto.createHash("sha1").update(`v72|${sortedExts}|${sortedConsts}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);

@@ -51,7 +51,6 @@ export class PHPEngine {
   public classes: Record<string, any> = {};
   public internalVars: Record<string, any> = {};
   private classResolvers: Array<(ctx: PHPContext, className: string) => any> = [];
-  private resolvingClasses = new WeakMap<PHPContext, Set<string>>();
   private compiledCache: Map<string, Function> = new Map();
   private watcher?: chokidar.FSWatcher;
   private transpiler: JSTranspiler;
@@ -179,26 +178,16 @@ export class PHPEngine {
     const shortName = String(orig).split("\\").pop() || String(orig);
     const shortLower = String(name).split("\\").pop() || String(name);
 
-    let resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
+    // the context classes uses the engine classes as it's prototype so there's no need to check the engine classes
+    let resolved = ctx.classes[name] || ctx.classes[shortLower];
     if (resolved) return resolved;
 
-    let resolvingClasses = this.resolvingClasses.get(ctx);
-    if (!resolvingClasses) {
-      resolvingClasses = new Set();
-      this.resolvingClasses.set(ctx, resolvingClasses);
+    for (const resolver of this.classResolvers) {
+      await resolver(ctx, orig);
+      resolved = ctx.classes[name] || ctx.classes[shortLower];
+      if (resolved) return resolved;
     }
-    if (resolvingClasses.has(name)) return undefined;
-    resolvingClasses.add(name);
-    try {
-      for (const resolver of this.classResolvers) {
-        await resolver(ctx, orig);
-        resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
-        if (resolved) return resolved;
-      }
-      return this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
-    } finally {
-      resolvingClasses.delete(name);
-    }
+    return undefined;
   }
 
   /**
@@ -367,7 +356,7 @@ export class PHPEngine {
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(";");
-    return crypto.createHash("sha1").update(`v67|${sortedExts}|${sortedConsts}`).digest("hex");
+    return crypto.createHash("sha1").update(`v72|${sortedExts}|${sortedConsts}`).digest("hex");
   }
 
   public async compileFile(filepath: string): Promise<Function> {
