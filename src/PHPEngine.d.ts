@@ -45,9 +45,9 @@ export declare class PHPEngine {
      */
     registerClassResolver(resolver: (ctx: PHPContext, className: string) => any): void;
     /**
-     * Resolves a class by name. The `name` parameter must be provided in lowercase.
+     * Resolves a class by name using registered class resolvers.
      */
-    resolveClass(name: string, ctx: PHPContext): Promise<any>;
+    resolveClass(name: string, originalName: string, ctx: PHPContext): Promise<any>;
     /**
      * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
      */

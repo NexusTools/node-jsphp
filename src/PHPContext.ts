@@ -121,9 +121,19 @@ export class PHPContext {
   public errorHandlerStack: any[] = [];
   public errorReportingLevel: number = 32767; // E_ALL
   public includedFiles: Set<string> = new Set();
+  public tickCount: number = 0;
   private stdout: Writable | ((data: string) => void);
   private stderr: Writable | ((data: string) => void);
   public outputText: string = "";
+
+  public checkLoop(filepath: string, line: number) {
+    if (this.tickCount === 50001) {
+      console.error(`POSSIBLE_INFINITE_LOOP in ${filepath}:${line}`);
+    }
+    if (this.tickCount > 500000) {
+      throw new Error(`Infinite loop detected in ${filepath}:${line}`);
+    }
+  }
 
   constructor(engine: PHPEngine, options: PHPContextOptions = {}) {
     this.engine = engine;
@@ -419,6 +429,27 @@ export class PHPContext {
     return this.assignOffsets(target, keys, value);
   }
 
+  /** Unsets nested array offsets on a variable. */
+  public unsetVarOffsets(name: string, keys: any[]): void {
+    let target = this.getVar(name);
+    if (!target || typeof target !== "object") return;
+    for (let i = 0; i < keys.length - 1; i++) {
+      target = target[keys[i]];
+      if (!target || typeof target !== "object") return;
+    }
+    delete target[keys[keys.length - 1]];
+  }
+
+  /** Gets nested array offsets on a variable. */
+  public getVarOffsets(name: string, keys: any[]): any {
+    let target = this.getVar(name);
+    for (const key of keys) {
+      if (target === undefined || target === null) return undefined;
+      target = target[key];
+    }
+    return target;
+  }
+
   private assignOffsets(target: any, keys: any[], value: any): any {
     for (const key of keys.slice(0, -1)) {
       if (key === null) {
@@ -513,7 +544,7 @@ export class PHPContext {
     logDebug(`CALL_METHOD: ${obj?.constructor?.name}::${method}`);
     if (!obj || (typeof obj !== "object" && typeof obj !== "function")) return undefined;
 
-    if (obj instanceof PHPObject) {
+    if (typeof obj.callMethod === "function") {
       const res = await obj.callMethod(this, method, args);
       logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
       return res;
@@ -555,7 +586,8 @@ export class PHPContext {
    */
   public async callFunction(name: string, args: any[] = [], references: (string | null)[] = []): Promise<any> {
     logDebug(`CALL_FUNC: ${name}`);
-    const fn = this.functions[name];
+    const lowerName = name.toLowerCase();
+    const fn = this.functions[name] || this.functions[lowerName] || (this.engine.functions[name] || this.engine.functions[lowerName]);
     if (fn) {
       const parameters = (fn as any).phpMeta?.parameters || [];
       const callArguments = args.map((value, index) => parameters[index]?.byref && references[index]
@@ -571,11 +603,13 @@ export class PHPContext {
   /**
    * Resolves a class by lowercase name.
    * @param className Class name in lowercase.
+   * @param originalName Class name in original casing.
    */
-  public async resolveClass(className: string): Promise<any> {
-    const normalizedName = String(className).replace(/^\\/, "");
-    const resolvedClass = this.classes[normalizedName] || await this.engine.resolveClass(className, this);
-    if (!resolvedClass) throw new PHPFatalError(`Class "${className}" not found`);
+  public async resolveClass(className: string, originalName?: string): Promise<any> {
+    const orig = originalName || className;
+    const lowerName = String(className).replace(/^\\/, "").toLowerCase();
+    const resolvedClass = this.classes[lowerName] || await this.engine.resolveClass(lowerName, orig, this);
+    if (!resolvedClass) throw new PHPFatalError(`Class "${orig}" not found`);
     return resolvedClass;
   }
 
@@ -583,13 +617,26 @@ export class PHPContext {
    * Gets a static class constant.
    * @param className Class name in lowercase.
    * @param name Constant name in lowercase.
+   * @param originalClassName Class name in original casing.
    */
-  public async getClassConstant(className: string, name: string): Promise<any> {
-    const resolvedClass = await this.resolveClass(className);
-    if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
-      return resolvedClass.constants.get ? resolvedClass.constants.get(name) : resolvedClass.constants[name];
+  public async getClassConstant(className: string, name: string, originalClassName?: string): Promise<any> {
+    const origClass = originalClassName || className;
+    const lowerClass = className.toLowerCase();
+    const resolvedClass = await this.resolveClass(lowerClass, origClass);
+    if (resolvedClass.constants) {
+      if (resolvedClass.constants.get) {
+        if (resolvedClass.constants.has(name)) return resolvedClass.constants.get(name);
+        for (const [k, v] of resolvedClass.constants.entries()) {
+          if (k.toLowerCase() === name.toLowerCase()) return v;
+        }
+      } else {
+        if (name in resolvedClass.constants) return resolvedClass.constants[name];
+        for (const k of Object.keys(resolvedClass.constants)) {
+          if (k.toLowerCase() === name.toLowerCase()) return resolvedClass.constants[k];
+        }
+      }
     }
-    throw new PHPFatalError(`Undefined constant ${className}::${name}`);
+    throw new PHPFatalError(`Undefined constant ${origClass}::${name}`);
   }
 
   /**
@@ -657,31 +704,49 @@ export class PHPContext {
    * Calls a static method on a class.
    * @param className Class name in lowercase.
    * @param method Method name in lowercase.
+   * @param originalClassName Class name in original casing.
    */
-  public async callStaticMethod(className: string, method: string, args: any[] = [], targetObj?: any): Promise<any> {
-    const shortClassName = className.split("\\").pop() || className;
-    let cls = this.classes[className] || this.classes[shortClassName];
-    if (!cls) cls = await this.engine.resolveClass(className, this);
+  public async callStaticMethod(className: string, method: string, args: any[] = [], targetObj?: any, originalClassName?: string): Promise<any> {
+    const origClass = originalClassName || className;
+    const lowerClass = className.toLowerCase();
+    const lowerMethod = method.toLowerCase();
+    let cls = this.classes[lowerClass];
+    if (!cls) cls = await this.engine.resolveClass(lowerClass, origClass, this);
+    if (!cls) {
+      const shortClassName = lowerClass.split("\\").pop() || lowerClass;
+      cls = this.classes[shortClassName];
+    }
+    if (!cls) throw new PHPFatalError(`Class "${origClass}" not found`);
+
     const calledClass = cls;
     let targetClass = cls;
     this.currentClassStack.push(calledClass);
     try {
       while (targetClass) {
         if (targetClass.methods && typeof targetClass.methods.get === "function") {
-          const metadata = targetClass.methods.get(method);
+          const metadata = targetClass.methods.get(lowerMethod);
           if (metadata?.fn) return await metadata.fn.apply(targetObj || calledClass, [this, ...args]);
         }
         targetClass = targetClass.parentClass;
       }
+      targetClass = cls;
+      while (targetClass) {
+        if (targetClass.methods && typeof targetClass.methods.get === "function") {
+          const callStaticMeta = targetClass.methods.get("__callstatic");
+          if (callStaticMeta?.fn) return await callStaticMeta.fn.apply(calledClass, [this, method, args]);
+        }
+        targetClass = targetClass.parentClass;
+      }
       if (cls && typeof cls[method] === "function") return await cls[method](...args);
-      if (method === "__construct" && typeof cls === "function") {
+      if (cls && typeof cls[lowerMethod] === "function") return await cls[lowerMethod](...args);
+      if (lowerMethod === "__construct" && typeof cls === "function") {
         const instance = new (cls as any)(...args);
         if (targetObj && typeof targetObj === "object") {
           Object.assign(targetObj, instance);
         }
         return instance;
       }
-      throw new PHPFatalError(`Call to undefined static method ${className}::${method}()`);
+      throw new PHPFatalError(`Call to undefined static method ${origClass}::${method}()`);
     } finally {
       this.currentClassStack.pop();
     }
@@ -690,17 +755,28 @@ export class PHPContext {
   /**
    * Creates an instance of a class.
    * @param className Class name in lowercase.
+   * @param originalClassName Class name in original casing.
    */
-  public async createObject(className: string, args: any[] = []): Promise<any> {
+  public async createObject(className: string, args: any[] = [], originalClassName?: string): Promise<any> {
+    const origClass = originalClassName || className;
     logDebug(`NEW: ${className}`);
-    const rawClass = this.classes[className];
+    const lowerClass = className.toLowerCase();
+    let rawClass = this.classes[lowerClass];
+    if (!rawClass) {
+      rawClass = await this.engine.resolveClass(lowerClass, origClass, this);
+    }
+    if (!rawClass) {
+      const shortClassName = lowerClass.split("\\").pop() || lowerClass;
+      rawClass = this.classes[shortClassName];
+    }
+
     if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject)) {
       const obj = new (rawClass as any)(...args);
-      if (obj instanceof PHPError) Object.defineProperty(obj, "phpClass", { value: new PHPClass(className, rawClass) });
+      if (obj instanceof PHPError) Object.defineProperty(obj, "phpClass", { value: new PHPClass(origClass, rawClass) });
       logDebug(`DONE_NEW: ${className}`);
       return obj;
     }
-    const phpClass = rawClass instanceof PHPClass ? rawClass : new PHPClass(className);
+    const phpClass = rawClass instanceof PHPClass ? rawClass : new PHPClass(origClass);
     const obj = phpClass.nativeConstructor ? Reflect.construct(phpClass.nativeConstructor, args) : new PHPObject(phpClass);
     if (phpClass.nativeConstructor) {
       Object.defineProperty(obj, "phpClass", { value: phpClass });
@@ -749,8 +825,8 @@ export class PHPContext {
 
   /** Includes a PHP file. */
   public async include(filepath: string): Promise<any> {
-    const normPath = this.normalizeFilePath(filepath);
     const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+    const normPath = resolvedPath.replace(/\\/g, "/").toLowerCase();
     this.includedFiles.add(normPath);
 
     logDebug(`INC: ${path.basename(resolvedPath)}`);
@@ -766,18 +842,18 @@ export class PHPContext {
 
   /** Includes a PHP file if not already included. */
   public async includeOnce(filepath: string): Promise<any> {
-    const normPath = this.normalizeFilePath(filepath);
+    const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+    const normPath = resolvedPath.replace(/\\/g, "/").toLowerCase();
     if (this.includedFiles.has(normPath)) {
       return true;
     }
-    this.includedFiles.add(normPath);
     return await this.include(filepath);
   }
 
   /** Requires a PHP file. */
   public async require(filepath: string): Promise<any> {
-    const normPath = this.normalizeFilePath(filepath);
     const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+    const normPath = resolvedPath.replace(/\\/g, "/").toLowerCase();
     this.includedFiles.add(normPath);
 
     logDebug(`REQ: ${path.basename(resolvedPath)}`);
@@ -792,11 +868,11 @@ export class PHPContext {
 
   /** Requires a PHP file if not already required. */
   public async requireOnce(filepath: string): Promise<any> {
-    const normPath = this.normalizeFilePath(filepath);
+    const resolvedPath = path.isAbsolute(filepath) ? filepath : path.resolve(this.cwd, filepath);
+    const normPath = resolvedPath.replace(/\\/g, "/").toLowerCase();
     if (this.includedFiles.has(normPath)) {
       return true;
     }
-    this.includedFiles.add(normPath);
     return await this.require(filepath);
   }
 

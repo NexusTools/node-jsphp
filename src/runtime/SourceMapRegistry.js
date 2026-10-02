@@ -44,6 +44,8 @@ class SourceMapRegistry {
             const resolved = path.resolve(filepath);
             this.fileLineMaps.set(resolved, lineMap);
             this.recentLineMaps.push({ file: resolved, map: lineMap });
+            if (this.recentLineMaps.length > 10)
+                this.recentLineMaps.shift();
             for (const loc of lineMap.values()) {
                 if (loc.function) {
                     this.funcToFileMaps.set(loc.function.toLowerCase(), resolved);
@@ -52,6 +54,8 @@ class SourceMapRegistry {
         }
         else {
             this.recentLineMaps.push({ file: "eval", map: lineMap });
+            if (this.recentLineMaps.length > 10)
+                this.recentLineMaps.shift();
         }
     }
     static lookup(funcNameHint, jsLine) {

@@ -160,28 +160,19 @@ class PHPEngine {
      * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
      */
     registerFunctions(functions) {
-        for (const [key, fn] of Object.entries(functions)) {
-            this.functions[key.toLowerCase()] = fn;
-        }
+        Object.assign(this.functions, functions);
     }
     registerConstant(name, value) {
-        const lower = name.toLowerCase();
-        this.constants[lower] = value;
         this.constants[name] = value;
     }
     registerConstants(constants) {
-        for (const [key, value] of Object.entries(constants)) {
-            this.constants[key.toLowerCase()] = value;
-            this.constants[key] = value;
-        }
+        Object.assign(this.constants, constants);
     }
     registerClass(name, value) {
-        this.classes[name.toLowerCase()] = value;
+        this.classes[name] = value;
     }
     registerClasses(classes) {
-        for (const [key, cls] of Object.entries(classes)) {
-            this.classes[key.toLowerCase()] = cls;
-        }
+        Object.assign(this.classes, classes);
     }
     /**
      * Registers a class resolver callback. Resolver should handle lowercase class names.
@@ -190,33 +181,34 @@ class PHPEngine {
         this.classResolvers.push(resolver);
     }
     /**
-     * Resolves a class by name. The `name` parameter must be provided in lowercase.
+     * Resolves a class by name using registered class resolvers.
      */
-    async resolveClass(name, ctx) {
-        const shortName = String(name).split("\\").pop() || String(name);
-        const resolutionKey = String(name).toLowerCase();
+    async resolveClass(name, originalName, ctx) {
+        const orig = originalName || name;
+        const shortName = String(orig).split("\\").pop() || String(orig);
+        const shortLower = String(name).split("\\").pop() || String(name);
+        let resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
+        if (resolved)
+            return resolved;
         let resolvingClasses = this.resolvingClasses.get(ctx);
         if (!resolvingClasses) {
             resolvingClasses = new Set();
             this.resolvingClasses.set(ctx, resolvingClasses);
         }
-        if (resolvingClasses.has(resolutionKey))
+        if (resolvingClasses.has(name))
             return undefined;
-        resolvingClasses.add(resolutionKey);
+        resolvingClasses.add(name);
         try {
             for (const resolver of this.classResolvers) {
-                await resolver(ctx, name);
-                const resolved = this.classes[resolutionKey] || this.classes[shortName];
+                await resolver(ctx, orig);
+                resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
                 if (resolved)
                     return resolved;
             }
-            const resolved = this.classes[resolutionKey] || this.classes[shortName];
-            if (resolved)
-                return resolved;
-            return undefined;
+            return this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
         }
         finally {
-            resolvingClasses.delete(resolutionKey);
+            resolvingClasses.delete(name);
         }
     }
     /**
@@ -263,7 +255,78 @@ class PHPEngine {
         "defined": (ctx, name) => ctx.hasConstant(String(name ?? "").toLowerCase()),
         "extension_loaded": (ctx, name) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
         "function_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
-        "class_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.classes)),
+        "class_alias": async (ctx, original, alias, autoload = true) => {
+            if (!original || !alias)
+                return false;
+            const lowerOrig = String(original).replace(/^\\/, "").toLowerCase();
+            const lowerAlias = String(alias).replace(/^\\/, "").toLowerCase();
+            let cls = ctx.classes[lowerOrig] || ctx.engine.classes[lowerOrig];
+            if (!cls && ctx.isTruthy(autoload)) {
+                try {
+                    cls = await ctx.resolveClass(lowerOrig, original);
+                }
+                catch {
+                    // Ignore
+                }
+            }
+            if (cls) {
+                ctx.classes[lowerAlias] = cls;
+                ctx.engine.classes[lowerAlias] = cls;
+                return true;
+            }
+            return false;
+        },
+        "class_exists": async (ctx, name, autoload = true) => {
+            if (!name || typeof name !== "string")
+                return false;
+            const lower = String(name).replace(/^\\/, "").toLowerCase();
+            if (ctx.classes[lower] || ctx.engine.classes[lower])
+                return true;
+            if (ctx.isTruthy(autoload)) {
+                try {
+                    const res = await ctx.resolveClass(lower, name);
+                    return Boolean(res);
+                }
+                catch {
+                    return false;
+                }
+            }
+            return false;
+        },
+        "interface_exists": async (ctx, name, autoload = true) => {
+            if (!name || typeof name !== "string")
+                return false;
+            const lower = String(name).replace(/^\\/, "").toLowerCase();
+            if (ctx.classes[lower] || ctx.engine.classes[lower])
+                return true;
+            if (ctx.isTruthy(autoload)) {
+                try {
+                    const res = await ctx.resolveClass(lower, name);
+                    return Boolean(res);
+                }
+                catch {
+                    return false;
+                }
+            }
+            return false;
+        },
+        "trait_exists": async (ctx, name, autoload = true) => {
+            if (!name || typeof name !== "string")
+                return false;
+            const lower = String(name).replace(/^\\/, "").toLowerCase();
+            if (ctx.classes[lower] || ctx.engine.classes[lower])
+                return true;
+            if (ctx.isTruthy(autoload)) {
+                try {
+                    const res = await ctx.resolveClass(lower, name);
+                    return Boolean(res);
+                }
+                catch {
+                    return false;
+                }
+            }
+            return false;
+        },
         "constant": (ctx, name) => ctx.getConstant(String(name ?? "").toLowerCase()),
         "assert": (ctx, assertion, description) => {
             if (!assertion) {
@@ -340,7 +403,7 @@ class PHPEngine {
             .map(([k, v]) => `${k}=${v}`)
             .sort()
             .join(";");
-        return crypto.createHash("sha1").update(`v26|${sortedExts}|${sortedConsts}`).digest("hex");
+        return crypto.createHash("sha1").update(`v67|${sortedExts}|${sortedConsts}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);
@@ -367,11 +430,30 @@ class PHPEngine {
             cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
             engine: this,
         });
-        // Load compiled JS into Function wrapper with PHPClass in scope
         const moduleObj = { exports: {} };
-        const factory = new Function("module", "exports", "require", "PHPClass", transpilation.code);
-        factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass);
-        return moduleObj.exports;
+        try {
+            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", transpilation.code);
+            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject);
+            return moduleObj.exports;
+        }
+        catch (err) {
+            if (err.name === "SyntaxError") {
+                try {
+                    const vm = require("vm");
+                    new vm.Script(transpilation.code);
+                }
+                catch (scriptErr) {
+                    console.error(`SYNTAX_ERR in ${filepath}: ${scriptErr.message}\nSTACK:\n${scriptErr.stack}`);
+                    const codeLines = transpilation.code.split("\n");
+                    const match = (scriptErr.stack || "").match(/evalmachine\.<anonymous>:(\d+)/);
+                    if (match) {
+                        const lineNum = parseInt(match[1], 10);
+                        console.error(`EXACT_ERROR_LINE ${lineNum}: ${codeLines[lineNum - 1]}`);
+                    }
+                }
+            }
+            throw err;
+        }
     }
     createContext(options = {}) {
         return new PHPContext_1.PHPContext(this, options);

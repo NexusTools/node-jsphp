@@ -27,7 +27,7 @@ export class SPLExtension extends PHPExtension {
         if (typeof callback === "string") await ctx.callFunction(callback, [requestedName]);
         else if (Array.isArray(callback) && callback.length === 2) await ctx.callStaticMethod(callback[0], callback[1], [requestedName]);
         else if (typeof callback === "function") await callback.apply(ctx, [ctx, requestedName]);
-        if (engine.classes.has(String(requestedName).toLowerCase())) return;
+        if (String(requestedName).toLowerCase() in engine.classes) return;
       }
     });
 

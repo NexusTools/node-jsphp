@@ -149,6 +149,24 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
             },
             preg_last_error: (ctx) => ctx.getInternalVar("lastPregError") || 0,
             preg_last_error_msg: (ctx) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
+            preg_split: (ctx, pattern, subject, limit = -1, flags = 0) => {
+                try {
+                    const reg = this.compilePattern(pattern);
+                    const str = String(subject ?? "");
+                    const lim = Number(limit);
+                    if (lim === 1)
+                        return [str];
+                    const parts = str.split(reg);
+                    if (lim > 1 && parts.length > lim) {
+                        const extra = parts.slice(lim - 1).join("");
+                        return [...parts.slice(0, lim - 1), extra];
+                    }
+                    return parts;
+                }
+                catch {
+                    return false;
+                }
+            },
         };
         (0, Reflection_1.defineFunction)(this.functions.preg_match, {
             name: "preg_match",

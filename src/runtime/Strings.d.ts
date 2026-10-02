@@ -30,6 +30,8 @@ export declare class StringRuntime {
     static str_ireplace(ctx: PHPContext, search: any, replace: any, subject: any): any;
     /** Return a formatted string. */
     static sprintf(ctx: PHPContext, fmt: string, ...args: any[]): string;
+    /** Output a formatted string. */
+    static printf(ctx: PHPContext, fmt: string, ...args: any[]): Promise<number>;
     /** Split a string by a string. */
     static explode(ctx: PHPContext, delimiter: string, string: string, limit?: number): string[];
     /** Join array elements with a string. */
@@ -56,6 +58,7 @@ export declare class StringRuntime {
     static strncmp(ctx: PHPContext, str1: any, str2: any, length: number): number;
     /** Quote string with slashes. */
     static addslashes(ctx: PHPContext, str: string): string;
+    static addcslashes(ctx: PHPContext, str: string, charlist: string): string;
     /** Un-quotes a quoted string. */
     static stripslashes(ctx: PHPContext, str: string): string;
     /** Convert special characters to HTML entities. */
@@ -103,6 +106,7 @@ export declare class StringRuntime {
         strtr: typeof StringRuntime.strtr;
         str_ireplace: typeof StringRuntime.str_ireplace;
         sprintf: typeof StringRuntime.sprintf;
+        printf: typeof StringRuntime.printf;
         explode: typeof StringRuntime.explode;
         implode: typeof StringRuntime.implode;
         trim: typeof StringRuntime.trim;

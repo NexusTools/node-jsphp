@@ -52,9 +52,11 @@ export declare class PHPContext {
     errorHandlerStack: any[];
     errorReportingLevel: number;
     includedFiles: Set<string>;
+    tickCount: number;
     private stdout;
     private stderr;
     outputText: string;
+    checkLoop(filepath: string, line: number): void;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
     currentClassStack: any[];
     get currentClass(): any;
@@ -113,6 +115,10 @@ export declare class PHPContext {
     setVarOffset(name: string, key: any, value: any): any;
     /** Sets nested array offsets on a variable. */
     setVarOffsets(name: string, keys: any[], value: any): any;
+    /** Unsets nested array offsets on a variable. */
+    unsetVarOffsets(name: string, keys: any[]): void;
+    /** Gets nested array offsets on a variable. */
+    getVarOffsets(name: string, keys: any[]): any;
     private assignOffsets;
     private assignOffset;
     /** Initializes a static variable in function scope. */
@@ -150,14 +156,16 @@ export declare class PHPContext {
     /**
      * Resolves a class by lowercase name.
      * @param className Class name in lowercase.
+     * @param originalName Class name in original casing.
      */
-    resolveClass(className: string): Promise<any>;
+    resolveClass(className: string, originalName?: string): Promise<any>;
     /**
      * Gets a static class constant.
      * @param className Class name in lowercase.
      * @param name Constant name in lowercase.
+     * @param originalClassName Class name in original casing.
      */
-    getClassConstant(className: string, name: string): Promise<any>;
+    getClassConstant(className: string, name: string, originalClassName?: string): Promise<any>;
     /**
      * Gets a static class property.
      * @param className Class name in lowercase.
@@ -176,13 +184,15 @@ export declare class PHPContext {
      * Calls a static method on a class.
      * @param className Class name in lowercase.
      * @param method Method name in lowercase.
+     * @param originalClassName Class name in original casing.
      */
-    callStaticMethod(className: string, method: string, args?: any[], targetObj?: any): Promise<any>;
+    callStaticMethod(className: string, method: string, args?: any[], targetObj?: any, originalClassName?: string): Promise<any>;
     /**
      * Creates an instance of a class.
      * @param className Class name in lowercase.
+     * @param originalClassName Class name in original casing.
      */
-    createObject(className: string, args?: any[]): Promise<any>;
+    createObject(className: string, args?: any[], originalClassName?: string): Promise<any>;
     /** Evaluates PHP code in the context. */
     eval(code: string, filepath?: string): Promise<any>;
     private fileExists;

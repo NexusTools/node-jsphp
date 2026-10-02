@@ -134,21 +134,68 @@ class StringRuntime {
     }
     /** Return a formatted string. */
     static sprintf(ctx, fmt, ...args) {
-        let i = 0;
-        return String(fmt ?? "").replace(/%([%d s f g x X])/g, (_, spec) => {
-            if (spec === "%")
+        let argIndex = 0;
+        return String(fmt ?? "").replace(/%(\d+\$)?([-+0' ])?(\d+)?(\.\d+)?([%sbcdeufFoghxX])/g, (match, param, flags, width, precision, type) => {
+            if (type === "%")
                 return "%";
-            const val = args[i++];
-            if (spec === "d")
-                return String(parseInt(val, 10) || 0);
-            if (spec === "f" || spec === "g")
-                return String(parseFloat(val) || 0);
-            if (spec === "x")
-                return (parseInt(val, 10) || 0).toString(16);
-            if (spec === "X")
-                return (parseInt(val, 10) || 0).toString(16).toUpperCase();
-            return String(val ?? "");
+            let idx = argIndex;
+            if (param) {
+                idx = parseInt(param.slice(0, -1), 10) - 1;
+            }
+            else {
+                argIndex++;
+            }
+            let val = args[idx];
+            let str = "";
+            const numWidth = width ? parseInt(width, 10) : 0;
+            const padChar = flags && flags.includes("0") ? "0" : " ";
+            const leftAlign = flags && flags.includes("-");
+            if (type === "s") {
+                str = String(val ?? "");
+                if (precision) {
+                    str = str.slice(0, parseInt(precision.slice(1), 10));
+                }
+            }
+            else if (type === "d" || type === "i" || type === "u") {
+                const num = Math.trunc(Number(val) || 0);
+                str = String(type === "u" ? Math.abs(num) : num);
+            }
+            else if (type === "f" || type === "F") {
+                const num = Number(val) || 0;
+                const prec = precision ? parseInt(precision.slice(1), 10) : 6;
+                str = num.toFixed(prec);
+            }
+            else if (type === "x") {
+                str = (parseInt(val, 10) || 0).toString(16);
+            }
+            else if (type === "X") {
+                str = (parseInt(val, 10) || 0).toString(16).toUpperCase();
+            }
+            else if (type === "b") {
+                str = (parseInt(val, 10) || 0).toString(2);
+            }
+            else if (type === "o") {
+                str = (parseInt(val, 10) || 0).toString(8);
+            }
+            else if (type === "c") {
+                str = String.fromCharCode(parseInt(val, 10) || 0);
+            }
+            else {
+                str = String(val ?? "");
+            }
+            if (str.length < numWidth) {
+                const padLen = numWidth - str.length;
+                const padding = padChar.repeat(padLen);
+                str = leftAlign ? str + padding : padding + str;
+            }
+            return str;
         });
+    }
+    /** Output a formatted string. */
+    static async printf(ctx, fmt, ...args) {
+        const output = StringRuntime.sprintf(ctx, fmt, ...args);
+        await ctx.echo(output);
+        return output.length;
     }
     /** Split a string by a string. */
     static explode(ctx, delimiter, string, limit) {
@@ -217,6 +264,45 @@ class StringRuntime {
     /** Quote string with slashes. */
     static addslashes(ctx, str) {
         return String(str ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
+    }
+    static addcslashes(ctx, str, charlist) {
+        const string = String(str ?? "");
+        const chars = new Set();
+        const list = String(charlist ?? "");
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] === "\\" && i + 1 < list.length) {
+                chars.add(list[++i]);
+            }
+            else if (i + 3 < list.length && list[i + 1] === "." && list[i + 2] === ".") {
+                const start = list.charCodeAt(i);
+                const end = list.charCodeAt(i + 3);
+                for (let c = start; c <= end; c++) {
+                    chars.add(String.fromCharCode(c));
+                }
+                i += 3;
+            }
+            else {
+                chars.add(list[i]);
+            }
+        }
+        let res = "";
+        for (let i = 0; i < string.length; i++) {
+            const ch = string[i];
+            if (chars.has(ch)) {
+                if (ch === "\n")
+                    res += "\\n";
+                else if (ch === "\r")
+                    res += "\\r";
+                else if (ch === "\t")
+                    res += "\\t";
+                else
+                    res += "\\" + ch;
+            }
+            else {
+                res += ch;
+            }
+        }
+        return res;
     }
     /** Un-quotes a quoted string. */
     static stripslashes(ctx, str) {
@@ -408,6 +494,7 @@ class StringRuntime {
         "strtr": StringRuntime.strtr,
         "str_ireplace": StringRuntime.str_ireplace,
         "sprintf": StringRuntime.sprintf,
+        "printf": StringRuntime.printf,
         "explode": StringRuntime.explode,
         "implode": StringRuntime.implode,
         "trim": StringRuntime.trim,

@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import * as syncFs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
@@ -6,7 +7,7 @@ import chokidar from "chokidar";
 import { PHPExtension } from "./PHPExtension";
 import { PHPContext, PHPContextOptions } from "./PHPContext";
 import { JSTranspiler } from "./parser/JSTranspiler";
-import { PHPClass } from "./runtime/PHPObject";
+import { PHPClass, PHPObject } from "./runtime/PHPObject";
 
 import { StringRuntime } from "./runtime/Strings";
 import { ArrayRuntime } from "./runtime/Arrays";
@@ -144,32 +145,23 @@ export class PHPEngine {
    * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
    */
   public registerFunctions(functions: Record<string, Function>): void {
-    for (const [key, fn] of Object.entries(functions)) {
-      this.functions[key.toLowerCase()] = fn;
-    }
+    Object.assign(this.functions, functions)
   }
 
   public registerConstant(name: string, value: any): void {
-    const lower = name.toLowerCase();
-    this.constants[lower] = value;
     this.constants[name] = value;
   }
 
   public registerConstants(constants: Record<string, any>): void {
-    for (const [key, value] of Object.entries(constants)) {
-      this.constants[key.toLowerCase()] = value;
-      this.constants[key] = value;
-    }
+    Object.assign(this.constants, constants)
   }
 
   public registerClass(name: string, value: any): void {
-    this.classes[name.toLowerCase()] = value;
+    this.classes[name] = value;
   }
 
   public registerClasses(classes: Record<string, any>): void {
-    for (const [key, cls] of Object.entries(classes)) {
-      this.classes[key.toLowerCase()] = cls;
-    }
+    Object.assign(this.classes, classes)
   }
 
   /**
@@ -180,29 +172,32 @@ export class PHPEngine {
   }
 
   /**
-   * Resolves a class by name. The `name` parameter must be provided in lowercase.
+   * Resolves a class by name using registered class resolvers.
    */
-  public async resolveClass(name: string, ctx: PHPContext): Promise<any> {
-    const shortName = String(name).split("\\").pop() || String(name);
-    const resolutionKey = String(name).toLowerCase();
+  public async resolveClass(name: string, originalName: string, ctx: PHPContext): Promise<any> {
+    const orig = originalName || name;
+    const shortName = String(orig).split("\\").pop() || String(orig);
+    const shortLower = String(name).split("\\").pop() || String(name);
+
+    let resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
+    if (resolved) return resolved;
+
     let resolvingClasses = this.resolvingClasses.get(ctx);
     if (!resolvingClasses) {
       resolvingClasses = new Set();
       this.resolvingClasses.set(ctx, resolvingClasses);
     }
-    if (resolvingClasses.has(resolutionKey)) return undefined;
-    resolvingClasses.add(resolutionKey);
+    if (resolvingClasses.has(name)) return undefined;
+    resolvingClasses.add(name);
     try {
       for (const resolver of this.classResolvers) {
-        await resolver(ctx, name);
-        const resolved = this.classes[resolutionKey] || this.classes[shortName];
+        await resolver(ctx, orig);
+        resolved = this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
         if (resolved) return resolved;
       }
-      const resolved = this.classes[resolutionKey] || this.classes[shortName];
-      if (resolved) return resolved;
-      return undefined;
+      return this.classes[name] || this.classes[shortLower] || ctx.classes[name] || ctx.classes[shortLower];
     } finally {
-      resolvingClasses.delete(resolutionKey);
+      resolvingClasses.delete(name);
     }
   }
 
@@ -243,7 +238,67 @@ export class PHPEngine {
     "defined": (ctx: PHPContext, name: string) => ctx.hasConstant(String(name ?? "").toLowerCase()),
     "extension_loaded": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
     "function_exists": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
-    "class_exists": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.classes)),
+    "class_alias": async (ctx: PHPContext, original: string, alias: string, autoload = true) => {
+      if (!original || !alias) return false;
+      const lowerOrig = String(original).replace(/^\\/, "").toLowerCase();
+      const lowerAlias = String(alias).replace(/^\\/, "").toLowerCase();
+      let cls = ctx.classes[lowerOrig] || ctx.engine.classes[lowerOrig];
+      if (!cls && ctx.isTruthy(autoload)) {
+        try {
+          cls = await ctx.resolveClass(lowerOrig, original);
+        } catch {
+          // Ignore
+        }
+      }
+      if (cls) {
+        ctx.classes[lowerAlias] = cls;
+        ctx.engine.classes[lowerAlias] = cls;
+        return true;
+      }
+      return false;
+    },
+    "class_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+      if (!name || typeof name !== "string") return false;
+      const lower = String(name).replace(/^\\/, "").toLowerCase();
+      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
+      if (ctx.isTruthy(autoload)) {
+        try {
+          const res = await ctx.resolveClass(lower, name);
+          return Boolean(res);
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    },
+    "interface_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+      if (!name || typeof name !== "string") return false;
+      const lower = String(name).replace(/^\\/, "").toLowerCase();
+      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
+      if (ctx.isTruthy(autoload)) {
+        try {
+          const res = await ctx.resolveClass(lower, name);
+          return Boolean(res);
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    },
+    "trait_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+      if (!name || typeof name !== "string") return false;
+      const lower = String(name).replace(/^\\/, "").toLowerCase();
+      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
+      if (ctx.isTruthy(autoload)) {
+        try {
+          const res = await ctx.resolveClass(lower, name);
+          return Boolean(res);
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    },
     "constant": (ctx: PHPContext, name: string) => ctx.getConstant(String(name ?? "").toLowerCase()),
     "assert": (ctx: PHPContext, assertion: any, description?: string) => {
       if (!assertion) {
@@ -312,7 +367,7 @@ export class PHPEngine {
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(";");
-    return crypto.createHash("sha1").update(`v26|${sortedExts}|${sortedConsts}`).digest("hex");
+    return crypto.createHash("sha1").update(`v67|${sortedExts}|${sortedConsts}`).digest("hex");
   }
 
   public async compileFile(filepath: string): Promise<Function> {
@@ -345,12 +400,28 @@ export class PHPEngine {
       engine: this,
     });
 
-    // Load compiled JS into Function wrapper with PHPClass in scope
     const moduleObj = { exports: {} as any };
-    const factory = new Function("module", "exports", "require", "PHPClass", transpilation.code);
-    factory(moduleObj, moduleObj.exports, require, PHPClass);
-
-    return moduleObj.exports;
+    try {
+      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", transpilation.code);
+      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject);
+      return moduleObj.exports;
+    } catch (err: any) {
+      if (err.name === "SyntaxError") {
+        try {
+          const vm = require("vm");
+          new vm.Script(transpilation.code);
+        } catch (scriptErr: any) {
+          console.error(`SYNTAX_ERR in ${filepath}: ${scriptErr.message}\nSTACK:\n${scriptErr.stack}`);
+          const codeLines = transpilation.code.split("\n");
+          const match = (scriptErr.stack || "").match(/evalmachine\.<anonymous>:(\d+)/);
+          if (match) {
+            const lineNum = parseInt(match[1], 10);
+            console.error(`EXACT_ERROR_LINE ${lineNum}: ${codeLines[lineNum - 1]}`);
+          }
+        }
+      }
+      throw err;
+    }
   }
 
   public createContext(options: PHPContextOptions = {}): PHPContext {
