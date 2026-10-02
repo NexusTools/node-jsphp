@@ -192,7 +192,6 @@ class PHPEngine {
             return resolved;
         for (const resolver of this.classResolvers) {
             await resolver(ctx, orig);
-            // resolved classes are only ever defined in the context so only check the context
             resolved = ctx.classes[name] || ctx.classes[shortLower];
             if (resolved)
                 return resolved;
@@ -420,8 +419,8 @@ class PHPEngine {
         });
         const moduleObj = { exports: {} };
         try {
-            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", transpilation.code);
-            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject);
+            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPFatalError", transpilation.code);
+            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject, PHPError_1.PHPFatalError);
             return moduleObj.exports;
         }
         catch (err) {

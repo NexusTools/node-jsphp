@@ -430,7 +430,8 @@ class JSTranspiler {
                 const safeId = name.replace(/[^a-zA-Z0-9_]/g, "_");
                 const originalName = this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name;
                 const qualifiedName = originalName.toLowerCase();
-                lines.push(`${pad}var __cls_${safeId} = ctx.engine.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
+                lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare ${node.kind} ${originalName}, because the name is already in use\`);`);
+                lines.push(`${pad}var __cls_${safeId} = ctx.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
                 lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
                 break;
             }
@@ -466,6 +467,7 @@ class JSTranspiler {
                 lines.push(`${pad}  }`);
                 lines.push(`${pad}};`);
                 lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
+                lines.push(`${pad}if (Object.hasOwn(ctx.functions, ${JSON.stringify(funcName)})) throw new PHPFatalError(\`Cannot redeclare ${originalFuncName}()\`);`);
                 lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
                 break;
             }
@@ -479,7 +481,8 @@ class JSTranspiler {
                 this.currentClassName = qualifiedClassName;
                 this.currentClassNameOriginal = originalClassName;
                 const parentClass = node.extends ? `(await ctx.resolveClass(${this.transpileClassReferenceLower(node.extends, filepath)}, ${this.transpileClassReferenceOriginal(node.extends, filepath)}))` : "undefined";
-                lines.push(`${pad}var __cls_${safeClassId} = ctx.engine.classes[${JSON.stringify(qualifiedClassName)}] || new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
+                lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedClassName)})) throw new PHPFatalError(\`Cannot declare class ${originalClassName}, because the name is already in use\`);`);
+                lines.push(`${pad}var __cls_${safeClassId} = new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
                 lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
                 const bodyItems = Array.isArray(node.body)
                     ? node.body
@@ -1112,8 +1115,7 @@ ${dummyLines.join("\n")}
                 return `(yield* ${expr})`;
             }
             case "goto": {
-                const labelName = (node.label?.name || node.label || "lbl").toString();
-                return `/* goto ${labelName} */ undefined`;
+                throw new Error("GOTO is not implemented");
             }
             case "assignref": {
                 return this.transpileExpr({ ...node, kind: "assign" }, filepath);
@@ -1128,7 +1130,7 @@ ${dummyLines.join("\n")}
                 return expr ? this.transpileExpr(expr, filepath) : "null";
             }
             case "noop":
-                return "undefined";
+                return "";
             case "variadic": {
                 const expr = node.what || node.value || node.expr || node.argument;
                 const val = expr ? this.transpileExpr(expr, filepath) : "[]";

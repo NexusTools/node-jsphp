@@ -9,7 +9,7 @@ class PHPError extends Error {
     phpTrace;
     previous;
     rawJSStack = "";
-    constructor(message = "", code = 0, file = "[INTERNAL]", line = 0, trace = [], previous = null) {
+    constructor(message = "", code = 0, file = __filename, line = 0, trace = [], previous = null) {
         super(message);
         this.name = this.constructor.name;
         this.phpCode = code;
@@ -37,7 +37,7 @@ class PHPError extends Error {
     getPrevious() {
         return this.previous;
     }
-    static virtualizeJSStack(jsStack, phpFile = "[INTERNAL]", phpLine = 0, phpTrace = []) {
+    static virtualizeJSStack(jsStack, phpFile = __filename, phpLine = 0, phpTrace = []) {
         const rawLines = (jsStack || "").split("\n");
         const header = rawLines[0] || "PHP Error";
         const formattedFrames = [];
@@ -78,9 +78,22 @@ class PHPError extends Error {
             if (matchPhp) {
                 const file = matchPhp[1];
                 const lineNum = matchPhp[2];
-                formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: {main}()`);
+                const jsFunc = line.match(/at\s+(?:async\s+)?([^\s]+)/)?.[1] || "{main}";
+                formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: ${jsFunc}()`);
                 continue;
             }
+            // Format pure JS frames like PHP stack frames
+            const matchJs = line.match(/at\s+(?:async\s+)?([^\s]+)\s+\((.*?):(\d+):(\d+)\)/) || line.match(/at\s+(?:async\s+)?(.*?):(\d+):(\d+)/);
+            if (matchJs) {
+                if (matchJs.length === 5) {
+                    formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[2]}:${matchJs[3]}: ${matchJs[1]}()`);
+                }
+                else {
+                    formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[1]}:${matchJs[2]}: {main}()`);
+                }
+                continue;
+            }
+            formattedFrames.push(`    #${frameIdx++} [JS] ${line.replace(/^at\s+/, "")}`);
         }
         if (formattedFrames.length === 0) {
             formattedFrames.push(`    #0 ${phpFile}:${phpLine}: {main}()`);

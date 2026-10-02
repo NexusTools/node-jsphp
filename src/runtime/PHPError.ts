@@ -22,7 +22,7 @@ export class PHPError extends Error {
   constructor(
     message: string = "",
     code: number = 0,
-    file: string = "[INTERNAL]",
+    file: string = __filename,
     line: number = 0,
     trace: PHPStackFrame[] = [],
     previous: PHPError | null = null
@@ -63,7 +63,7 @@ export class PHPError extends Error {
 
   public static virtualizeJSStack(
     jsStack: string,
-    phpFile: string = "[INTERNAL]",
+    phpFile: string = __filename,
     phpLine: number = 0,
     phpTrace: PHPStackFrame[] = []
   ): string {
@@ -112,9 +112,23 @@ export class PHPError extends Error {
       if (matchPhp) {
         const file = matchPhp[1];
         const lineNum = matchPhp[2];
-        formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: {main}()`);
+        const jsFunc = line.match(/at\s+(?:async\s+)?([^\s]+)/)?.[1] || "{main}";
+        formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: ${jsFunc}()`);
         continue;
       }
+
+      // Format pure JS frames like PHP stack frames
+      const matchJs = line.match(/at\s+(?:async\s+)?([^\s]+)\s+\((.*?):(\d+):(\d+)\)/) || line.match(/at\s+(?:async\s+)?(.*?):(\d+):(\d+)/);
+      if (matchJs) {
+        if (matchJs.length === 5) {
+            formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[2]}:${matchJs[3]}: ${matchJs[1]}()`);
+        } else {
+            formattedFrames.push(`    #${frameIdx++} [JS] ${matchJs[1]}:${matchJs[2]}: {main}()`);
+        }
+        continue;
+      }
+
+      formattedFrames.push(`    #${frameIdx++} [JS] ${line.replace(/^at\s+/, "")}`);
     }
 
     if (formattedFrames.length === 0) {

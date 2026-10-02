@@ -692,11 +692,10 @@ export class PHPContext {
    */
   public async callStaticMethod(className: string, method: string, args: any[] = [], targetObj?: any, originalClassName?: string): Promise<any> {
     const origClass = originalClassName || className;
-    const lowerClass = className.toLowerCase();
-    let cls = this.classes[className] || this.classes[lowerClass];
-    if (!cls) cls = await this.engine.resolveClass(lowerClass, origClass, this);
+    let cls = this.classes[className];
+    if (!cls) cls = await this.engine.resolveClass(className, origClass, this);
     if (!cls) {
-      const shortClassName = lowerClass.split("\\").pop() || lowerClass;
+      const shortClassName = className.split("\\").pop() || className;
       cls = this.classes[shortClassName];
     }
     if (!cls) throw new PHPFatalError(`Class "${origClass}" not found`);

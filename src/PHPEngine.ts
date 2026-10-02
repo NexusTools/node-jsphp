@@ -391,8 +391,8 @@ export class PHPEngine {
 
     const moduleObj = { exports: {} as any };
     try {
-      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", transpilation.code);
-      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject);
+      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPFatalError", transpilation.code);
+      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject, PHPFatalError);
       return moduleObj.exports;
     } catch (err: any) {
       if (err.name === "SyntaxError") {

@@ -460,8 +460,8 @@ export class JSTranspiler {
         const safeId = name.replace(/[^a-zA-Z0-9_]/g, "_");
         const originalName = this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name;
         const qualifiedName = originalName.toLowerCase();
-        // TODO: check if it's already defined and throw an exception
-        lines.push(`${pad}var __cls_${safeId} = ctx.engine.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
+        lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare ${node.kind} ${originalName}, because the name is already in use\`);`);
+        lines.push(`${pad}var __cls_${safeId} = ctx.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
         lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
         break;
       }
@@ -481,7 +481,6 @@ export class JSTranspiler {
         const requiredCount = params.filter((p: any) => !p.hasDefault).length;
         const isGen = this.containsYield(node.body?.children || node.body);
 
-        // TODO: check if it's already defined and throw an exception
         lines.push(`${pad}async function${isGen ? "*" : ""} __fn_${safeFnId}(ctx, ...args) {`);
         lines.push(`${pad}  ctx.pushScope();`);
         lines.push(`${pad}  try {`);
@@ -502,6 +501,7 @@ export class JSTranspiler {
         lines.push(`${pad}  }`);
         lines.push(`${pad}};`);
         lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
+        lines.push(`${pad}if (Object.hasOwn(ctx.functions, ${JSON.stringify(funcName)})) throw new PHPFatalError(\`Cannot redeclare ${originalFuncName}()\`);`);
         lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
         break;
       }
@@ -516,8 +516,8 @@ export class JSTranspiler {
         this.currentClassName = qualifiedClassName;
         this.currentClassNameOriginal = originalClassName;
 
-        // TODO: check if it's already defined and throw an exception
         const parentClass = node.extends ? `(await ctx.resolveClass(${this.transpileClassReferenceLower(node.extends, filepath)}, ${this.transpileClassReferenceOriginal(node.extends, filepath)}))` : "undefined";
+        lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedClassName)})) throw new PHPFatalError(\`Cannot declare class ${originalClassName}, because the name is already in use\`);`);
         lines.push(`${pad}var __cls_${safeClassId} = new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
         lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
 
@@ -1159,7 +1159,7 @@ ${dummyLines.join("\n")}
       }
 
       case "goto": {
-        return throw new Error("GOTO is not implemented");
+        throw new Error("GOTO is not implemented");
       }
 
       case "assignref": {
