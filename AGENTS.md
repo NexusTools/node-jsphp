@@ -38,3 +38,9 @@ This document provides operational context, architecture directives, and guidanc
 
 11. **WordPress & MySQL Compatibility**:
     Maintain full compatibility with WordPress database operations (`mysqli`), installation flows, and theme/admin dashboard rendering tested against a local MySQL database.
+
+12. **Case Insensitivity & Lowercase System Directive**:
+    - **Precompiled Transpilation**: PHP identifiers (class names, function names, method names, namespace names, and constant references) are case-insensitive in PHP userland. `JSTranspiler` MUST automatically convert all identifier keys, function calls, class lookups, method calls, namespace references, and constant references to lowercase at compile/transpilation time.
+    - **Zero Redundant `toLowerCase()` at Runtime**: To maximize runtime performance and minimize execution latency (low ms execution), internal engine/runtime methods (`resolveClass`, `createObject`, `callMethod`, `callStaticMethod`, `getConstant`, `registerClass`, `registerFunction`, etc.) MUST NOT perform redundant `.toLowerCase()` calls or regex searches during hot-path execution. All keys are pre-lowercased during AST transpilation.
+    - **Exposed PHP Userland Functions**: Functions exposed directly to PHP userland that accept string identifier arguments at runtime (such as `define()`, `defined()`, `class_exists()`, `function_exists()`, `constant()`, `is_callable()`, `ini_get()`) MUST convert user-supplied string parameters to lowercase when looking up engine/context maps.
+    - **Original Casing in Exception Messages**: Error and exception messages (e.g. `Class "Foo\Bar" not found`, `Call to undefined static method Baz::qux()`) MUST preserve the original casing as provided in PHP source code or user input.
