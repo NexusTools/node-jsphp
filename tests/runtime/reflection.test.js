@@ -12,7 +12,7 @@ describe("Reflection Runtime Tests", () => {
     test("ReflectionFunction and ReflectionClass metadata queries", async () => {
         const ctx = engine.createContext();
         await ctx.eval("function my_fn($a, $b = 'default') { return $a; }");
-        const fn = engine.functions["my_fn"];
+        const fn = ctx.functions["my_fn"] || engine.functions["my_fn"];
         expect(fn).toBeDefined();
         const refFn = new index_1.ReflectionFunction("my_fn", fn);
         expect(refFn.getName()).toBe("my_fn");

@@ -1,34 +1,68 @@
 import { PHPExtension } from "../PHPExtension";
 import { PHPEngine } from "../PHPEngine";
 import { PHPContext } from "../PHPContext";
+import { PHPReference } from "../runtime/PHPVariable";
 
 export class JSONExtension extends PHPExtension {
   public readonly name = "json";
 
   public onInit(engine: PHPEngine): void {
     this.constants = {
-      JSON_PRETTY_PRINT: 128,
-      JSON_UNESCAPED_SLASHES: 64,
+      json_error_none: 0,
+      json_error_depth: 1,
+      json_error_state_mismatch: 2,
+      json_error_ctrl_char: 3,
+      json_error_syntax: 4,
+      json_error_utf8: 5,
+      json_hex_tag: 1,
+      json_hex_amp: 2,
+      json_hex_apos: 4,
+      json_hex_quot: 8,
+      json_force_object: 16,
+      json_numeric_check: 32,
+      json_unescaped_slashes: 64,
+      json_pretty_print: 128,
+      json_unescaped_unicode: 256,
+      json_partial_output_on_error: 512,
+      json_preserve_zero_fraction: 1024,
+      json_throw_on_error: 4194304,
     };
 
+    let lastError = 0;
+    let lastErrorMsg = "No error";
+
     this.functions = {
-      json_encode: (ctx: PHPContext, value: any, flags: number = 0) => {
+      json_encode: (ctx: PHPContext, valueArg?: PHPReference, flagsArg?: PHPReference) => {
         try {
+          const value = valueArg?.get();
+          const flags = Number(flagsArg?.get()) || 0;
+          lastError = 0;
+          lastErrorMsg = "No error";
           if (flags & 128) {
             return JSON.stringify(value, null, 2);
           }
           return JSON.stringify(value);
-        } catch {
+        } catch (e: any) {
+          lastError = 4;
+          lastErrorMsg = e.message || "Syntax error";
           return false;
         }
       },
-      json_decode: (ctx: PHPContext, jsonStr: string, assoc: boolean = false) => {
+      json_decode: (ctx: PHPContext, jsonStrArg?: PHPReference, assocArg?: PHPReference) => {
         try {
+          const jsonStr = String(jsonStrArg?.get() ?? "");
+          lastError = 0;
+          lastErrorMsg = "No error";
+          if (!jsonStr.trim()) return null;
           return JSON.parse(jsonStr);
-        } catch {
+        } catch (e: any) {
+          lastError = 4;
+          lastErrorMsg = e.message || "Syntax error";
           return null;
         }
       },
+      json_last_error: (ctx: PHPContext) => lastError,
+      json_last_error_msg: (ctx: PHPContext) => lastErrorMsg,
     };
   }
 }

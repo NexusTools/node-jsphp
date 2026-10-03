@@ -1,5 +1,6 @@
 import type { PHPContext } from "../PHPContext";
 import { PHPFatalError } from "./PHPError";
+import { PHPVariable } from "./PHPVariable";
 
 export interface PHPParameterMetadata {
   name: string;
@@ -71,7 +72,7 @@ export class PHPObject {
   public readonly phpClass: PHPClass;
   public properties: Map<string, any> = new Map();
   private settingProperties: Set<string> = new Set();
-  private proxy: any;
+  private gettingProperties: Set<string> = new Set();
 
   constructor(phpClass: PHPClass) {
     this.phpClass = phpClass;
@@ -82,45 +83,34 @@ export class PHPObject {
     }
   }
 
-  public asProxy(ctx: PHPContext): any {
-    if (this.proxy) return this.proxy;
-    const target = this;
-    this.proxy = new Proxy(target, {
-      get(object, property, receiver) {
-        if (property === "then") return undefined;
-        if (typeof property !== "string") return Reflect.get(object, property, receiver);
-        if (property in object) return Reflect.get(object, property, receiver);
-        if (object.properties.has(property)) return object.properties.get(property);
-        if (object.phpClass.methods.has("__get")) return object.getProperty(ctx, property);
-        if (object.phpClass.methods.has("__call")) return (...args: any[]) => object.callMethod(ctx, property, args);
-        return undefined;
-      },
-      set(object, property, value) {
-        if (typeof property !== "string" || property in object) return Reflect.set(object, property, value);
-        void object.setProperty(ctx, property, value);
-        return true;
-      },
-    });
-    return this.proxy;
-  }
-
   public async getProperty(ctx: PHPContext, name: string): Promise<any> {
+    if (!(this.gettingProperties instanceof Set)) {
+      this.gettingProperties = new Set();
+    }
     if (this.properties.has(name)) {
       return this.properties.get(name);
     }
     const __getMeta = this.phpClass.methods.get("__get");
-    if (__getMeta?.fn) {
-      return await __getMeta.fn.call(this, ctx, name);
+    if (__getMeta?.fn && !this.gettingProperties.has(name)) {
+      this.gettingProperties.add(name);
+      try {
+        return await __getMeta.fn.call(this, ctx, name);
+      } finally {
+        this.gettingProperties.delete(name);
+      }
     }
     return undefined;
   }
 
   public async setProperty(ctx: PHPContext, name: string, value: any): Promise<void> {
+    if (!(this.settingProperties instanceof Set)) {
+      this.settingProperties = new Set();
+    }
     const __setMeta = this.phpClass.methods.get("__set");
     if (__setMeta?.fn && !this.settingProperties.has(name)) {
       this.settingProperties.add(name);
       try {
-      await __setMeta.fn.call(this, ctx, name, value);
+        await __setMeta.fn.call(this, ctx, name, value);
       } finally {
         this.settingProperties.delete(name);
       }
@@ -133,19 +123,37 @@ export class PHPObject {
     const lowerName = name.toLowerCase();
     ctx.currentClassStack.push(this.phpClass);
     try {
-      const methodMeta = this.phpClass.methods.get(lowerName);
-      if (methodMeta?.fn) {
-        return await methodMeta.fn.apply(this, [ctx, ...args]);
+      let cls: PHPClass | undefined = this.phpClass;
+      while (cls) {
+        if (cls.methods && typeof cls.methods.get === "function") {
+          const methodMeta = cls.methods.get(lowerName);
+          if (methodMeta?.fn) {
+            let res = await methodMeta.fn.apply(this, [ctx, ...args]);
+            if (res instanceof PHPVariable) res = res.get();
+            return res;
+          }
+        }
+        cls = cls.parentClass;
       }
-      const __callMeta = this.phpClass.methods.get("__call");
-      if (__callMeta?.fn) {
-        return await __callMeta.fn.call(this, ctx, name, args);
+      cls = this.phpClass;
+      while (cls) {
+        if (cls.methods && typeof cls.methods.get === "function") {
+          const __callMeta = cls.methods.get("__call");
+          if (__callMeta?.fn) {
+            let res = await __callMeta.fn.call(this, ctx, name, args);
+            if (res instanceof PHPVariable) res = res.get();
+            return res;
+          }
+        }
+        cls = cls.parentClass;
       }
       let target: any = this;
       while (target && target !== Object.prototype) {
         for (const propName of Object.getOwnPropertyNames(target)) {
           if (propName.toLowerCase() === lowerName && typeof (this as any)[propName] === "function") {
-            return await (this as any)[propName].apply(this, args);
+            let res = await (this as any)[propName].apply(this, args);
+            if (res instanceof PHPVariable) res = res.get();
+            return res;
           }
         }
         target = Object.getPrototypeOf(target);

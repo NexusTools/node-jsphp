@@ -3,6 +3,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
+import { PHPVariable, PHPReference } from "./PHPVariable";
 
 export class PHPStreamContext {
   public options: Record<string, any>;
@@ -17,12 +18,15 @@ export interface PHPFileStream {
 }
 
 export class StreamRuntime {
-  public static stream_context_create(ctx: PHPContext | null, options: Record<string, any> = {}): PHPStreamContext {
+  public static stream_context_create(ctx: PHPContext | null, optionsArg?: PHPReference): PHPStreamContext {
+    const options = optionsArg?.get() || {};
     return new PHPStreamContext(options);
   }
 
-  public static async fopen(ctx: PHPContext, filename: string, mode: string): Promise<PHPFileStream | false> {
+  public static async fopen(ctx: PHPContext, filenameArg?: PHPReference, modeArg?: PHPReference): Promise<PHPFileStream | false> {
     try {
+      const filename = String(filenameArg?.get() ?? "");
+      const mode = String(modeArg?.get() ?? "");
       const localPath = filename.startsWith("file://") ? fileURLToPath(filename) : path.resolve(ctx.cwd, filename);
       const normalizedMode = mode.replace(/[bt]/g, "");
       const flags: Record<string, string | number> = {
@@ -38,7 +42,8 @@ export class StreamRuntime {
     }
   }
 
-  public static async fclose(ctx: PHPContext | null, stream: PHPFileStream): Promise<boolean> {
+  public static async fclose(ctx: PHPContext | null, streamArg?: PHPReference): Promise<boolean> {
+    const stream = streamArg?.get();
     if (!stream?.isResource) return false;
     try {
       await stream.handle.close();
@@ -49,7 +54,9 @@ export class StreamRuntime {
     }
   }
 
-  public static async fread(ctx: PHPContext | null, stream: PHPFileStream, length: number): Promise<string | false> {
+  public static async fread(ctx: PHPContext | null, streamArg?: PHPReference, lengthArg?: PHPReference): Promise<string | false> {
+    const stream = streamArg?.get();
+    const length = Number(lengthArg?.get()) || 0;
     if (!stream?.isResource || length < 0) return false;
     try {
       const buffer = Buffer.alloc(length);
@@ -60,7 +67,10 @@ export class StreamRuntime {
     }
   }
 
-  public static async fwrite(ctx: PHPContext | null, stream: PHPFileStream, data: any, length?: number): Promise<number | false> {
+  public static async fwrite(ctx: PHPContext | null, streamArg?: PHPReference, dataArg?: PHPReference, lengthArg?: PHPReference): Promise<number | false> {
+    const stream = streamArg?.get();
+    const data = dataArg?.get();
+    const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
     if (!stream?.isResource) return false;
     try {
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""));
@@ -71,7 +81,10 @@ export class StreamRuntime {
     }
   }
 
-  public static async stream_get_contents(ctx: PHPContext | null, stream: any, maxLength = -1, offset = -1): Promise<string | false> {
+  public static async stream_get_contents(ctx: PHPContext | null, streamArg?: PHPReference, maxLengthArg?: PHPReference, offsetArg?: PHPReference): Promise<string | false> {
+    const stream = streamArg?.get();
+    const maxLength = maxLengthArg?.get() !== undefined ? Number(maxLengthArg.get()) : -1;
+    const offset = offsetArg?.get() !== undefined ? Number(offsetArg.get()) : -1;
     try {
       if (typeof stream === "string") {
         return await fs.readFile(stream, "utf8");
@@ -93,7 +106,8 @@ export class StreamRuntime {
     return ["file", "http", "https", "ftp", "ftps", "compress.zlib", "compress.bzip2", "php", "data", "glob", "phar"];
   }
 
-  public static stream_is_local(ctx: PHPContext | null, stream: any): boolean {
+  public static stream_is_local(ctx: PHPContext | null, streamArg?: PHPReference): boolean {
+    const stream = streamArg?.get();
     if (typeof stream === "string") {
       return !stream.includes("://") || stream.startsWith("file://");
     }

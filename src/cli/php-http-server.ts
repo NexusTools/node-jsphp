@@ -1,8 +1,12 @@
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs/promises";
+import * as os from "os";
+import cluster from "cluster";
+import { Command } from "commander";
 import { PHPEngine } from "../PHPEngine";
 import { PHPError, PHPExit } from "../runtime/PHPError";
+import { NodeJSExtension } from "../extensions/nodejs";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -24,8 +28,59 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
 };
 
-export async function runHTTPServer(port: number = 8080, docRoot: string = process.cwd(), cacheDir?: string): Promise<http.Server> {
-  const engine = new PHPEngine({ cacheDir: cacheDir || null });
+export interface HTTPServerOptions {
+  cacheDir?: string;
+  enableNodeJS?: boolean;
+}
+
+export async function runHTTPServerCLI(rawArgs: string[]): Promise<void> {
+  const program = new Command();
+  program
+    .name("php-http-server")
+    .description("JSPHP Multiprocess HTTP Web Server")
+    .option("-p, --port <number>", "Port number to listen on", "8080")
+    .option("-d, --docroot <path>", "Document root directory", process.cwd())
+    .option("-w, --workers <number>", "Number of cluster worker processes", String(os.cpus().length))
+    .option("--no-cluster", "Disable Node.js cluster multiprocess mode")
+    .option("--no-nodejs", "Disable the Node.js interop extension")
+    .option("-c, --cache-dir <path>", "Transpilation cache directory");
+
+  program.parse(rawArgs, { from: "user" });
+  const options = program.opts();
+
+  const port = parseInt(options.port, 10) || 8080;
+  const docRoot = path.resolve(options.docroot || process.cwd());
+  const numWorkers = parseInt(options.workers, 10) || os.cpus().length;
+  const enableNodeJS = options.nodejs !== false;
+  const useCluster = options.cluster !== false;
+
+  if (useCluster && cluster.isPrimary) {
+    console.log(`[jsphp-http-server] Primary process ${process.pid} is running`);
+    console.log(`[jsphp-http-server] Spawning ${numWorkers} worker process(es)...`);
+    for (let i = 0; i < numWorkers; i++) {
+      cluster.fork();
+    }
+    cluster.on("exit", (worker) => {
+      console.log(`[jsphp-http-server] Worker ${worker.process.pid} died. Restarting...`);
+      cluster.fork();
+    });
+  } else {
+    await runHTTPServer(port, docRoot, { cacheDir: options.cacheDir, enableNodeJS });
+  }
+}
+
+export async function runHTTPServer(
+  port: number = 8080,
+  docRoot: string = process.cwd(),
+  optionsArg?: string | HTTPServerOptions
+): Promise<http.Server> {
+  const options: HTTPServerOptions = typeof optionsArg === "string" ? { cacheDir: optionsArg } : (optionsArg || {});
+  const exts: any[] = [];
+  if (options.enableNodeJS !== false) {
+    exts.push(new NodeJSExtension());
+  }
+
+  const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts });
   const absoluteCwd = path.resolve(docRoot);
 
   const server = http.createServer(async (req, res) => {
@@ -33,7 +88,6 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
     const [urlPath, queryString] = rawUrl.split("?");
     const decodedPath = decodeURIComponent(urlPath);
 
-    // Resolve candidates
     const resolvedCandidate = await resolveCandidate(absoluteCwd, decodedPath);
 
     if (!resolvedCandidate) {
@@ -46,7 +100,6 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
     const { fullPath, isPHP } = resolvedCandidate;
 
     if (isPHP) {
-      // Parse GET params
       const getParams: Record<string, string> = {};
       if (queryString) {
         const sp = new URLSearchParams(queryString);
@@ -55,7 +108,6 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
         }
       }
 
-      // Parse POST body if present
       const bodyChunks: Buffer[] = [];
       const reqMethod = (req.method || "GET").toUpperCase();
 
@@ -101,7 +153,7 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
             SERVER_PORT: hostPort || String(port),
             SERVER_ADDR: "127.0.0.1",
             REMOTE_ADDR: req.socket.remoteAddress || "127.0.0.1",
-            SERVER_SOFTWARE: "JSPHP HTTP Server / 8.5.0",
+            SERVER_SOFTWARE: `JSPHP HTTP Server / ${PHPEngine.VERSION}`,
             HTTP_USER_AGENT: req.headers["user-agent"] || "Mozilla/5.0",
             HTTP_ACCEPT: req.headers["accept"] || "*/*",
           },
@@ -119,21 +171,16 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
         if (err instanceof PHPExit || err?.name === "PHPExit") {
           // Normal exit/redirect
         } else {
-          console.error("-> PHP FATAL ERROR CAUGHT:", err);
-          if (!res.headersSent) {
-            res.statusCode = 500;
-            res.setHeader("Content-Type", "text/html; charset=utf-8");
-          }
           const stackTrace = typeof err.getPHPStackTraceString === "function"
             ? err.getPHPStackTraceString()
             : PHPError.virtualizeJSStack(err.stack || String(err));
 
           const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
-                            `<h1>PHP Fatal Error</h1>` +
-                            `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
-                            `<h3>PHP Stack Trace</h3>` +
                             `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
                             `</body></html>`;
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
+          }
           res.end(htmlError);
           return;
         }
@@ -162,7 +209,6 @@ export async function runHTTPServer(port: number = 8080, docRoot: string = proce
 
       res.end(phpOutput);
     } else {
-      // Serve static file
       try {
         const fileData = await fs.readFile(fullPath);
         const ext = path.extname(fullPath).toLowerCase();
@@ -197,7 +243,6 @@ async function resolveCandidate(docRoot: string, urlPath: string): Promise<{ ful
       return { fullPath: targetPath, isPHP: targetPath.endsWith(".php") };
     }
     if (stat.isDirectory()) {
-      // Try directory index files: index.php -> index.html
       const indexPath = path.join(targetPath, "index.php");
       if (await fileExists(indexPath)) {
         return { fullPath: indexPath, isPHP: true };
@@ -208,28 +253,24 @@ async function resolveCandidate(docRoot: string, urlPath: string): Promise<{ ful
       }
     }
   } catch {
-    // Path does not exist as-is; try extension resolutions
+    // Try extension resolution
   }
 
-  // Candidate 1: urlPath + .php (e.g. /test -> /test.php)
   const phpPath = targetPath + ".php";
   if (await fileExists(phpPath)) {
     return { fullPath: phpPath, isPHP: true };
   }
 
-  // Candidate 2: urlPath + .html (e.g. /test -> /test.html)
   const htmlPath = targetPath + ".html";
   if (await fileExists(htmlPath)) {
     return { fullPath: htmlPath, isPHP: false };
   }
 
-  // Candidate 3: urlPath/index.php
   const dirPhpPath = path.join(targetPath, "index.php");
   if (await fileExists(dirPhpPath)) {
     return { fullPath: dirPhpPath, isPHP: true };
   }
 
-  // Candidate 4: urlPath/index.html
   const dirHtmlPath = path.join(targetPath, "index.html");
   if (await fileExists(dirHtmlPath)) {
     return { fullPath: dirHtmlPath, isPHP: false };

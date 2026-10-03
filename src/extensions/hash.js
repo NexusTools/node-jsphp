@@ -36,14 +36,26 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HashExtension = void 0;
 const crypto = __importStar(require("crypto"));
 const PHPExtension_1 = require("../PHPExtension");
+const PHPVariable_1 = require("../runtime/PHPVariable");
 class HashExtension extends PHPExtension_1.PHPExtension {
     name = "hash";
     onInit(engine) {
         this.functions = {
-            md5: (ctx, data, rawOutput = false) => this.functions.hash(ctx, "md5", Buffer.isBuffer(data) ? data : String(data ?? ""), rawOutput),
-            sha1: (ctx, data, rawOutput = false) => this.functions.hash(ctx, "sha1", Buffer.isBuffer(data) ? data : String(data ?? ""), rawOutput),
-            hash: (ctx, algo, data, rawOutput = false) => {
+            md5: (ctx, dataArg, rawOutputArg) => {
+                const data = dataArg?.get();
+                const rawOutput = Boolean(rawOutputArg?.get());
+                return this.functions.hash(ctx, new PHPVariable_1.PHPLiteral("md5"), new PHPVariable_1.PHPLiteral(Buffer.isBuffer(data) ? data : String(data ?? "")), new PHPVariable_1.PHPLiteral(rawOutput));
+            },
+            sha1: (ctx, dataArg, rawOutputArg) => {
+                const data = dataArg?.get();
+                const rawOutput = Boolean(rawOutputArg?.get());
+                return this.functions.hash(ctx, new PHPVariable_1.PHPLiteral("sha1"), new PHPVariable_1.PHPLiteral(Buffer.isBuffer(data) ? data : String(data ?? "")), new PHPVariable_1.PHPLiteral(rawOutput));
+            },
+            hash: (ctx, algoArg, dataArg, rawOutputArg) => {
                 try {
+                    const algo = String(algoArg?.get() ?? "");
+                    const data = String(dataArg?.get() ?? "");
+                    const rawOutput = Boolean(rawOutputArg?.get());
                     const h = crypto.createHash(algo).update(data);
                     return rawOutput ? h.digest() : h.digest("hex");
                 }
@@ -51,8 +63,12 @@ class HashExtension extends PHPExtension_1.PHPExtension {
                     return false;
                 }
             },
-            hash_hmac: (ctx, algo, data, key, rawOutput = false) => {
+            hash_hmac: (ctx, algoArg, dataArg, keyArg, rawOutputArg) => {
                 try {
+                    const algo = String(algoArg?.get() ?? "");
+                    const data = String(dataArg?.get() ?? "");
+                    const key = String(keyArg?.get() ?? "");
+                    const rawOutput = Boolean(rawOutputArg?.get());
                     const h = crypto.createHmac(algo, key).update(data);
                     return rawOutput ? h.digest() : h.digest("hex");
                 }

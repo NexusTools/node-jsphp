@@ -2,6 +2,7 @@ import { PHPExtension } from "../PHPExtension";
 import { PHPEngine } from "../PHPEngine";
 import { PHPContext } from "../PHPContext";
 import { PHPObject, PHPClass } from "../runtime/PHPObject";
+import { PHPVariable, PHPReference } from "../runtime/PHPVariable";
 
 export function wrapJSValue(val: any): any {
   if (val === null || val === undefined) return val;
@@ -13,13 +14,14 @@ export function wrapJSValue(val: any): any {
 }
 
 export function unwrapPHPValue(val: any): any {
-  if (val instanceof NodeJSObject) {
-    return val.jsValue;
+  const actual = val instanceof PHPVariable ? val.get() : val;
+  if (actual instanceof NodeJSObject) {
+    return actual.jsValue;
   }
-  if (Array.isArray(val)) {
-    return val.map(unwrapPHPValue);
+  if (Array.isArray(actual)) {
+    return actual.map(unwrapPHPValue);
   }
-  return val;
+  return actual;
 }
 
 export class NodeJSObject extends PHPObject {
@@ -147,16 +149,20 @@ export class NodeJSExtension extends PHPExtension {
 
   public onInit(engine: PHPEngine): void {
     this.functions = {
-      nodejs_require: (ctx: PHPContext, moduleName: string) => {
+      nodejs_require: (ctx: PHPContext, moduleNameArg?: PHPReference) => {
+        const moduleName = String(moduleNameArg?.get() ?? "");
         return NodeJSService.require(moduleName);
       },
-      nodejs_global: (ctx: PHPContext, name: string) => {
+      nodejs_global: (ctx: PHPContext, nameArg?: PHPReference) => {
+        const name = String(nameArg?.get() ?? "");
         return NodeJSService.global(name);
       },
-      nodejs_eval: (ctx: PHPContext, code: string) => {
+      nodejs_eval: (ctx: PHPContext, codeArg?: PHPReference) => {
+        const code = String(codeArg?.get() ?? "");
         return NodeJSService.eval(code);
       },
-      nodejs_new: (ctx: PHPContext, className: string, ...args: any[]) => {
+      nodejs_new: (ctx: PHPContext, classNameArg?: PHPReference, ...args: PHPReference[]) => {
+        const className = String(classNameArg?.get() ?? "");
         return NodeJSService.new(className, ...args);
       },
     };

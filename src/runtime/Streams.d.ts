@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
+import { PHPReference } from "./PHPVariable";
 export declare class PHPStreamContext {
     options: Record<string, any>;
     constructor(options?: Record<string, any>);
@@ -10,14 +11,14 @@ export interface PHPFileStream {
     isResource: boolean;
 }
 export declare class StreamRuntime {
-    static stream_context_create(ctx: PHPContext | null, options?: Record<string, any>): PHPStreamContext;
-    static fopen(ctx: PHPContext, filename: string, mode: string): Promise<PHPFileStream | false>;
-    static fclose(ctx: PHPContext | null, stream: PHPFileStream): Promise<boolean>;
-    static fread(ctx: PHPContext | null, stream: PHPFileStream, length: number): Promise<string | false>;
-    static fwrite(ctx: PHPContext | null, stream: PHPFileStream, data: any, length?: number): Promise<number | false>;
-    static stream_get_contents(ctx: PHPContext | null, stream: any, maxLength?: number, offset?: number): Promise<string | false>;
+    static stream_context_create(ctx: PHPContext | null, optionsArg?: PHPReference): PHPStreamContext;
+    static fopen(ctx: PHPContext, filenameArg?: PHPReference, modeArg?: PHPReference): Promise<PHPFileStream | false>;
+    static fclose(ctx: PHPContext | null, streamArg?: PHPReference): Promise<boolean>;
+    static fread(ctx: PHPContext | null, streamArg?: PHPReference, lengthArg?: PHPReference): Promise<string | false>;
+    static fwrite(ctx: PHPContext | null, streamArg?: PHPReference, dataArg?: PHPReference, lengthArg?: PHPReference): Promise<number | false>;
+    static stream_get_contents(ctx: PHPContext | null, streamArg?: PHPReference, maxLengthArg?: PHPReference, offsetArg?: PHPReference): Promise<string | false>;
     static stream_get_wrappers(ctx?: PHPContext): string[];
-    static stream_is_local(ctx: PHPContext | null, stream: any): boolean;
+    static stream_is_local(ctx: PHPContext | null, streamArg?: PHPReference): boolean;
     static functions: {
         fopen: typeof StreamRuntime.fopen;
         fclose: typeof StreamRuntime.fclose;

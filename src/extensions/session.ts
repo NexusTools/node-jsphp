@@ -1,6 +1,7 @@
 import { PHPExtension } from "../PHPExtension";
 import { PHPEngine } from "../PHPEngine";
 import { PHPContext } from "../PHPContext";
+import { PHPReference } from "../runtime/PHPVariable";
 
 export class SessionExtension extends PHPExtension {
   public readonly name = "session";
@@ -13,7 +14,7 @@ export class SessionExtension extends PHPExtension {
         }
         return true;
       },
-      session_id: (ctx: PHPContext, id?: string) => "jsphp-session-id-12345",
+      session_id: (ctx: PHPContext, idArg?: PHPReference) => "jsphp-session-id-12345",
       session_destroy: (ctx: PHPContext) => {
         ctx.superglobals.SESSION = {};
         return true;

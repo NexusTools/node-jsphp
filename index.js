@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.unwrapPHPValue = exports.wrapJSValue = exports.NodeJSService = exports.NodeJSObject = exports.NodeJSExtension = exports.ReflectionType = exports.ReflectionParameter = exports.ReflectionFunction = exports.ReflectionProperty = exports.ReflectionMethod = exports.ReflectionClass = exports.Reflection = exports.defineFunction = exports.runFPM = exports.runHTTPServer = exports.JSTranspiler = exports.ASTOptimizer = exports.PHPParser = exports.OutputBufferStack = exports.Superglobals = exports.PHPClass = exports.PHPObject = exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = exports.PHPExtension = exports.PHPContext = exports.PHPEngine = void 0;
-require('source-map-support').install();
 var PHPEngine_1 = require("./src/PHPEngine");
 Object.defineProperty(exports, "PHPEngine", { enumerable: true, get: function () { return PHPEngine_1.PHPEngine; } });
 var PHPContext_1 = require("./src/PHPContext");

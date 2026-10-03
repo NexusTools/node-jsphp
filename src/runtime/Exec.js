@@ -11,22 +11,16 @@ class ExecRuntime {
      * @param outputArray Output variable passed by reference to receive output lines.
      * @param returnVarObj Output variable passed by reference to receive exit status code.
      */
-    static async exec(ctx, command, outputArray, returnVarObj) {
+    static async exec(ctx, commandArg, outputArray, returnVarObj) {
+        const command = String(commandArg?.get() ?? "");
         try {
             const { stdout } = await execAsync(command, { cwd: ctx.cwd });
             const lines = stdout.trimEnd().split(/\r?\n/);
             if (outputArray && typeof outputArray.set === "function") {
                 outputArray.set(lines);
             }
-            else if (Array.isArray(outputArray)) {
-                outputArray.length = 0;
-                outputArray.push(...lines);
-            }
             if (returnVarObj && typeof returnVarObj.set === "function") {
                 returnVarObj.set(0);
-            }
-            else if (returnVarObj && typeof returnVarObj === "object") {
-                returnVarObj.val = 0;
             }
             return lines[lines.length - 1] || "";
         }
@@ -34,13 +28,11 @@ class ExecRuntime {
             if (returnVarObj && typeof returnVarObj.set === "function") {
                 returnVarObj.set(err.status || 1);
             }
-            else if (returnVarObj && typeof returnVarObj === "object") {
-                returnVarObj.val = err.status || 1;
-            }
             return "";
         }
     }
-    static async shell_exec(ctx, command) {
+    static async shell_exec(ctx, commandArg) {
+        const command = String(commandArg?.get() ?? "");
         try {
             const { stdout } = await execAsync(command, { cwd: ctx.cwd });
             return stdout;
@@ -49,11 +41,13 @@ class ExecRuntime {
             return null;
         }
     }
-    static escapeshellarg(ctx, arg) {
-        return `'${String(arg ?? "").replace(/'/g, "'\\''")}'`;
+    static escapeshellarg(ctx, argParam) {
+        const arg = String(argParam?.get() ?? "");
+        return `'${arg.replace(/'/g, "'\\''")}'`;
     }
-    static escapeshellcmd(ctx, cmd) {
-        return String(cmd ?? "").replace(/([#&;`|*?~<>^()\[\]{}$\\\x0A\xFF])/g, "\\$1");
+    static escapeshellcmd(ctx, cmdParam) {
+        const cmd = String(cmdParam?.get() ?? "");
+        return cmd.replace(/([#&;`|*?~<>^()\[\]{}$\\\x0A\xFF])/g, "\\$1");
     }
     static functions = {
         "exec": ExecRuntime.exec,

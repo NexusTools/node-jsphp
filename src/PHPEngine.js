@@ -38,7 +38,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PHPEngine = void 0;
 const fs = __importStar(require("fs/promises"));
-const syncFs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const crypto = __importStar(require("crypto"));
@@ -46,6 +45,12 @@ const chokidar_1 = __importDefault(require("chokidar"));
 const PHPContext_1 = require("./PHPContext");
 const JSTranspiler_1 = require("./parser/JSTranspiler");
 const PHPObject_1 = require("./runtime/PHPObject");
+const PHPVariable_1 = require("./runtime/PHPVariable");
+try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require("source-map-support").install({ environment: "node", hookRequire: true });
+}
+catch { }
 const Strings_1 = require("./runtime/Strings");
 const Arrays_1 = require("./runtime/Arrays");
 const FileSystem_1 = require("./runtime/FileSystem");
@@ -72,7 +77,13 @@ const xml_1 = require("./extensions/xml");
 const spl_1 = require("./extensions/spl");
 const hash_1 = require("./extensions/hash");
 const openssl_1 = require("./extensions/openssl");
+const CoreRuntime_1 = require("./runtime/CoreRuntime");
 class PHPEngine {
+    static REVISION = 135;
+    static VERSION = "8.5.0";
+    static TRUE = new PHPVariable_1.PHPLiteral(true);
+    static FALSE = new PHPVariable_1.PHPLiteral(false);
+    static NULL = new PHPVariable_1.PHPLiteral(null);
     extensions = new Map();
     constants = {};
     functions = {};
@@ -85,7 +96,7 @@ class PHPEngine {
     transpiler;
     cacheDir;
     static coreConstants = {
-        php_version: "8.5.0",
+        php_version: PHPEngine.VERSION,
         php_engine: "jsphp",
         php_os: process.platform === "win32" ? "WINNT" : "Linux",
         directory_separator: path.sep,
@@ -106,6 +117,8 @@ class PHPEngine {
         e_deprecated: 8192,
         e_user_deprecated: 16384,
         e_all: 32767,
+        case_lower: 0,
+        case_upper: 1,
     };
     constructor(options = {}) {
         this.transpiler = new JSTranspiler_1.JSTranspiler();
@@ -117,7 +130,14 @@ class PHPEngine {
         if (options.constants) {
             Object.assign(this.constants, options.constants);
         }
-        this.registerFunctions(PHPEngine.coreFunctions);
+        if (options.functions) {
+            this.registerFunctions(options.functions);
+        }
+        if (options.classes) {
+            for (const [key, value] of Object.entries(options.classes)) {
+                this.classes[key.toLowerCase()] = value;
+            }
+        }
         this.registerRuntimeImplementations();
         // Default extensions list if not explicitly provided
         const defaultExtensions = options.extensions || [
@@ -207,201 +227,14 @@ class PHPEngine {
                 if (resolved)
                     return resolved;
             }
-            // Fallback file-based class resolver for WordPress / standard PHP file conventions
-            const candidates = [];
-            const parts = orig.split("\\");
-            if (parts.length > 1) {
-                if (parts[0].toLowerCase() === "wporg" && parts[1]?.toLowerCase() === "requests") {
-                    candidates.push(path.join(ctx.cwd, "wp-includes", "Requests", "src", ...parts.slice(2)) + ".php");
-                }
-                else if (parts[0].toLowerCase() === "wordpress" && parts[1]?.toLowerCase() === "aiclient") {
-                    candidates.push(path.join(ctx.cwd, "wp-includes", "ai-client", "adapters", `class-wp-${parts[parts.length - 1].toLowerCase().replace(/_/g, "-")}.php`));
-                    candidates.push(path.join(ctx.cwd, "wp-includes", "php-ai-client", "src", ...parts.slice(2)) + ".php");
-                }
-                candidates.push(path.join(ctx.cwd, "wp-includes", ...parts) + ".php");
-            }
-            const dashedName = shortLower.replace(/_/g, "-");
-            candidates.push(path.join(ctx.cwd, "wp-includes", `class-${dashedName}.php`), path.join(ctx.cwd, "wp-includes", `class-${shortLower}.php`), path.join(ctx.cwd, "wp-includes", `${shortName}.php`), path.join(ctx.cwd, "wp-admin", "includes", `class-${dashedName}.php`), path.join(ctx.cwd, "wp-admin", "includes", `class-${shortLower}.php`));
-            for (const candidate of candidates) {
-                if (syncFs.existsSync(candidate)) {
-                    try {
-                        await ctx.requireOnce(candidate);
-                        resolved = ctx.classes[name] || ctx.classes[shortLower];
-                        if (resolved)
-                            return resolved;
-                    }
-                    catch {
-                        // Ignore
-                    }
-                }
-            }
         }
         finally {
             resolvingClasses.delete(name);
         }
         return undefined;
     }
-    /**
-     * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
-     */
-    getConstant(name) {
-        return this.constants[name];
-    }
-    static coreFunctions = {
-        "exit": (ctx, status = 0) => { throw new PHPError_1.PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
-        "die": (ctx, status = 0) => { throw new PHPError_1.PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
-        "call_user_func": async (ctx, callback, ...args) => {
-            if (!callback)
-                return undefined;
-            if (typeof callback === "function")
-                return await callback.apply(ctx, args);
-            if (typeof callback === "string")
-                return await ctx.callFunction(callback.toLowerCase(), args);
-            if (Array.isArray(callback) && callback.length === 2)
-                return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), args);
-            return undefined;
-        },
-        "call_user_func_array": async (ctx, callback, args = []) => {
-            const arrArgs = Array.isArray(args) ? args : Object.values(args || {});
-            if (!callback)
-                return undefined;
-            if (typeof callback === "function")
-                return await callback.apply(ctx, arrArgs);
-            if (typeof callback === "string")
-                return await ctx.callFunction(callback.toLowerCase(), arrArgs);
-            if (Array.isArray(callback) && callback.length === 2)
-                return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), arrArgs);
-            return undefined;
-        },
-        "define": async (ctx, name, value) => {
-            const lower = String(name ?? "").toLowerCase();
-            if (ctx.hasConstant(lower)) {
-                await ctx.triggerError(`Constant ${name} already defined`, 2);
-                return false;
-            }
-            ctx.defineConstant(lower, value);
-            return true;
-        },
-        "defined": (ctx, name) => ctx.hasConstant(String(name ?? "").toLowerCase()),
-        "extension_loaded": (ctx, name) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
-        "function_exists": (ctx, name) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
-        "class_alias": async (ctx, original, alias, autoload = true) => {
-            if (!original || !alias)
-                return false;
-            const lowerOrig = String(original).replace(/^\\/, "").toLowerCase();
-            const lowerAlias = String(alias).replace(/^\\/, "").toLowerCase();
-            let cls = ctx.classes[lowerOrig] || ctx.engine.classes[lowerOrig];
-            if (!cls && ctx.isTruthy(autoload)) {
-                try {
-                    cls = await ctx.resolveClass(lowerOrig, original);
-                }
-                catch {
-                    // Ignore
-                }
-            }
-            if (cls) {
-                ctx.classes[lowerAlias] = cls;
-                ctx.engine.classes[lowerAlias] = cls;
-                return true;
-            }
-            return false;
-        },
-        "class_exists": async (ctx, name, autoload = true) => {
-            if (!name || typeof name !== "string")
-                return false;
-            const lower = String(name).replace(/^\\/, "").toLowerCase();
-            if (ctx.classes[lower] || ctx.engine.classes[lower])
-                return true;
-            if (ctx.isTruthy(autoload)) {
-                try {
-                    const res = await ctx.resolveClass(lower, name);
-                    return Boolean(res);
-                }
-                catch {
-                    return false;
-                }
-            }
-            return false;
-        },
-        "interface_exists": async (ctx, name, autoload = true) => {
-            if (!name || typeof name !== "string")
-                return false;
-            const lower = String(name).replace(/^\\/, "").toLowerCase();
-            if (ctx.classes[lower] || ctx.engine.classes[lower])
-                return true;
-            if (ctx.isTruthy(autoload)) {
-                try {
-                    const res = await ctx.resolveClass(lower, name);
-                    return Boolean(res);
-                }
-                catch {
-                    return false;
-                }
-            }
-            return false;
-        },
-        "trait_exists": async (ctx, name, autoload = true) => {
-            if (!name || typeof name !== "string")
-                return false;
-            const lower = String(name).replace(/^\\/, "").toLowerCase();
-            if (ctx.classes[lower] || ctx.engine.classes[lower])
-                return true;
-            if (ctx.isTruthy(autoload)) {
-                try {
-                    const res = await ctx.resolveClass(lower, name);
-                    return Boolean(res);
-                }
-                catch {
-                    return false;
-                }
-            }
-            return false;
-        },
-        "constant": (ctx, name) => ctx.getConstant(String(name ?? "").toLowerCase()),
-        "assert": (ctx, assertion, description) => {
-            if (!assertion) {
-                if (description)
-                    throw new PHPError_1.PHPFatalError(`Assertion failed: ${description}`);
-                return false;
-            }
-            return true;
-        },
-        "is_callable": (ctx, v) => {
-            if (typeof v === "function")
-                return true;
-            if (typeof v === "string")
-                return (v.toLowerCase() in ctx.functions);
-            if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string") {
-                const cls = ctx.classes[v[0].toLowerCase()];
-                return Boolean(cls && cls.methods && (cls.methods.has ? cls.methods.has(v[1].toLowerCase()) : (v[1].toLowerCase() in cls.methods)));
-            }
-            return false;
-        },
-        "ini_get": (ctx, option) => {
-            const opt = (option || "").toLowerCase();
-            if (opt === "display_errors")
-                return "1";
-            if (opt === "memory_limit")
-                return "512M";
-            if (opt === "max_execution_time")
-                return "30";
-            if (opt === "post_max_size")
-                return "64M";
-            if (opt === "upload_max_filesize")
-                return "64M";
-            if (opt === "date.timezone")
-                return "UTC";
-            return "";
-        },
-        "ini_set": (ctx, option, value) => "",
-        "register_shutdown_function": (ctx, callback, ...args) => {
-            ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
-            return true;
-        },
-        "register_tick_function": (ctx, callback, ...args) => true,
-        "unregister_tick_function": (ctx, callback) => true,
-    };
     registerRuntimeImplementations() {
+        CoreRuntime_1.CoreRuntime.register(this);
         Strings_1.StringRuntime.register(this);
         Arrays_1.ArrayRuntime.register(this);
         DateTime_1.DateTimeRuntime.register(this);
@@ -428,12 +261,17 @@ class PHPEngine {
             this.registerClasses(extension.classes);
     }
     getConfigurationSHA1() {
-        const sortedExts = Array.from(this.extensions.keys()).sort().join(",");
+        const sortedExts = Array.from(this.extensions.keys())
+            .sort()
+            .map((k) => `${k}@${this.extensions.get(k)?.version || PHPEngine.VERSION}`)
+            .join(",");
         const sortedConsts = Object.entries(this.constants)
             .map(([k, v]) => `${k}=${v}`)
             .sort()
             .join(";");
-        return crypto.createHash("sha1").update(`v72|${sortedExts}|${sortedConsts}`).digest("hex");
+        const sortedFuncs = Object.keys(this.functions).sort().join(",");
+        const sortedClasses = Object.keys(this.classes).sort().join(",");
+        return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}|${sortedConsts}|${sortedFuncs}|${sortedClasses}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);
@@ -462,8 +300,8 @@ class PHPEngine {
         });
         const moduleObj = { exports: {} };
         try {
-            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPFatalError", transpilation.code);
-            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject, PHPError_1.PHPFatalError);
+            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
+            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject, PHPVariable_1.PHPVariable, PHPVariable_1.PHPLiteral, PHPError_1.PHPFatalError);
             return moduleObj.exports;
         }
         catch (err) {

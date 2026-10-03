@@ -1,15 +1,24 @@
 import { PHPExtension } from "./PHPExtension";
 import { PHPContext, PHPContextOptions } from "./PHPContext";
+import { PHPLiteral, PHPReference } from "./runtime/PHPVariable";
+export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
     constants?: Record<string, any>;
+    functions?: Record<string, PHPFunction>;
+    classes?: Record<string, any>;
     cacheDir?: string | null;
     watch?: boolean;
 }
 export declare class PHPEngine {
+    static readonly REVISION = 135;
+    static readonly VERSION = "8.5.0";
+    static readonly TRUE: PHPLiteral;
+    static readonly FALSE: PHPLiteral;
+    static readonly NULL: PHPLiteral;
     extensions: Map<string, PHPExtension>;
     constants: Record<string, any>;
-    functions: Record<string, Function>;
+    functions: Record<string, PHPFunction>;
     classes: Record<string, any>;
     internalVars: Record<string, any>;
     private classResolvers;
@@ -35,7 +44,7 @@ export declare class PHPEngine {
     /**
      * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
      */
-    registerFunctions(functions: Record<string, Function>): void;
+    registerFunctions(functions: Record<string, PHPFunction>): void;
     registerConstant(name: string, value: any): void;
     registerConstants(constants: Record<string, any>): void;
     registerClass(name: string, value: any): void;
@@ -48,11 +57,6 @@ export declare class PHPEngine {
      * Resolves a class by name using registered class resolvers.
      */
     resolveClass(name: string, originalName: string, ctx: PHPContext): Promise<any>;
-    /**
-     * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
-     */
-    getConstant(name: string): any;
-    private static coreFunctions;
     private registerRuntimeImplementations;
     registerExtension(extension: PHPExtension): void;
     getConfigurationSHA1(): string;

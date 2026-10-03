@@ -1,16 +1,16 @@
-import type { PHPEngine } from "./PHPEngine";
+import { PHPEngine, PHPFunction } from "./PHPEngine";
 import { defineFunction, FunctionMetaOptions } from "./runtime/Reflection";
 
 export abstract class PHPExtension {
   public abstract readonly name: string;
-  public readonly version: string = "8.5.0";
+  public readonly version: string = PHPEngine.VERSION;
   public constants: Record<string, any> = {};
-  public functions: Record<string, Function> = {};
+  public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
 
   public registerFunction(
     name: string,
-    fn: Function,
+    fn: PHPFunction,
     params: { name: string; isOptional?: boolean; defaultValue?: any; type?: string }[] = [],
     visibility: "public" | "protected" | "private" = "public"
   ): void {
@@ -18,7 +18,5 @@ export abstract class PHPExtension {
     this.functions[name.toLowerCase()] = fnWithMeta;
   }
 
-  public onInit(engine: PHPEngine): void | Promise<void> {
-    // Optional extension initialization hook
-  }
+  public abstract onInit(engine: PHPEngine): void | Promise<void>
 }

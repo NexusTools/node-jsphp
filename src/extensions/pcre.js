@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PCREExtension = void 0;
 const PHPExtension_1 = require("../PHPExtension");
+const PHPVariable_1 = require("../runtime/PHPVariable");
+const PHPObject_1 = require("../runtime/PHPObject");
 const Reflection_1 = require("../runtime/Reflection");
 class PCREExtension extends PHPExtension_1.PHPExtension {
     name = "pcre";
@@ -14,6 +16,7 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
         if (end < 1)
             throw new Error("Missing regular expression delimiter");
         let source = pattern.slice(1, end);
+        source = source.replace(/\(\?P</g, "(?<");
         if ("#~%!".includes(opening))
             source = source.split(`\\${opening}`).join(opening);
         const modifiers = pattern.slice(end + 1);
@@ -49,24 +52,23 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
     }
     onInit(engine) {
         this.constants = {
-            PREG_PATTERN_ORDER: 1,
-            PREG_SET_ORDER: 2,
-            PREG_OFFSET_CAPTURE: 256,
-            PREG_UNMATCHED_AS_NULL: 512,
-            PREG_NO_ERROR: 0,
-            PREG_INTERNAL_ERROR: 1,
+            preg_pattern_order: 1,
+            preg_set_order: 2,
+            preg_offset_capture: 256,
+            preg_unmatched_as_null: 512,
+            preg_no_error: 0,
+            preg_internal_error: 1,
         };
         this.functions = {
-            /**
-             * Perform a regular expression match.
-             * @param matchesObj Output variable passed by reference to receive match results.
-             */
-            preg_match: (ctx, pattern, subject, matchesObj, flags = 0, offset = 0) => {
+            preg_match: (ctx, patternArg, subjectArg, matchesObj, flagsArg, offsetArg) => {
+                const pattern = String(patternArg?.get() ?? "");
+                const subject = String(subjectArg?.get() ?? "");
+                const flags = Number(flagsArg?.get()) || 0;
+                const offset = Number(offsetArg?.get()) || 0;
                 try {
-                    const input = String(subject ?? "");
                     const regex = this.compilePattern(pattern, true, Boolean(flags & 256));
-                    regex.lastIndex = offset < 0 ? Math.max(0, input.length + offset) : offset;
-                    const match = regex.exec(input);
+                    regex.lastIndex = offset < 0 ? Math.max(0, subject.length + offset) : offset;
+                    const match = regex.exec(subject);
                     this.storeMatches(ctx, matchesObj, match ? this.captures(match, flags) : []);
                     ctx.setInternalVar("lastPregError", 0);
                     return match ? 1 : 0;
@@ -77,18 +79,17 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
                     return false;
                 }
             },
-            /**
-             * Perform a global regular expression match.
-             * @param matchesObj Output variable passed by reference to receive all match results.
-             */
-            preg_match_all: (ctx, pattern, subject, matchesObj, flags = 1, offset = 0) => {
+            preg_match_all: (ctx, patternArg, subjectArg, matchesObj, flagsArg, offsetArg) => {
+                const pattern = String(patternArg?.get() ?? "");
+                const subject = String(subjectArg?.get() ?? "");
+                const flags = flagsArg?.get() !== undefined ? Number(flagsArg.get()) : 1;
+                const offset = Number(offsetArg?.get()) || 0;
                 try {
-                    const input = String(subject ?? "");
                     const regex = this.compilePattern(pattern, true, Boolean(flags & 256));
-                    regex.lastIndex = offset < 0 ? Math.max(0, input.length + offset) : offset;
+                    regex.lastIndex = offset < 0 ? Math.max(0, subject.length + offset) : offset;
                     const rows = [];
                     let match;
-                    while ((match = regex.exec(input)) !== null) {
+                    while ((match = regex.exec(subject)) !== null) {
                         rows.push(this.captures(match, flags));
                         if (match[0].length === 0)
                             regex.lastIndex++;
@@ -110,38 +111,52 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
                     return false;
                 }
             },
-            preg_replace: (ctx, pattern, replacement, subject) => {
+            preg_replace: (ctx, patternArg, replacementArg, subjectArg) => {
+                const pattern = String(patternArg?.get() ?? "");
+                const replacement = String(replacementArg?.get() ?? "");
+                const subject = String(subjectArg?.get() ?? "");
                 try {
                     const regex = this.compilePattern(pattern, true);
-                    return String(subject || "").replace(regex, replacement);
+                    return subject.replace(regex, replacement);
                 }
                 catch {
                     return subject;
                 }
             },
-            preg_replace_callback: async (ctx, pattern, callback, subject) => {
+            preg_replace_callback: async (ctx, patternArg, callbackArg, subjectArg) => {
+                const pattern = String(patternArg?.get() ?? "");
+                const callback = callbackArg?.get();
+                const subject = String(subjectArg?.get() ?? "");
                 try {
                     const regex = this.compilePattern(pattern, true);
-                    const input = String(subject || "");
                     let output = "";
                     let lastIndex = 0;
                     let current;
-                    while ((current = regex.exec(input)) !== null) {
-                        output += input.slice(lastIndex, current.index);
+                    while ((current = regex.exec(subject)) !== null) {
+                        output += subject.slice(lastIndex, current.index);
                         const captures = Array.from(current);
                         let replacement = "";
-                        if (typeof callback === "string")
-                            replacement = String(await ctx.callFunction(callback, [captures]));
-                        else if (Array.isArray(callback) && callback.length === 2)
-                            replacement = String(await ctx.callMethod(callback[0], callback[1], [captures]));
-                        else if (typeof callback === "function")
-                            replacement = String(await callback.apply(ctx, [ctx, captures]));
+                        const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
+                        if (typeof cb === "string") {
+                            replacement = String((await ctx.callFunction(cb, [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                        }
+                        else if (Array.isArray(cb) && cb.length === 2) {
+                            const obj = cb[0] && typeof cb[0] === "object" && typeof cb[0].get === "function" ? cb[0].get() : cb[0];
+                            const m = cb[1] && typeof cb[1] === "object" && typeof cb[1].get === "function" ? cb[1].get() : cb[1];
+                            replacement = String((await ctx.callMethod(obj, String(m), [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                        }
+                        else if (typeof cb === "function") {
+                            replacement = String((await cb.apply(ctx, [ctx, new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                        }
+                        else if (cb instanceof PHPObject_1.PHPObject) {
+                            replacement = String((await ctx.callMethod(cb, "__invoke", [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                        }
                         output += replacement;
                         lastIndex = current.index + current[0].length;
                         if (current[0].length === 0)
                             regex.lastIndex++;
                     }
-                    return output + input.slice(lastIndex);
+                    return output + subject.slice(lastIndex);
                 }
                 catch {
                     return subject;
@@ -149,17 +164,18 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
             },
             preg_last_error: (ctx) => ctx.getInternalVar("lastPregError") || 0,
             preg_last_error_msg: (ctx) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
-            preg_split: (ctx, pattern, subject, limit = -1, flags = 0) => {
+            preg_split: (ctx, patternArg, subjectArg, limitArg, flagsArg) => {
+                const pattern = String(patternArg?.get() ?? "");
+                const subject = String(subjectArg?.get() ?? "");
+                const limit = limitArg?.get() !== undefined ? Number(limitArg.get()) : -1;
                 try {
                     const reg = this.compilePattern(pattern);
-                    const str = String(subject ?? "");
-                    const lim = Number(limit);
-                    if (lim === 1)
-                        return [str];
-                    const parts = str.split(reg);
-                    if (lim > 1 && parts.length > lim) {
-                        const extra = parts.slice(lim - 1).join("");
-                        return [...parts.slice(0, lim - 1), extra];
+                    if (limit === 1)
+                        return [subject];
+                    const parts = subject.split(reg);
+                    if (limit > 1 && parts.length > limit) {
+                        const extra = parts.slice(limit - 1).join("");
+                        return [...parts.slice(0, limit - 1), extra];
                     }
                     return parts;
                 }

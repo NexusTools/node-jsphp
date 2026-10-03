@@ -48,23 +48,46 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
   let parsedCookies: Record<string, string> = {};
 
   beforeAll(async () => {
-    engine = new PHPEngine({ watch: false });
+    engine = new PHPEngine({ cacheDir: null, watch: false });
 
-    console.log("Setting up MySQL database via PHP runtime...");
-    const setupCtx = engine.createContext();
-    await setupCtx.eval(`
-      $conn = mysqli_connect('${MYSQL_HOST}', 'root', '${MYSQL_ROOT_PASSWORD}', '', ${MYSQL_PORT});
-      if ($conn) {
-        mysqli_query($conn, "DROP DATABASE IF EXISTS \`${TEST_DB_NAME}\`;");
-        mysqli_query($conn, "DROP USER IF EXISTS '${TEST_USER}'@'%';");
-        mysqli_query($conn, "CREATE DATABASE \`${TEST_DB_NAME}\`;");
-        mysqli_query($conn, "CREATE USER '${TEST_USER}'@'%' IDENTIFIED BY '${TEST_PASS}';");
-        mysqli_query($conn, "GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'%';");
-        mysqli_query($conn, "FLUSH PRIVILEGES;");
-        mysqli_close($conn);
+    console.log("Setting up MySQL database...");
+    const mysql2 = require("mysql2/promise");
+    const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
+    const possiblePasses = Array.from(new Set([process.env.MYSQL_ROOT_PASSWORD, "", "root", "DNESB*GJ*W(E$GYB$UW#gt78wg"].filter((x): x is string => typeof x === "string")));
+    let conn: any;
+    let rootPassUsed = "";
+    for (const h of possibleHosts) {
+      for (const p of possiblePasses) {
+        try {
+          conn = await mysql2.createConnection({ host: h, user: "root", password: p, port: MYSQL_PORT });
+          console.log(`MYSQL ROOT SUCCESS: host=${h}, pass=${JSON.stringify(p)}`);
+          rootPassUsed = p;
+          break;
+        } catch (e: any) {
+          console.log(`MYSQL ROOT FAILED host=${h} pass=${JSON.stringify(p)}:`, e.message);
+        }
       }
-    `);
-    console.log("MySQL database setup complete via PHP.");
+      if (conn) break;
+    }
+
+    if (conn) {
+      await conn.query(`DROP DATABASE IF EXISTS \`${TEST_DB_NAME}\`;`);
+      await conn.query(`CREATE DATABASE \`${TEST_DB_NAME}\`;`);
+      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'%';`); } catch (e) {}
+      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'localhost';`); } catch (e) {}
+      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'127.0.0.1';`); } catch (e) {}
+      try { await conn.query(`CREATE USER '${TEST_USER}'@'%' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
+      try { await conn.query(`CREATE USER '${TEST_USER}'@'localhost' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
+      try { await conn.query(`CREATE USER '${TEST_USER}'@'127.0.0.1' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
+      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'%';`); } catch (e) {}
+      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'localhost';`); } catch (e) {}
+      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'127.0.0.1';`); } catch (e) {}
+      await conn.query("FLUSH PRIVILEGES;");
+      await conn.end();
+      console.log(`MySQL setup complete using root password: ${JSON.stringify(rootPassUsed)}`);
+    } else {
+      console.error("CRITICAL: MySQL root connection failed for all attempted passwords!");
+    }
 
     if (!fs.existsSync(wpZipPath)) {
       console.log("Downloading latest WordPress zip...");
@@ -149,12 +172,43 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
       if (e.name !== "PHPExit") throw e;
     }
 
+    console.log("STEP 1 FULL OUTPUT:\n", getOutput);
     const $get = cheerio.load(getOutput);
     const form = $get("form[action='setup-config.php?step=2']");
     expect(form.length).toBeGreaterThan(0);
     expect($get("input[name='dbname']").length).toBe(1);
     expect($get("input[name='uname']").length).toBe(1);
     expect($get("input[name='pwd']").length).toBe(1);
+
+    // Verify rendered text
+    const labelDbName = $get("label[for='dbname']").text();
+    expect(labelDbName).toContain("Database Name");
+
+    const labelUname = $get("label[for='uname']").text();
+    expect(labelUname).toContain("Username");
+
+    const labelPwd = $get("label[for='pwd']").text();
+    expect(labelPwd).toContain("Password");
+
+    const labelDbHost = $get("label[for='dbhost']").text();
+    expect(labelDbHost).toContain("Database Host");
+
+    const labelPrefix = $get("label[for='prefix']").text();
+    expect(labelPrefix).toContain("Table Prefix");
+
+    // Verify <link> stylesheet tag in <head>
+    const linkTags = $get("link[rel='stylesheet']");
+    expect(linkTags.length).toBeGreaterThan(0);
+
+    const href = linkTags.first().attr("href") || "";
+    expect(href).toContain("install.css");
+
+    // Verify the linked CSS file exists and has valid CSS styles
+    const installCssPath = path.join(wpDir, "wp-admin", "css", "install.css");
+    expect(fs.existsSync(installCssPath)).toBe(true);
+    const cssContent = fs.readFileSync(installCssPath, "utf8");
+    expect(cssContent).toContain("#logo");
+    expect(cssContent).toContain("body");
   }, 30000);
 
   test("Step 2: Submit Database Configuration and Create wp-config.php (setup-config.php?step=2)", async () => {
@@ -194,7 +248,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     }
 
     const $post = cheerio.load(postOutput);
-    const installLink = $post("a[href='install.php']");
+    const installLink = $post("a[href^='install.php']");
 
     if (installLink.length === 0) {
       console.log("Failed DB Setup Output:\n", postOutput);

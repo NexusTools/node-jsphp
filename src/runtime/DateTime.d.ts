@@ -1,13 +1,14 @@
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
+import { PHPReference } from "./PHPVariable";
 export declare class DateTimeRuntime {
     private static defaultTimezone;
     static time(ctx?: PHPContext): number;
-    static microtime(ctx?: PHPContext, getAsFloat?: boolean): string | number;
-    static date(ctx: PHPContext | null, format: string, timestamp?: number): string;
-    static strtotime(ctx: PHPContext | null, timeStr: string, now?: number): number | false;
+    static microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): string | number;
+    static date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string;
+    static strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): number | false;
     static date_default_timezone_get(ctx?: PHPContext): string;
-    static date_default_timezone_set(ctx: PHPContext | null, timezoneId: string): boolean;
+    static date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): boolean;
     static functions: {
         time: typeof DateTimeRuntime.time;
         microtime: typeof DateTimeRuntime.microtime;
@@ -25,6 +26,4 @@ export declare class PHPDateTime {
     date: Date;
     constructor(timeStr?: string);
     format(format: string): string;
-    getTimestamp(): number;
-    setTimestamp(timestamp: number): this;
 }

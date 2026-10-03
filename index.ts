@@ -1,5 +1,3 @@
-require('source-map-support').install();
-
 export { PHPEngine, PHPEngineOptions } from "./src/PHPEngine";
 export { PHPContext, PHPContextOptions } from "./src/PHPContext";
 export { PHPExtension } from "./src/PHPExtension";

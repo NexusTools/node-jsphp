@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ErrorRuntime = exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
-const SourceMapRegistry_1 = require("./SourceMapRegistry");
+const PHPVariable_1 = require("./PHPVariable");
 class PHPError extends Error {
     phpCode;
     phpFile;
@@ -9,7 +9,13 @@ class PHPError extends Error {
     phpTrace;
     previous;
     rawJSStack = "";
-    constructor(message = "", code = 0, file = __filename, line = 0, trace = [], previous = null) {
+    constructor(messageArg = "", codeArg = 0, fileArg = __filename, lineArg = 0, traceArg = [], previousArg = null) {
+        const message = String(messageArg?.get ? messageArg.get() : (messageArg ?? ""));
+        const code = Number(codeArg?.get ? codeArg.get() : (codeArg || 0));
+        const file = String(fileArg?.get ? fileArg.get() : (fileArg || __filename));
+        const line = Number(lineArg?.get ? lineArg.get() : (lineArg || 0));
+        const trace = traceArg?.get ? traceArg.get() : (traceArg || []);
+        const previous = previousArg?.get ? previousArg.get() : previousArg;
         super(message);
         this.name = this.constructor.name;
         this.phpCode = code;
@@ -23,23 +29,24 @@ class PHPError extends Error {
         }
     }
     getMessage() {
-        return this.message ?? this.properties?.get("message") ?? "";
+        return this.message || this.properties?.get("message") || "";
     }
     getCode() {
-        return this.phpCode ?? this.properties?.get("code") ?? 0;
+        return this.phpCode || this.properties?.get("code") || 0;
     }
     getFile() {
-        return this.phpFile;
+        return this.phpFile || this.properties?.get("file") || "";
     }
     getLine() {
-        return this.phpLine;
+        return this.phpLine || this.properties?.get("line") || 0;
     }
     getPrevious() {
-        return this.previous;
+        return this.previous || this.properties?.get("previous") || null;
     }
     static virtualizeJSStack(jsStack, phpFile = __filename, phpLine = 0, phpTrace = []) {
         const rawLines = (jsStack || "").split("\n");
-        const header = rawLines[0] || "PHP Error";
+        let header = rawLines[0] || "PHP Error";
+        header = header.replace(/^PHPFatalError:/, "PHP Fatal Error:");
         const formattedFrames = [];
         if (phpTrace && phpTrace.length > 0) {
             phpTrace.forEach((frame, idx) => {
@@ -49,56 +56,28 @@ class PHPError extends Error {
                     : frame.function || "{main}";
                 formattedFrames.push(`    #${idx} ${fileLoc}: ${funcStr}()`);
             });
-            return `${header}\nStack trace:\n${formattedFrames.join("\n")}`;
+            return `${header}\nPHP Stack Trace:\n${formattedFrames.join("\n")}`;
         }
         let frameIdx = 0;
         for (let i = 1; i < rawLines.length; i++) {
             const line = rawLines[i].trim();
             if (!line)
                 continue;
-            const matchAnon = line.match(/<anonymous>:(\d+):(\d+)/) || line.match(/<eval>:(\d+):(\d+)/);
-            if (matchAnon) {
-                const jsLine = parseInt(matchAnon[1], 10);
-                const funcMatch = line.match(/at\s+(?:async\s+)?(?:PHPContext\.)?(?:__fn_|class_|method_)?([a-zA-Z0-9_]+)/);
-                let funcHint = funcMatch ? funcMatch[1] : null;
-                if (funcHint === "at" || funcHint === "async" || funcHint === "PHPContext" || funcHint === "callFunction" || funcHint === "callMethod") {
-                    funcHint = null;
-                }
-                const loc = SourceMapRegistry_1.SourceMapRegistry.lookup(funcHint, jsLine);
-                if (loc) {
-                    let funcName = loc.function || funcHint || "{main}";
-                    if (!funcName || funcName === "exports" || funcName === "module" || funcName === "async" || funcName === "at") {
-                        funcName = "{main}";
-                    }
-                    formattedFrames.push(`    #${frameIdx++} ${loc.file}:${loc.line}: ${funcName}()`);
-                    continue;
-                }
-            }
-            const matchPhp = line.match(/\((.*?\.php):(\d+):(\d+)\)/) || line.match(/at\s+(.*?\.php):(\d+):(\d+)/);
+            if (line.includes("PHPContext.") || line.includes("PHPContext.ts") || line.includes("PHPContext.js") || line.includes("PHPEngine.") || line.includes("php-http-server") || line.includes("node:internal"))
+                continue;
+            const matchPhp = line.match(/\((.*?\.php):(\d+):(\d+)\)/) || line.match(/at\s+(.*?\.php):(\d+):(\d+)/) || line.match(/at\s+([^\s]+)\s+\((.*?):(\d+):(\d+)\)/);
             if (matchPhp) {
-                const file = matchPhp[1];
-                const lineNum = matchPhp[2];
-                const jsFunc = line.match(/at\s+(?:async\s+)?([^\s]+)/)?.[1] || "{main}";
+                const file = matchPhp[2] || matchPhp[1];
+                const lineNum = matchPhp[3] || matchPhp[2];
+                const jsFunc = matchPhp[1] && matchPhp[2] ? matchPhp[1] : "{main}";
                 formattedFrames.push(`    #${frameIdx++} ${file}:${lineNum}: ${jsFunc}()`);
                 continue;
             }
-            // Format pure JS frames like PHP stack frames
-            const matchJs = line.match(/at\s+(?:async\s+)?([^\s]+)\s+\((.*?):(\d+):(\d+)\)/) || line.match(/at\s+(?:async\s+)?(.*?):(\d+):(\d+)/);
-            if (matchJs) {
-                if (matchJs.length === 5) {
-                    formattedFrames.push(`    #${frameIdx++} ${matchJs[2]}:${matchJs[3]}: ${matchJs[1]}()`);
-                }
-                else {
-                    formattedFrames.push(`    #${frameIdx++} ${matchJs[1]}:${matchJs[2]}: {main}()`);
-                }
-                continue;
-            }
-            formattedFrames.push(`    #${frameIdx++} ${line.replace(/^at\s+/, "")}`);
         }
         if (formattedFrames.length === 0) {
-            formattedFrames.push(`    #0 ${phpFile}:${phpLine}: {main}()`);
+            formattedFrames.push(`    #0 ${phpFile || "[INTERNAL]"}:${phpLine || 0}: {main}()`);
         }
-        return `${header}\nStack trace:\n${formattedFrames.join("\n")}`;
+        return `${header}\nPHP Stack Trace:\n${formattedFrames.join("\n")}`;
     }
     getPHPStackTraceString() {
         return PHPError.virtualizeJSStack(this.rawJSStack || this.stack || "", this.phpFile, this.phpLine, this.phpTrace);
@@ -107,8 +86,8 @@ class PHPError extends Error {
 exports.PHPError = PHPError;
 class PHPException extends PHPError {
     static phpName = "Exception";
-    constructor(message = "", code = 0, previous = null) {
-        super(message, code, "[INTERNAL]", 0, [], previous);
+    constructor(messageArg = "", codeArg = 0, previousArg = null) {
+        super(messageArg, codeArg, __filename, 0, [], previousArg);
     }
 }
 exports.PHPException = PHPException;
@@ -137,7 +116,7 @@ class PHPExit extends PHPError {
 exports.PHPExit = PHPExit;
 class ErrorException extends PHPError {
     severity;
-    constructor(message = "", code = 0, severity = 1, file = "[INTERNAL]", line = 0, previous = null) {
+    constructor(message = "", code = 0, severity = 1, file = __filename, line = 0, previous = null) {
         super(message, code, file, line, [], previous);
         this.severity = severity;
     }
@@ -155,19 +134,24 @@ class ErrorRuntime {
         await ctx.echo(trace);
         return trace;
     }
-    static set_error_handler(ctx, handler, levels = 32767) {
-        return ctx.setErrorHandler(handler, levels);
+    static set_error_handler(ctx, handlerArg, levelsArg = 32767) {
+        const handler = handlerArg instanceof PHPVariable_1.PHPVariable ? handlerArg.get() : handlerArg;
+        const levels = levelsArg instanceof PHPVariable_1.PHPVariable ? levelsArg.get() : levelsArg;
+        return ctx.setErrorHandler(handler, levels !== undefined ? Number(levels) : 32767);
     }
     static restore_error_handler(ctx) {
         return ctx.restoreErrorHandler();
     }
-    static async trigger_error(ctx, message, level = 1024) {
-        return await ctx.triggerError(message, level);
+    static async trigger_error(ctx, messageArg, levelArg = 1024) {
+        const message = messageArg instanceof PHPVariable_1.PHPVariable ? messageArg.get() : messageArg;
+        const level = levelArg instanceof PHPVariable_1.PHPVariable ? levelArg.get() : levelArg;
+        return await ctx.triggerError(String(message ?? ""), level !== undefined ? Number(level) : 1024);
     }
-    static error_reporting(ctx, level) {
+    static error_reporting(ctx, levelArg) {
+        const level = levelArg instanceof PHPVariable_1.PHPVariable ? levelArg.get() : levelArg;
         const previous = ctx.errorReportingLevel;
-        if (level !== undefined)
-            ctx.errorReportingLevel = level;
+        if (level !== undefined && level !== null)
+            ctx.errorReportingLevel = Number(level);
         return previous;
     }
     static functions = {
@@ -182,6 +166,23 @@ class ErrorRuntime {
     static classes = {
         "exception": PHPException,
         "errorexception": ErrorException,
+        "invalidargumentexception": PHPException,
+        "badmethodcallexception": PHPException,
+        "domainexception": PHPException,
+        "lengthexception": PHPException,
+        "logicexception": PHPException,
+        "outofrangeexception": PHPException,
+        "overflowexception": PHPException,
+        "rangeexception": PHPException,
+        "runtimeexception": PHPException,
+        "underflowexception": PHPException,
+        "unexpectedvalueexception": PHPException,
+        "error": PHPError,
+        "typeerror": PHPTypeError,
+        "parseerror": PHPParseError,
+        "fatalerror": PHPFatalError,
+        "warning": PHPWarning,
+        "notice": PHPNotice,
     };
     static register(engine) {
         engine.registerFunctions(ErrorRuntime.functions);

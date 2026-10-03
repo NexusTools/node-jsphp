@@ -8,6 +8,12 @@ import { PHPExtension } from "./PHPExtension";
 import { PHPContext, PHPContextOptions } from "./PHPContext";
 import { JSTranspiler } from "./parser/JSTranspiler";
 import { PHPClass, PHPObject } from "./runtime/PHPObject";
+import { PHPVariable, PHPLiteral, PHPReference } from "./runtime/PHPVariable";
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require("source-map-support").install({ environment: "node", hookRequire: true });
+} catch {}
 
 import { StringRuntime } from "./runtime/Strings";
 import { ArrayRuntime } from "./runtime/Arrays";
@@ -36,18 +42,30 @@ import { XMLExtension } from "./extensions/xml";
 import { SPLExtension } from "./extensions/spl";
 import { HashExtension } from "./extensions/hash";
 import { OpenSSLExtension } from "./extensions/openssl";
+import { CoreRuntime } from "./runtime/CoreRuntime";
+
+export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 
 export interface PHPEngineOptions {
   extensions?: PHPExtension[];
   constants?: Record<string, any>;
+  functions?: Record<string, PHPFunction>;
+  classes?: Record<string, any>;
   cacheDir?: string | null;
   watch?: boolean;
 }
 
 export class PHPEngine {
+  public static readonly REVISION = 135;
+  public static readonly VERSION = "8.5.0";
+
+  public static readonly TRUE = new PHPLiteral(true);
+  public static readonly FALSE = new PHPLiteral(false);
+  public static readonly NULL = new PHPLiteral(null);
+
   public extensions: Map<string, PHPExtension> = new Map();
   public constants: Record<string, any> = {};
-  public functions: Record<string, Function> = {};
+  public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
   public internalVars: Record<string, any> = {};
   private classResolvers: Array<(ctx: PHPContext, className: string) => any> = [];
@@ -58,7 +76,7 @@ export class PHPEngine {
   private cacheDir?: string | null;
 
   private static coreConstants: Record<string, any> = {
-    php_version: "8.5.0",
+    php_version: PHPEngine.VERSION,
     php_engine: "jsphp",
     php_os: process.platform === "win32" ? "WINNT" : "Linux",
     directory_separator: path.sep,
@@ -79,6 +97,8 @@ export class PHPEngine {
     e_deprecated: 8192,
     e_user_deprecated: 16384,
     e_all: 32767,
+    case_lower: 0,
+    case_upper: 1,
   };
 
   constructor(options: PHPEngineOptions = {}) {
@@ -94,7 +114,16 @@ export class PHPEngine {
       Object.assign(this.constants, options.constants);
     }
 
-    this.registerFunctions(PHPEngine.coreFunctions);
+    if (options.functions) {
+      this.registerFunctions(options.functions);
+    }
+
+    if (options.classes) {
+      for (const [key, value] of Object.entries(options.classes)) {
+        this.classes[key.toLowerCase()] = value;
+      }
+    }
+
     this.registerRuntimeImplementations();
 
     // Default extensions list if not explicitly provided
@@ -138,13 +167,13 @@ export class PHPEngine {
    * Registers a function. The `name` parameter must be provided in lowercase.
    */
   public registerFunction(name: string, fn: Function): void {
-    this.functions[name] = fn;
+    this.functions[name] = fn as PHPFunction;
   }
 
   /**
    * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
    */
-  public registerFunctions(functions: Record<string, Function>): void {
+  public registerFunctions(functions: Record<string, PHPFunction>): void {
     Object.assign(this.functions, functions)
   }
 
@@ -197,180 +226,14 @@ export class PHPEngine {
         resolved = ctx.classes[name] || ctx.classes[shortLower];
         if (resolved) return resolved;
       }
-
-      // Fallback file-based class resolver for WordPress / standard PHP file conventions
-      const candidates: string[] = [];
-      const parts = orig.split("\\");
-      if (parts.length > 1) {
-        if (parts[0].toLowerCase() === "wporg" && parts[1]?.toLowerCase() === "requests") {
-          candidates.push(path.join(ctx.cwd, "wp-includes", "Requests", "src", ...parts.slice(2)) + ".php");
-        } else if (parts[0].toLowerCase() === "wordpress" && parts[1]?.toLowerCase() === "aiclient") {
-          candidates.push(path.join(ctx.cwd, "wp-includes", "ai-client", "adapters", `class-wp-${parts[parts.length - 1].toLowerCase().replace(/_/g, "-")}.php`));
-          candidates.push(path.join(ctx.cwd, "wp-includes", "php-ai-client", "src", ...parts.slice(2)) + ".php");
-        }
-        candidates.push(path.join(ctx.cwd, "wp-includes", ...parts) + ".php");
-      }
-      const dashedName = shortLower.replace(/_/g, "-");
-      candidates.push(
-        path.join(ctx.cwd, "wp-includes", `class-${dashedName}.php`),
-        path.join(ctx.cwd, "wp-includes", `class-${shortLower}.php`),
-        path.join(ctx.cwd, "wp-includes", `${shortName}.php`),
-        path.join(ctx.cwd, "wp-admin", "includes", `class-${dashedName}.php`),
-        path.join(ctx.cwd, "wp-admin", "includes", `class-${shortLower}.php`)
-      );
-
-      for (const candidate of candidates) {
-        if (syncFs.existsSync(candidate)) {
-          try {
-            await ctx.requireOnce(candidate);
-            resolved = ctx.classes[name] || ctx.classes[shortLower];
-            if (resolved) return resolved;
-          } catch {
-            // Ignore
-          }
-        }
-      }
     } finally {
       resolvingClasses.delete(name);
     }
     return undefined;
   }
 
-  /**
-   * Gets a constant value by name. The `name` parameter must be provided in lowercase or exact casing.
-   */
-  public getConstant(name: string): any {
-    return this.constants[name];
-  }
-
-  private static coreFunctions = {
-    "exit": (ctx: PHPContext, status: any = 0) => { throw new PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
-    "die": (ctx: PHPContext, status: any = 0) => { throw new PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status)); },
-    "call_user_func": async (ctx: PHPContext, callback: any, ...args: any[]) => {
-      if (!callback) return undefined;
-      if (typeof callback === "function") return await callback.apply(ctx, args);
-      if (typeof callback === "string") return await ctx.callFunction(callback.toLowerCase(), args);
-      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), args);
-      return undefined;
-    },
-    "call_user_func_array": async (ctx: PHPContext, callback: any, args: any[] = []) => {
-      const arrArgs = Array.isArray(args) ? args : Object.values(args || {});
-      if (!callback) return undefined;
-      if (typeof callback === "function") return await callback.apply(ctx, arrArgs);
-      if (typeof callback === "string") return await ctx.callFunction(callback.toLowerCase(), arrArgs);
-      if (Array.isArray(callback) && callback.length === 2) return await ctx.callMethod(callback[0], String(callback[1] ?? "").toLowerCase(), arrArgs);
-      return undefined;
-    },
-    "define": async (ctx: PHPContext, name: string, value: any) => {
-      const lower = String(name ?? "").toLowerCase();
-      if (ctx.hasConstant(lower)) {
-        await ctx.triggerError(`Constant ${name} already defined`, 2);
-        return false;
-      }
-      ctx.defineConstant(lower, value);
-      return true;
-    },
-    "defined": (ctx: PHPContext, name: string) => ctx.hasConstant(String(name ?? "").toLowerCase()),
-    "extension_loaded": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase())),
-    "function_exists": (ctx: PHPContext, name: string) => Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions)),
-    "class_alias": async (ctx: PHPContext, original: string, alias: string, autoload = true) => {
-      if (!original || !alias) return false;
-      const lowerOrig = String(original).replace(/^\\/, "").toLowerCase();
-      const lowerAlias = String(alias).replace(/^\\/, "").toLowerCase();
-      let cls = ctx.classes[lowerOrig] || ctx.engine.classes[lowerOrig];
-      if (!cls && ctx.isTruthy(autoload)) {
-        try {
-          cls = await ctx.resolveClass(lowerOrig, original);
-        } catch {
-          // Ignore
-        }
-      }
-      if (cls) {
-        ctx.classes[lowerAlias] = cls;
-        ctx.engine.classes[lowerAlias] = cls;
-        return true;
-      }
-      return false;
-    },
-    "class_exists": async (ctx: PHPContext, name: string, autoload = true) => {
-      if (!name || typeof name !== "string") return false;
-      const lower = String(name).replace(/^\\/, "").toLowerCase();
-      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
-      if (ctx.isTruthy(autoload)) {
-        try {
-          const res = await ctx.resolveClass(lower, name);
-          return Boolean(res);
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    },
-    "interface_exists": async (ctx: PHPContext, name: string, autoload = true) => {
-      if (!name || typeof name !== "string") return false;
-      const lower = String(name).replace(/^\\/, "").toLowerCase();
-      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
-      if (ctx.isTruthy(autoload)) {
-        try {
-          const res = await ctx.resolveClass(lower, name);
-          return Boolean(res);
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    },
-    "trait_exists": async (ctx: PHPContext, name: string, autoload = true) => {
-      if (!name || typeof name !== "string") return false;
-      const lower = String(name).replace(/^\\/, "").toLowerCase();
-      if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
-      if (ctx.isTruthy(autoload)) {
-        try {
-          const res = await ctx.resolveClass(lower, name);
-          return Boolean(res);
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    },
-    "constant": (ctx: PHPContext, name: string) => ctx.getConstant(String(name ?? "").toLowerCase()),
-    "assert": (ctx: PHPContext, assertion: any, description?: string) => {
-      if (!assertion) {
-        if (description) throw new PHPFatalError(`Assertion failed: ${description}`);
-        return false;
-      }
-      return true;
-    },
-    "is_callable": (ctx: PHPContext, v: any) => {
-      if (typeof v === "function") return true;
-      if (typeof v === "string") return (v.toLowerCase() in ctx.functions);
-      if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string") {
-        const cls = ctx.classes[v[0].toLowerCase()];
-        return Boolean(cls && cls.methods && (cls.methods.has ? cls.methods.has(v[1].toLowerCase()) : (v[1].toLowerCase() in cls.methods)));
-      }
-      return false;
-    },
-    "ini_get": (ctx: PHPContext, option: string) => {
-      const opt = (option || "").toLowerCase();
-      if (opt === "display_errors") return "1";
-      if (opt === "memory_limit") return "512M";
-      if (opt === "max_execution_time") return "30";
-      if (opt === "post_max_size") return "64M";
-      if (opt === "upload_max_filesize") return "64M";
-      if (opt === "date.timezone") return "UTC";
-      return "";
-    },
-    "ini_set": (ctx: PHPContext, option: string, value: any) => "",
-    "register_shutdown_function": (ctx: PHPContext, callback: any, ...args: any[]) => {
-      ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
-      return true;
-    },
-    "register_tick_function": (ctx: PHPContext, callback: any, ...args: any[]) => true,
-    "unregister_tick_function": (ctx: PHPContext, callback: any) => true,
-  };
-
   private registerRuntimeImplementations(): void {
+    CoreRuntime.register(this);
     StringRuntime.register(this);
     ArrayRuntime.register(this);
     DateTimeRuntime.register(this);
@@ -397,12 +260,17 @@ export class PHPEngine {
   }
 
   public getConfigurationSHA1(): string {
-    const sortedExts = Array.from(this.extensions.keys()).sort().join(",");
+    const sortedExts = Array.from(this.extensions.keys())
+      .sort()
+      .map((k) => `${k}@${this.extensions.get(k)?.version || PHPEngine.VERSION}`)
+      .join(",");
     const sortedConsts = Object.entries(this.constants)
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(";");
-    return crypto.createHash("sha1").update(`v72|${sortedExts}|${sortedConsts}`).digest("hex");
+    const sortedFuncs = Object.keys(this.functions).sort().join(",");
+    const sortedClasses = Object.keys(this.classes).sort().join(",");
+    return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}|${sortedConsts}|${sortedFuncs}|${sortedClasses}`).digest("hex");
   }
 
   public async compileFile(filepath: string): Promise<Function> {
@@ -437,8 +305,8 @@ export class PHPEngine {
 
     const moduleObj = { exports: {} as any };
     try {
-      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPFatalError", transpilation.code);
-      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject, PHPFatalError);
+      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
+      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
       return moduleObj.exports;
     } catch (err: any) {
       if (err.name === "SyntaxError") {

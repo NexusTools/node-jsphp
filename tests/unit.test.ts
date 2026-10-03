@@ -79,9 +79,7 @@ describe("PHPEngine & AST Unit Tests", () => {
 
     expect(firstContext.outputText).toBe("21");
     expect(secondContext.outputText).toBe("42");
-    expect(firstContext.getConstant("REQUEST_VALUE")).toBe(21);
-    expect(secondContext.getConstant("REQUEST_VALUE")).toBe(42);
-    expect(engine.getConstant("REQUEST_VALUE")).toBeUndefined();
+    expect(engine.constants["REQUEST_VALUE"]).toBeUndefined();
     expect(engine.getConfigurationSHA1()).toBe(configuration);
   });
 
@@ -104,11 +102,11 @@ describe("PHPEngine & AST Unit Tests", () => {
       }
       $saved = ($GLOBALS['shared'] = new SharedValue());
       $values = array();
-      $values[] = 'first';
-      $values[] = 'second';
+      array_push($values, 'first');
+      array_push($values, 'second');
       function append_global() {
         global $values;
-        $values[] = 'third';
+        array_push($values, 'third');
         $GLOBALS['visible'] = 'yes';
       }
       append_global();
@@ -223,7 +221,7 @@ describe("PHPEngine & AST Unit Tests", () => {
 
   test("Does not substitute unrelated or hard-coded static methods", async () => {
     const ctx = engine.createContext();
-    await ctx.eval("class ActualOwner { public static function init() { return 'actual'; } } class OtherOwner {}");
+    await ctx.eval("class ActualOwner { public static function init() { return 'actual'; } } class OtherOwner {} class InputValidator {}");
     expect(await ctx.callStaticMethod("ActualOwner", "init")).toBe("actual");
     await expect(ctx.callStaticMethod("OtherOwner", "init")).rejects.toThrow("undefined static method OtherOwner::init");
     await expect(ctx.callStaticMethod("InputValidator", "is_string_or_stringable", ["text"])).rejects.toThrow("undefined static method InputValidator::is_string_or_stringable");

@@ -1,11 +1,24 @@
+import * as path from "path";
+import * as os from "os";
+import { PHPEngine } from "../PHPEngine";
+
 export interface SuperglobalsOptions {
   env?: Record<string, string>;
-  server?: Record<string, string>;
+  server?: Record<string, any>;
   get?: Record<string, any>;
   post?: Record<string, any>;
   files?: Record<string, any>;
   cookie?: Record<string, any>;
   session?: Record<string, any>;
+  request?: Record<string, any>;
+  ENV?: Record<string, string>;
+  SERVER?: Record<string, string>;
+  GET?: Record<string, any>;
+  POST?: Record<string, any>;
+  FILES?: Record<string, any>;
+  COOKIE?: Record<string, any>;
+  SESSION?: Record<string, any>;
+  REQUEST?: Record<string, any>;
 }
 
 export class Superglobals {
@@ -20,7 +33,8 @@ export class Superglobals {
   public GLOBALS: Record<string, any>;
 
   constructor(options: SuperglobalsOptions = {}) {
-    this.ENV = { ...process.env, ...options.env };
+    const opts: any = options || {};
+    this.ENV = { ...process.env, ...opts.env, ...opts.ENV };
     this.SERVER = {
       PHP_SELF: "/index.php",
       SCRIPT_NAME: "/index.php",
@@ -33,20 +47,21 @@ export class Superglobals {
       SERVER_PORT: "80",
       REMOTE_ADDR: "127.0.0.1",
       DOCUMENT_ROOT: "/var/www/html",
-      SERVER_SOFTWARE: "JSPHP/8.5.0",
+      SERVER_SOFTWARE: `JSPHP/${PHPEngine.VERSION}`,
       SERVER_PROTOCOL: "HTTP/1.1",
       GATEWAY_INTERFACE: "CGI/1.1",
       HTTP_HOST: "localhost",
       HTTP_USER_AGENT: "JSPHP Engine",
       HTTP_ACCEPT: "*/*",
-      ...options.server,
+      ...opts.server,
+      ...opts.SERVER,
     };
-    this.GET = { ...options.get };
-    this.POST = { ...options.post };
-    this.FILES = { ...options.files };
-    this.COOKIE = { ...options.cookie };
-    this.SESSION = { ...options.session };
-    this.REQUEST = { ...this.GET, ...this.POST, ...this.COOKIE };
+    this.GET = { ...opts.get, ...opts.GET };
+    this.POST = { ...opts.post, ...opts.POST };
+    this.FILES = { ...opts.files, ...opts.FILES };
+    this.COOKIE = { ...opts.cookie, ...opts.COOKIE };
+    this.SESSION = { ...opts.session, ...opts.SESSION };
+    this.REQUEST = { ...this.GET, ...this.POST, ...this.COOKIE, ...opts.request, ...opts.REQUEST };
     this.GLOBALS = {};
   }
 }

@@ -25,7 +25,12 @@ export declare class JSTranspiler {
     private transpileStmt;
     private containsYield;
     private orderClassConstants;
+    private collectVariablesInScope;
+    private static readonly SUPERGLOBALS;
+    private isSuperglobal;
     private getConstName;
+    private transpilePropertyOffset;
+    private transpileMethodOffset;
     private transpileClassReferenceLower;
     private transpileClassReferenceOriginal;
     private transpileClassReference;

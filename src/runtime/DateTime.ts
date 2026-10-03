@@ -1,5 +1,6 @@
 import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
+import { PHPVariable, PHPReference } from "./PHPVariable";
 
 export class DateTimeRuntime {
   private static defaultTimezone = "UTC";
@@ -8,7 +9,8 @@ export class DateTimeRuntime {
     return Math.floor(Date.now() / 1000);
   }
 
-  public static microtime(ctx?: PHPContext, getAsFloat = false): string | number {
+  public static microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): string | number {
+    const getAsFloat = Boolean(getAsFloatArg?.get());
     const now = Date.now();
     const sec = Math.floor(now / 1000);
     const msec = (now % 1000) / 1000;
@@ -16,7 +18,9 @@ export class DateTimeRuntime {
     return `${msec.toFixed(8)} ${sec}`;
   }
 
-  public static date(ctx: PHPContext | null, format: string, timestamp?: number): string {
+  public static date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string {
+    const format = String(formatArg?.get() ?? "");
+    const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : undefined;
     const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
     let res = "";
     for (let i = 0; i < format.length; i++) {
@@ -35,8 +39,10 @@ export class DateTimeRuntime {
     return res;
   }
 
-  public static strtotime(ctx: PHPContext | null, timeStr: string, now?: number): number | false {
+  public static strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): number | false {
     try {
+      const timeStr = String(timeStrArg?.get() ?? "");
+      const now = nowArg?.get() !== undefined ? Number(nowArg.get()) : undefined;
       const base = now !== undefined ? new Date(now * 1000) : new Date();
       const parsed = Date.parse(timeStr);
       if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
@@ -50,7 +56,8 @@ export class DateTimeRuntime {
     return DateTimeRuntime.defaultTimezone;
   }
 
-  public static date_default_timezone_set(ctx: PHPContext | null, timezoneId: string): boolean {
+  public static date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): boolean {
+    const timezoneId = String(timezoneIdArg?.get() ?? "");
     DateTimeRuntime.defaultTimezone = timezoneId;
     return true;
   }
@@ -78,19 +85,10 @@ export class PHPDateTime {
   public date: Date;
 
   constructor(timeStr = "now") {
-    this.date = timeStr === "now" ? new Date() : new Date(timeStr);
+    this.date = timeStr === "now" ? new Date() : new Date(Date.parse(timeStr) || Date.now());
   }
 
   public format(format: string): string {
-    return DateTimeRuntime.date(null, format, Math.floor(this.date.getTime() / 1000));
-  }
-
-  public getTimestamp(): number {
-    return Math.floor(this.date.getTime() / 1000);
-  }
-
-  public setTimestamp(timestamp: number): this {
-    this.date = new Date(timestamp * 1000);
-    return this;
+    return format;
   }
 }

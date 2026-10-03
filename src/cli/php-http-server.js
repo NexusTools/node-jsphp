@@ -32,13 +32,21 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.runHTTPServerCLI = runHTTPServerCLI;
 exports.runHTTPServer = runHTTPServer;
 const http = __importStar(require("http"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
+const os = __importStar(require("os"));
+const cluster_1 = __importDefault(require("cluster"));
+const commander_1 = require("commander");
 const PHPEngine_1 = require("../PHPEngine");
 const PHPError_1 = require("../runtime/PHPError");
+const nodejs_1 = require("../extensions/nodejs");
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
@@ -58,14 +66,51 @@ const MIME_TYPES = {
     ".woff2": "font/woff2",
     ".ttf": "font/ttf",
 };
-async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
-    const engine = new PHPEngine_1.PHPEngine({ cacheDir: cacheDir || null });
+async function runHTTPServerCLI(rawArgs) {
+    const program = new commander_1.Command();
+    program
+        .name("php-http-server")
+        .description("JSPHP Multiprocess HTTP Web Server")
+        .option("-p, --port <number>", "Port number to listen on", "8080")
+        .option("-d, --docroot <path>", "Document root directory", process.cwd())
+        .option("-w, --workers <number>", "Number of cluster worker processes", String(os.cpus().length))
+        .option("--no-cluster", "Disable Node.js cluster multiprocess mode")
+        .option("--no-nodejs", "Disable the Node.js interop extension")
+        .option("-c, --cache-dir <path>", "Transpilation cache directory");
+    program.parse(rawArgs, { from: "user" });
+    const options = program.opts();
+    const port = parseInt(options.port, 10) || 8080;
+    const docRoot = path.resolve(options.docroot || process.cwd());
+    const numWorkers = parseInt(options.workers, 10) || os.cpus().length;
+    const enableNodeJS = options.nodejs !== false;
+    const useCluster = options.cluster !== false;
+    if (useCluster && cluster_1.default.isPrimary) {
+        console.log(`[jsphp-http-server] Primary process ${process.pid} is running`);
+        console.log(`[jsphp-http-server] Spawning ${numWorkers} worker process(es)...`);
+        for (let i = 0; i < numWorkers; i++) {
+            cluster_1.default.fork();
+        }
+        cluster_1.default.on("exit", (worker) => {
+            console.log(`[jsphp-http-server] Worker ${worker.process.pid} died. Restarting...`);
+            cluster_1.default.fork();
+        });
+    }
+    else {
+        await runHTTPServer(port, docRoot, { cacheDir: options.cacheDir, enableNodeJS });
+    }
+}
+async function runHTTPServer(port = 8080, docRoot = process.cwd(), optionsArg) {
+    const options = typeof optionsArg === "string" ? { cacheDir: optionsArg } : (optionsArg || {});
+    const exts = [];
+    if (options.enableNodeJS !== false) {
+        exts.push(new nodejs_1.NodeJSExtension());
+    }
+    const engine = new PHPEngine_1.PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts });
     const absoluteCwd = path.resolve(docRoot);
     const server = http.createServer(async (req, res) => {
         const rawUrl = req.url || "/";
         const [urlPath, queryString] = rawUrl.split("?");
         const decodedPath = decodeURIComponent(urlPath);
-        // Resolve candidates
         const resolvedCandidate = await resolveCandidate(absoluteCwd, decodedPath);
         if (!resolvedCandidate) {
             res.statusCode = 404;
@@ -75,7 +120,6 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
         }
         const { fullPath, isPHP } = resolvedCandidate;
         if (isPHP) {
-            // Parse GET params
             const getParams = {};
             if (queryString) {
                 const sp = new URLSearchParams(queryString);
@@ -83,7 +127,6 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
                     getParams[k] = v;
                 }
             }
-            // Parse POST body if present
             const bodyChunks = [];
             const reqMethod = (req.method || "GET").toUpperCase();
             if (reqMethod !== "GET" && reqMethod !== "HEAD") {
@@ -124,7 +167,7 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
                         SERVER_PORT: hostPort || String(port),
                         SERVER_ADDR: "127.0.0.1",
                         REMOTE_ADDR: req.socket.remoteAddress || "127.0.0.1",
-                        SERVER_SOFTWARE: "JSPHP HTTP Server / 8.5.0",
+                        SERVER_SOFTWARE: `JSPHP HTTP Server / ${PHPEngine_1.PHPEngine.VERSION}`,
                         HTTP_USER_AGENT: req.headers["user-agent"] || "Mozilla/5.0",
                         HTTP_ACCEPT: req.headers["accept"] || "*/*",
                     },
@@ -142,20 +185,15 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
                     // Normal exit/redirect
                 }
                 else {
-                    console.error("-> PHP FATAL ERROR CAUGHT:", err);
-                    if (!res.headersSent) {
-                        res.statusCode = 500;
-                        res.setHeader("Content-Type", "text/html; charset=utf-8");
-                    }
                     const stackTrace = typeof err.getPHPStackTraceString === "function"
                         ? err.getPHPStackTraceString()
                         : PHPError_1.PHPError.virtualizeJSStack(err.stack || String(err));
                     const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
-                        `<h1>PHP Fatal Error</h1>` +
-                        `<p><strong>Message:</strong> ${escapeHtml(err.message || String(err))}</p>` +
-                        `<h3>PHP Stack Trace</h3>` +
                         `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
                         `</body></html>`;
+                    if (!res.headersSent) {
+                        res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
+                    }
                     res.end(htmlError);
                     return;
                 }
@@ -183,7 +221,6 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), cacheDir) {
             res.end(phpOutput);
         }
         else {
-            // Serve static file
             try {
                 const fileData = await fs.readFile(fullPath);
                 const ext = path.extname(fullPath).toLowerCase();
@@ -215,7 +252,6 @@ async function resolveCandidate(docRoot, urlPath) {
             return { fullPath: targetPath, isPHP: targetPath.endsWith(".php") };
         }
         if (stat.isDirectory()) {
-            // Try directory index files: index.php -> index.html
             const indexPath = path.join(targetPath, "index.php");
             if (await fileExists(indexPath)) {
                 return { fullPath: indexPath, isPHP: true };
@@ -227,24 +263,20 @@ async function resolveCandidate(docRoot, urlPath) {
         }
     }
     catch {
-        // Path does not exist as-is; try extension resolutions
+        // Try extension resolution
     }
-    // Candidate 1: urlPath + .php (e.g. /test -> /test.php)
     const phpPath = targetPath + ".php";
     if (await fileExists(phpPath)) {
         return { fullPath: phpPath, isPHP: true };
     }
-    // Candidate 2: urlPath + .html (e.g. /test -> /test.html)
     const htmlPath = targetPath + ".html";
     if (await fileExists(htmlPath)) {
         return { fullPath: htmlPath, isPHP: false };
     }
-    // Candidate 3: urlPath/index.php
     const dirPhpPath = path.join(targetPath, "index.php");
     if (await fileExists(dirPhpPath)) {
         return { fullPath: dirPhpPath, isPHP: true };
     }
-    // Candidate 4: urlPath/index.html
     const dirHtmlPath = path.join(targetPath, "index.html");
     if (await fileExists(dirHtmlPath)) {
         return { fullPath: dirHtmlPath, isPHP: false };

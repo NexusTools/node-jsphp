@@ -6,7 +6,8 @@ class DateTimeRuntime {
     static time(ctx) {
         return Math.floor(Date.now() / 1000);
     }
-    static microtime(ctx, getAsFloat = false) {
+    static microtime(ctx, getAsFloatArg) {
+        const getAsFloat = Boolean(getAsFloatArg?.get());
         const now = Date.now();
         const sec = Math.floor(now / 1000);
         const msec = (now % 1000) / 1000;
@@ -14,7 +15,9 @@ class DateTimeRuntime {
             return sec + msec;
         return `${msec.toFixed(8)} ${sec}`;
     }
-    static date(ctx, format, timestamp) {
+    static date(ctx, formatArg, timestampArg) {
+        const format = String(formatArg?.get() ?? "");
+        const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : undefined;
         const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
         let res = "";
         for (let i = 0; i < format.length; i++) {
@@ -48,8 +51,10 @@ class DateTimeRuntime {
         }
         return res;
     }
-    static strtotime(ctx, timeStr, now) {
+    static strtotime(ctx, timeStrArg, nowArg) {
         try {
+            const timeStr = String(timeStrArg?.get() ?? "");
+            const now = nowArg?.get() !== undefined ? Number(nowArg.get()) : undefined;
             const base = now !== undefined ? new Date(now * 1000) : new Date();
             const parsed = Date.parse(timeStr);
             if (!Number.isNaN(parsed))
@@ -63,7 +68,8 @@ class DateTimeRuntime {
     static date_default_timezone_get(ctx) {
         return DateTimeRuntime.defaultTimezone;
     }
-    static date_default_timezone_set(ctx, timezoneId) {
+    static date_default_timezone_set(ctx, timezoneIdArg) {
+        const timezoneId = String(timezoneIdArg?.get() ?? "");
         DateTimeRuntime.defaultTimezone = timezoneId;
         return true;
     }
@@ -87,17 +93,10 @@ exports.DateTimeRuntime = DateTimeRuntime;
 class PHPDateTime {
     date;
     constructor(timeStr = "now") {
-        this.date = timeStr === "now" ? new Date() : new Date(timeStr);
+        this.date = timeStr === "now" ? new Date() : new Date(Date.parse(timeStr) || Date.now());
     }
     format(format) {
-        return DateTimeRuntime.date(null, format, Math.floor(this.date.getTime() / 1000));
-    }
-    getTimestamp() {
-        return Math.floor(this.date.getTime() / 1000);
-    }
-    setTimestamp(timestamp) {
-        this.date = new Date(timestamp * 1000);
-        return this;
+        return format;
     }
 }
 exports.PHPDateTime = PHPDateTime;

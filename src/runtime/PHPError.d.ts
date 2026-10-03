@@ -15,7 +15,7 @@ export declare class PHPError extends Error {
     phpTrace: PHPStackFrame[];
     previous: PHPError | null;
     rawJSStack: string;
-    constructor(message?: string, code?: number, file?: string, line?: number, trace?: PHPStackFrame[], previous?: PHPError | null);
+    constructor(messageArg?: any, codeArg?: any, fileArg?: any, lineArg?: any, traceArg?: any, previousArg?: any);
     getMessage(): string;
     getCode(): number;
     getFile(): string;
@@ -26,7 +26,7 @@ export declare class PHPError extends Error {
 }
 export declare class PHPException extends PHPError {
     static phpName: string;
-    constructor(message?: string, code?: number, previous?: PHPError | null);
+    constructor(messageArg?: any, codeArg?: any, previousArg?: any);
 }
 export declare class PHPTypeError extends PHPError {
 }
@@ -50,10 +50,10 @@ export declare class ErrorException extends PHPError {
 export declare class ErrorRuntime {
     static debug_backtrace(ctx: PHPContext): any;
     static debug_print_backtrace(ctx: PHPContext): Promise<string>;
-    static set_error_handler(ctx: PHPContext, handler: any, levels?: number): any;
+    static set_error_handler(ctx: PHPContext, handlerArg: any, levelsArg?: any): any;
     static restore_error_handler(ctx: PHPContext): boolean;
-    static trigger_error(ctx: PHPContext, message: string, level?: number): Promise<boolean>;
-    static error_reporting(ctx: PHPContext, level?: number): number;
+    static trigger_error(ctx: PHPContext, messageArg: any, levelArg?: any): Promise<boolean>;
+    static error_reporting(ctx: PHPContext, levelArg?: any): number;
     static functions: {
         debug_backtrace: typeof ErrorRuntime.debug_backtrace;
         debug_print_backtrace: typeof ErrorRuntime.debug_print_backtrace;
@@ -66,6 +66,23 @@ export declare class ErrorRuntime {
     static classes: {
         exception: typeof PHPException;
         errorexception: typeof ErrorException;
+        invalidargumentexception: typeof PHPException;
+        badmethodcallexception: typeof PHPException;
+        domainexception: typeof PHPException;
+        lengthexception: typeof PHPException;
+        logicexception: typeof PHPException;
+        outofrangeexception: typeof PHPException;
+        overflowexception: typeof PHPException;
+        rangeexception: typeof PHPException;
+        runtimeexception: typeof PHPException;
+        underflowexception: typeof PHPException;
+        unexpectedvalueexception: typeof PHPException;
+        error: typeof PHPError;
+        typeerror: typeof PHPTypeError;
+        parseerror: typeof PHPParseError;
+        fatalerror: typeof PHPFatalError;
+        warning: typeof PHPWarning;
+        notice: typeof PHPNotice;
     };
     static register(engine: PHPEngine): void;
 }

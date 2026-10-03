@@ -2,11 +2,7 @@ import { Writable } from "stream";
 import { PHPEngine } from "./PHPEngine";
 import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals";
 import { OutputBufferStack } from "./runtime/OutputBuffer";
-export declare class PHPReference {
-    readonly get: () => any;
-    readonly set: (value: any) => void;
-    constructor(get: () => any, set: (value: any) => void);
-}
+import { PHPVariable, PHPReference } from "./runtime/PHPVariable";
 export interface PHPContextOptions {
     cwd?: string;
     env?: Record<string, string>;
@@ -52,6 +48,7 @@ export declare class PHPContext {
     errorHandlerStack: any[];
     errorReportingLevel: number;
     includedFiles: Set<string>;
+    executionDepth: number;
     tickCount: number;
     private stdout;
     private stderr;
@@ -85,28 +82,29 @@ export declare class PHPContext {
     flushHeaders(): void;
     /** Writes output text to stdout or active output buffer. */
     echo(data: any): Promise<void>;
-    private writeStdout;
-    /**
-     * Gets a constant value by lowercase or exact name.
-     * @param name Constant name in lowercase or exact key.
-     */
+    writeStdout(str: string): void;
+    /** Gets a constant value. */
     getConstant(name: string): any;
+    /** Checks if a constant is defined. */
     hasConstant(name: string): boolean;
-    /**
-     * Defines a constant.
-     * @param name Constant name in lowercase or exact key.
-     */
+    /** Defines a constant. */
     defineConstant(name: string, val: any): void;
+    private globalsProxy?;
+    private getGlobalPHPVar;
+    private getGlobalsProxy;
+    getPHPVar(name: string): PHPVariable;
     /** Gets a variable value from the current or global scope. */
     getVar(name: string): any;
     /** Sets a variable value in the current scope. */
     setVar(name: string, value: any): any;
     /** Binds a variable name to global scope. */
     bindGlobal(name: string): void;
+    private scopeArgs;
     /** Pushes a new variable scope. */
-    pushScope(): void;
+    pushScope(args?: any[]): void;
     /** Pops the current variable scope. */
     popScope(): void;
+    getCurrentFunctionArgs(): any[];
     /** Sets a single array offset on a variable. */
     setVarOffset(name: string, key: any, value: any): any;
     /** Sets nested array offsets on a variable. */
@@ -135,6 +133,10 @@ export declare class PHPContext {
     setPropertyOffset(obj: any, prop: string, key: any, value: any): Promise<any>;
     /** Sets nested property offsets on an object. */
     setPropertyOffsets(obj: any, prop: string, keys: any[], value: any): Promise<any>;
+    /** Gets nested property offsets on an object. */
+    getPropertyOffsets(obj: any, prop: string, keys: any[]): Promise<any>;
+    /** Unsets nested property offsets on an object. */
+    unsetPropertyOffsets(obj: any, prop: string, keys: any[]): Promise<void>;
     /**
      * Calls a method on an object.
      * Expects method name in lowercase.
@@ -148,7 +150,7 @@ export declare class PHPContext {
      * Expects function name in lowercase.
      * @param name Function name in lowercase.
      */
-    callFunction(name: string, args?: any[], references?: (string | null)[]): Promise<any>;
+    callFunction(name: any, args?: any[]): Promise<any>;
     /**
      * Resolves a class by lowercase name.
      * @param className Class name in lowercase.
@@ -197,6 +199,7 @@ export declare class PHPContext {
     include(filepath: string): Promise<any>;
     /** Includes a PHP file if not already included. */
     includeOnce(filepath: string): Promise<any>;
+    runShutdownFunctions(): Promise<void>;
     /** Requires a PHP file. */
     require(filepath: string): Promise<any>;
     /** Requires a PHP file if not already required. */

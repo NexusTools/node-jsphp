@@ -3,17 +3,20 @@ import * as os from "os";
 import { PHPContext } from "../PHPContext";
 import type { PHPEngine } from "../PHPEngine";
 import { PHPWarning } from "./PHPError";
+import { PHPVariable, PHPReference } from "./PHPVariable";
 import { defineFunction } from "./Reflection";
 
 export class NetworkingRuntime {
 
-  public static urlencode(ctx: PHPContext | null, value: any, raw = false): string {
+  public static urlencode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): string {
+    const value = valueArg?.get();
     let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
     if (!raw) encoded = encoded.replace(/~/g, "%7E").replace(/%20/g, "+");
     return encoded;
   }
 
-  public static urldecode(ctx: PHPContext | null, value: any, raw = false): string {
+  public static urldecode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): string {
+    const value = valueArg?.get();
     let encoded = String(value ?? "").replace(/&/g, "%26");
     if (raw) encoded = encoded.replace(/\+/g, "%2B");
     return new URLSearchParams(`value=${encoded}`).get("value") || "";
@@ -23,7 +26,8 @@ export class NetworkingRuntime {
     return os.hostname();
   }
 
-  public static async gethostbyname(ctx: PHPContext | null, hostname: string): Promise<string> {
+  public static async gethostbyname(ctx: PHPContext | null, hostnameArg?: PHPReference): Promise<string> {
+    const hostname = String(hostnameArg?.get() ?? "");
     try {
       const res = await dns.lookup(hostname, { family: 4 });
       return res.address;
@@ -32,7 +36,8 @@ export class NetworkingRuntime {
     }
   }
 
-  public static async gethostbyaddr(ctx: PHPContext | null, ip: string): Promise<string | false> {
+  public static async gethostbyaddr(ctx: PHPContext | null, ipArg?: PHPReference): Promise<string | false> {
+    const ip = String(ipArg?.get() ?? "");
     try {
       const names = await dns.reverse(ip);
       return names[0] || false;
@@ -41,7 +46,8 @@ export class NetworkingRuntime {
     }
   }
 
-  public static ip2long(ctx: PHPContext | null, ip: string): number | false {
+  public static ip2long(ctx: PHPContext | null, ipArg?: PHPReference): number | false {
+    const ip = String(ipArg?.get() ?? "");
     const parts = (ip || "").split(".");
     if (parts.length !== 4) return false;
     let num = 0;
@@ -53,7 +59,8 @@ export class NetworkingRuntime {
     return num >>> 0;
   }
 
-  public static long2ip(ctx: PHPContext | null, num: number): string | false {
+  public static long2ip(ctx: PHPContext | null, numArg?: PHPReference): string | false {
+    const num = Number(numArg?.get());
     if (typeof num !== "number" || num < 0 || num > 4294967295) return false;
     return [
       (num >>> 24) & 255,
@@ -63,7 +70,9 @@ export class NetworkingRuntime {
     ].join(".");
   }
 
-  public static parse_url(ctx: PHPContext | null, urlStr: string, component = -1): any {
+  public static parse_url(ctx: PHPContext | null, urlStrArg?: PHPReference, componentArg?: PHPReference): any {
+    const urlStr = String(urlStrArg?.get() ?? "");
+    const component = componentArg?.get() !== undefined ? Number(componentArg.get()) : -1;
     try {
       const parsed = new URL(urlStr, "http://localhost");
       const obj: Record<string, any> = {
@@ -86,7 +95,6 @@ export class NetworkingRuntime {
       if (component === 6) return obj.query;
       if (component === 7) return obj.fragment;
 
-      // Filter undefined
       const cleanObj: Record<string, any> = {};
       for (const [k, v] of Object.entries(obj)) {
         if (v !== undefined) cleanObj[k] = v;
@@ -97,7 +105,10 @@ export class NetworkingRuntime {
     }
   }
 
-  public static http_build_query(ctx: PHPContext | null, data: any, numericPrefix = "", argSeparator = "&"): string {
+  public static http_build_query(ctx: PHPContext | null, dataArg?: PHPReference, numericPrefixArg?: PHPReference, argSeparatorArg?: PHPReference): string {
+    const data = dataArg?.get();
+    const numericPrefix = String(numericPrefixArg?.get() ?? "");
+    const argSeparator = argSeparatorArg?.get() !== undefined ? String(argSeparatorArg.get()) : "&";
     if (!data || typeof data !== "object") return "";
     const params = new URLSearchParams();
 
@@ -121,7 +132,10 @@ export class NetworkingRuntime {
     return params.toString().replace(/\+/g, "%20").replace(/&/g, argSeparator);
   }
 
-  public static header(ctx: PHPContext, headerStr: string, replace = true, code?: number): void {
+  public static header(ctx: PHPContext, headerStrArg?: PHPReference, replaceArg?: PHPReference, codeArg?: PHPReference): void {
+    const headerStr = String(headerStrArg?.get() ?? "");
+    const replace = replaceArg?.get() !== undefined ? Boolean(replaceArg.get()) : true;
+    const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
     if (!headerStr) return;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
       throw new PHPWarning("Cannot modify header information - no server response handler");
@@ -151,14 +165,21 @@ export class NetworkingRuntime {
 
   public static setcookie(
     ctx: PHPContext,
-    name: string,
-    value = "",
-    expires = 0,
-    path = "",
-    domain = "",
-    secure = false,
-    httponly = false
+    nameArg?: PHPReference,
+    valueArg?: PHPReference,
+    expiresArg?: PHPReference,
+    pathArg?: PHPReference,
+    domainArg?: PHPReference,
+    secureArg?: PHPReference,
+    httponlyArg?: PHPReference
   ): boolean {
+    const name = String(nameArg?.get() ?? "");
+    const value = String(valueArg?.get() ?? "");
+    const expires = Number(expiresArg?.get()) || 0;
+    const path = String(pathArg?.get() ?? "");
+    const domain = String(domainArg?.get() ?? "");
+    const secure = Boolean(secureArg?.get());
+    const httponly = Boolean(httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
       throw new PHPWarning("Cannot modify cookie information - no server response handler");
     }
@@ -172,14 +193,21 @@ export class NetworkingRuntime {
 
   public static setrawcookie(
     ctx: PHPContext,
-    name: string,
-    value = "",
-    expires = 0,
-    path = "",
-    domain = "",
-    secure = false,
-    httponly = false
+    nameArg?: PHPReference,
+    valueArg?: PHPReference,
+    expiresArg?: PHPReference,
+    pathArg?: PHPReference,
+    domainArg?: PHPReference,
+    secureArg?: PHPReference,
+    httponlyArg?: PHPReference
   ): boolean {
+    const name = String(nameArg?.get() ?? "");
+    const value = String(valueArg?.get() ?? "");
+    const expires = Number(expiresArg?.get()) || 0;
+    const path = String(pathArg?.get() ?? "");
+    const domain = String(domainArg?.get() ?? "");
+    const secure = Boolean(secureArg?.get());
+    const httponly = Boolean(httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
       throw new PHPWarning("Cannot modify cookie information - no server response handler");
     }
@@ -191,7 +219,8 @@ export class NetworkingRuntime {
     return true;
   }
 
-  public static header_remove(ctx: PHPContext, name?: string): void {
+  public static header_remove(ctx: PHPContext, nameArg?: PHPReference): void {
+    const name = nameArg?.get() !== undefined ? String(nameArg.get()) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
       throw new PHPWarning("Cannot modify header information - no server response handler");
     }
@@ -209,7 +238,8 @@ export class NetworkingRuntime {
     return ctx.response.headersSent;
   }
 
-  public static http_response_code(ctx: PHPContext, code?: number): number | boolean {
+  public static http_response_code(ctx: PHPContext, codeArg?: PHPReference): number | boolean {
+    const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
       throw new PHPWarning("Cannot modify response code - no server response handler");
     }
@@ -227,10 +257,10 @@ export class NetworkingRuntime {
     "ip2long": NetworkingRuntime.ip2long,
     "long2ip": NetworkingRuntime.long2ip,
     "parse_url": NetworkingRuntime.parse_url,
-    "urlencode": (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(ctx, value),
-    "rawurlencode": (ctx: PHPContext, value: any) => NetworkingRuntime.urlencode(ctx, value, true),
-    "urldecode": (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(ctx, value),
-    "rawurldecode": (ctx: PHPContext, value: any) => NetworkingRuntime.urldecode(ctx, value, true),
+    "urlencode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value),
+    "rawurlencode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value, true),
+    "urldecode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value),
+    "rawurldecode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value, true),
     "http_build_query": NetworkingRuntime.http_build_query,
     "header": NetworkingRuntime.header,
     "setcookie": NetworkingRuntime.setcookie,

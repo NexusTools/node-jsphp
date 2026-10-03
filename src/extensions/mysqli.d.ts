@@ -2,6 +2,7 @@ import mysql from "mysql2/promise";
 import { PHPExtension } from "../PHPExtension";
 import { PHPEngine } from "../PHPEngine";
 import { PHPObject } from "../runtime/PHPObject";
+import { PHPReference } from "../runtime/PHPVariable";
 export declare class MySQLiResult {
     rows: any[];
     index: number;
@@ -9,6 +10,7 @@ export declare class MySQLiResult {
     constructor(rows: any[]);
     fetch_assoc(): any | null;
     fetch_row(): any[] | null;
+    fetch_array(resulttype?: number): any;
 }
 export declare class MySQLiObject extends PHPObject {
     connection?: mysql.Connection;
@@ -19,9 +21,9 @@ export declare class MySQLiObject extends PHPObject {
     error: string;
     errno: number;
     constructor();
-    real_connect(host?: string, user?: string, password?: string, database?: string, port?: number, socket?: string, flags?: number): Promise<boolean>;
-    query(sql: string): Promise<MySQLiResult | boolean>;
-    escape_string(str: string): string;
+    real_connect(hostArg?: PHPReference, userArg?: PHPReference, passwordArg?: PHPReference, databaseArg?: PHPReference, portArg?: PHPReference, socketArg?: PHPReference, flagsArg?: PHPReference): Promise<boolean>;
+    query(sqlArg?: PHPReference): Promise<MySQLiResult | boolean>;
+    escape_string(strArg?: PHPReference): string;
     close(): Promise<boolean>;
 }
 export declare class MySQLiExtension extends PHPExtension {

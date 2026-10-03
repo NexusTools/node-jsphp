@@ -12,7 +12,7 @@ class SessionExtension extends PHPExtension_1.PHPExtension {
                 }
                 return true;
             },
-            session_id: (ctx, id) => "jsphp-session-id-12345",
+            session_id: (ctx, idArg) => "jsphp-session-id-12345",
             session_destroy: (ctx) => {
                 ctx.superglobals.SESSION = {};
                 return true;

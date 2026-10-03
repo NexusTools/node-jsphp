@@ -1,18 +1,23 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StringRuntime = void 0;
+const PHPVariable_1 = require("./PHPVariable");
+const PHPObject_1 = require("./PHPObject");
 const Reflection_1 = require("./Reflection");
 class StringRuntime {
     /** Gets string length. */
-    static strlen(ctx, str) {
+    static strlen(ctx, strArg) {
+        const str = strArg?.get();
         if (Buffer.isBuffer(str))
             return str.length;
         return String(str ?? "").length;
     }
     /** Count the number of substring occurrences. */
-    static substr_count(ctx, haystack, needle, offset = 0, length) {
-        const source = String(haystack ?? "").slice(offset, length === undefined ? undefined : offset + length);
-        const search = String(needle ?? "");
+    static substr_count(ctx, haystackArg, needleArg, offsetArg, lengthArg) {
+        const offset = Number(offsetArg?.get()) || 0;
+        const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
+        const source = String(haystackArg?.get() ?? "").slice(offset, length === undefined ? undefined : offset + length);
+        const search = String(needleArg?.get() ?? "");
         if (!search)
             return 0;
         let count = 0;
@@ -24,8 +29,10 @@ class StringRuntime {
         return count;
     }
     /** Return part of a string. */
-    static substr(ctx, str, start, length) {
-        const s = String(str ?? "");
+    static substr(ctx, strArg, startArg, lengthArg) {
+        const s = String(strArg?.get() ?? "");
+        let start = Number(startArg?.get()) || 0;
+        const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
         if (start < 0)
             start = s.length + start;
         if (length !== undefined) {
@@ -36,9 +43,13 @@ class StringRuntime {
         return s.substring(start);
     }
     /** Replace text within a portion of a string. */
-    static substr_replace(ctx, subject, replacement, offset, length) {
+    static substr_replace(ctx, subjectArg, replacementArg, offsetArg, lengthArg) {
+        const subject = subjectArg?.get();
+        const replacement = replacementArg?.get();
+        const offset = offsetArg?.get();
+        const length = lengthArg?.get();
         if (Array.isArray(subject)) {
-            return subject.map((value, index) => StringRuntime.substr_replace(ctx, value, Array.isArray(replacement) ? replacement[index] ?? "" : replacement, Array.isArray(offset) ? offset[index] ?? 0 : offset, Array.isArray(length) ? length[index] : length));
+            return subject.map((value, index) => StringRuntime.substr_replace(ctx, new PHPVariable_1.PHPLiteral(value), new PHPVariable_1.PHPLiteral(Array.isArray(replacement) ? replacement[index] ?? "" : replacement), new PHPVariable_1.PHPLiteral(Array.isArray(offset) ? offset[index] ?? 0 : offset), new PHPVariable_1.PHPLiteral(Array.isArray(length) ? length[index] : length)));
         }
         const source = String(subject ?? "");
         const startValue = Math.trunc(Number(offset) || 0);
@@ -51,29 +62,42 @@ class StringRuntime {
         return source.slice(0, start) + String(inserted) + source.slice(end);
     }
     /** Find the position of the first occurrence of a substring in a string. */
-    static strpos(ctx, haystack, needle, offset = 0) {
-        const idx = String(haystack ?? "").indexOf(String(needle ?? ""), offset);
+    static strpos(ctx, haystackArg, needleArg, offsetArg) {
+        const haystack = String(haystackArg?.get() ?? "");
+        const needle = String(needleArg?.get() ?? "");
+        const offset = Number(offsetArg?.get()) || 0;
+        const idx = haystack.indexOf(needle, offset);
         return idx === -1 ? false : idx;
     }
     /** Find the position of the first occurrence of a case-insensitive substring in a string. */
-    static stripos(ctx, haystack, needle, offset = 0) {
-        const idx = String(haystack ?? "").toLowerCase().indexOf(String(needle ?? "").toLowerCase(), offset);
+    static stripos(ctx, haystackArg, needleArg, offsetArg) {
+        const haystack = String(haystackArg?.get() ?? "").toLowerCase();
+        const needle = String(needleArg?.get() ?? "").toLowerCase();
+        const offset = Number(offsetArg?.get()) || 0;
+        const idx = haystack.indexOf(needle, offset);
         return idx === -1 ? false : idx;
     }
     /** Find the position of the last occurrence of a substring in a string. */
-    static strrpos(ctx, haystack, needle, offset = 0) {
-        const idx = String(haystack ?? "").lastIndexOf(String(needle ?? ""), offset || undefined);
+    static strrpos(ctx, haystackArg, needleArg, offsetArg) {
+        const haystack = String(haystackArg?.get() ?? "");
+        const needle = String(needleArg?.get() ?? "");
+        const offset = Number(offsetArg?.get()) || 0;
+        const idx = haystack.lastIndexOf(needle, offset || undefined);
         return idx === -1 ? false : idx;
     }
     /** Find the position of the last occurrence of a case-insensitive substring in a string. */
-    static strripos(ctx, haystack, needle, offset = 0) {
-        const idx = String(haystack ?? "").toLowerCase().lastIndexOf(String(needle ?? "").toLowerCase(), offset || undefined);
+    static strripos(ctx, haystackArg, needleArg, offsetArg) {
+        const haystack = String(haystackArg?.get() ?? "").toLowerCase();
+        const needle = String(needleArg?.get() ?? "").toLowerCase();
+        const offset = Number(offsetArg?.get()) || 0;
+        const idx = haystack.lastIndexOf(needle, offset || undefined);
         return idx === -1 ? false : idx;
     }
     /** Find the first occurrence of a string. */
-    static strstr(ctx, haystack, needle, beforeNeedle = false) {
-        const s = String(haystack ?? "");
-        const n = String(needle ?? "");
+    static strstr(ctx, haystackArg, needleArg, beforeNeedleArg) {
+        const s = String(haystackArg?.get() ?? "");
+        const n = String(needleArg?.get() ?? "");
+        const beforeNeedle = Boolean(beforeNeedleArg?.get());
         const idx = s.indexOf(n);
         if (idx === -1)
             return false;
@@ -83,10 +107,13 @@ class StringRuntime {
      * Replace all occurrences of the search string with the replacement string.
      * @param countRef Output variable passed by reference to receive replacement count.
      */
-    static str_replace(ctx, search, replace, subject, countRef) {
+    static str_replace(ctx, searchArg, replaceArg, subjectArg, countRef) {
+        const search = searchArg?.get();
+        const replace = replaceArg?.get();
+        const subject = subjectArg?.get();
         var replaceCount = 0;
         if (Array.isArray(subject)) {
-            const res = subject.map((s) => StringRuntime.str_replace(ctx, search, replace, s, { set: (val) => { replaceCount += val; } }));
+            const res = subject.map((s) => StringRuntime.str_replace(ctx, new PHPVariable_1.PHPLiteral(search), new PHPVariable_1.PHPLiteral(replace), new PHPVariable_1.PHPLiteral(s), countRef));
             if (countRef && typeof countRef.set === "function")
                 countRef.set(replaceCount);
             return res;
@@ -106,8 +133,10 @@ class StringRuntime {
         return s;
     }
     /** Translate characters or replace substrings. */
-    static strtr(ctx, subject, from, to) {
-        let result = String(subject ?? "");
+    static strtr(ctx, subjectArg, fromArg, toArg) {
+        let result = String(subjectArg?.get() ?? "");
+        const from = fromArg?.get();
+        const to = toArg?.get();
         if (from && typeof from === "object" && !Array.isArray(from)) {
             for (const [search, replacement] of Object.entries(from))
                 result = result.split(search).join(String(replacement));
@@ -118,9 +147,12 @@ class StringRuntime {
         return result.split(search).join(replacement);
     }
     /** Case-insensitive version of str_replace. */
-    static str_ireplace(ctx, search, replace, subject) {
+    static str_ireplace(ctx, searchArg, replaceArg, subjectArg, countRef) {
+        const search = searchArg?.get();
+        const replace = replaceArg?.get();
+        const subject = subjectArg?.get();
         if (Array.isArray(subject)) {
-            return subject.map((s) => StringRuntime.str_ireplace(ctx, search, replace, s));
+            return subject.map((s) => StringRuntime.str_ireplace(ctx, new PHPVariable_1.PHPLiteral(search), new PHPVariable_1.PHPLiteral(replace), new PHPVariable_1.PHPLiteral(s), countRef));
         }
         let s = String(subject ?? "");
         const searches = Array.isArray(search) ? search : [search];
@@ -133,9 +165,10 @@ class StringRuntime {
         return s;
     }
     /** Return a formatted string. */
-    static sprintf(ctx, fmt, ...args) {
+    static sprintf(ctx, fmtArg, ...args) {
+        const fmt = String(fmtArg?.get() ?? "");
         let argIndex = 0;
-        return String(fmt ?? "").replace(/%(\d+\$)?([-+0' ])?(\d+)?(\.\d+)?([%sbcdeufFoghxX])/g, (match, param, flags, width, precision, type) => {
+        return fmt.replace(/%(\d+\$)?([-+0' ])?(\d+)?(\.\d+)?([%sbcdeufFoghxX])/g, (match, param, flags, width, precision, type) => {
             if (type === "%")
                 return "%";
             let idx = argIndex;
@@ -145,7 +178,7 @@ class StringRuntime {
             else {
                 argIndex++;
             }
-            let val = args[idx];
+            let val = args[idx]?.get();
             let str = "";
             const numWidth = width ? parseInt(width, 10) : 0;
             const padChar = flags && flags.includes("0") ? "0" : " ";
@@ -192,83 +225,119 @@ class StringRuntime {
         });
     }
     /** Output a formatted string. */
-    static async printf(ctx, fmt, ...args) {
-        const output = StringRuntime.sprintf(ctx, fmt, ...args);
+    static async printf(ctx, fmtArg, ...args) {
+        const output = StringRuntime.sprintf(ctx, fmtArg, ...args);
         await ctx.echo(output);
         return output.length;
     }
     /** Split a string by a string. */
-    static explode(ctx, delimiter, string, limit) {
-        const res = String(string ?? "").split(delimiter);
+    static explode(ctx, delimiterArg, stringArg, limitArg) {
+        const delimiter = String(delimiterArg?.get() ?? "");
+        const string = String(stringArg?.get() ?? "");
+        const limit = limitArg?.get() !== undefined ? Number(limitArg.get()) : undefined;
+        const res = string.split(delimiter);
         if (limit !== undefined && limit > 0 && res.length > limit) {
             return [...res.slice(0, limit - 1), res.slice(limit - 1).join(delimiter)];
         }
         return res;
     }
     /** Join array elements with a string. */
-    static implode(ctx, glue, pieces) {
-        return (pieces || []).join(glue);
+    static implode(ctx, glueArg, piecesArg) {
+        const val1 = glueArg?.get();
+        const val2 = piecesArg?.get();
+        let glue = "";
+        let pieces = [];
+        if (Array.isArray(val1) || (val1 && typeof val1 === "object" && !(val1 instanceof PHPObject_1.PHPObject))) {
+            pieces = Array.isArray(val1) ? val1 : Object.values(val1);
+            glue = val2 !== undefined && val2 !== null ? String(val2) : "";
+        }
+        else if (Array.isArray(val2) || (val2 && typeof val2 === "object" && !(val2 instanceof PHPObject_1.PHPObject))) {
+            pieces = Array.isArray(val2) ? val2 : Object.values(val2);
+            glue = val1 !== undefined && val1 !== null ? String(val1) : "";
+        }
+        return pieces.map((p) => String(p ?? "")).join(glue);
     }
     /** Strip whitespace (or other characters) from the beginning and end of a string. */
-    static trim(ctx, str, charlist) {
-        let s = String(str ?? "");
+    static trim(ctx, strArg, charlistArg) {
+        let s = String(strArg?.get() ?? "");
+        const charlist = charlistArg?.get();
         if (!charlist)
             return s.trim();
-        const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
         return s.replace(new RegExp(`^[${mask}]+|[${mask}]+$`, "g"), "");
     }
     /** Strip whitespace (or other characters) from the beginning of a string. */
-    static ltrim(ctx, str, charlist) {
-        let s = String(str ?? "");
+    static ltrim(ctx, strArg, charlistArg) {
+        let s = String(strArg?.get() ?? "");
+        const charlist = charlistArg?.get();
         if (!charlist)
             return s.trimStart();
-        const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
         return s.replace(new RegExp(`^[${mask}]+`, "g"), "");
     }
     /** Strip whitespace (or other characters) from the end of a string. */
-    static rtrim(ctx, str, charlist) {
-        let s = String(str ?? "");
+    static rtrim(ctx, strArg, charlistArg) {
+        let s = String(strArg?.get() ?? "");
+        const charlist = charlistArg?.get();
         if (!charlist)
             return s.trimEnd();
-        const mask = charlist.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
         return s.replace(new RegExp(`[${mask}]+$`, "g"), "");
     }
+    /** Strip HTML and PHP tags from a string. */
+    static strip_tags(ctx, strArg, allowable_tagsArg) {
+        const s = String(strArg?.get() ?? "");
+        const allowable_tags = allowable_tagsArg?.get();
+        if (!allowable_tags) {
+            return s.replace(/<!--[\s\S]*?-->|<\?(?:php)?[\s\S]*?\?>|<[^>]*>/gi, "");
+        }
+        const tags = Array.isArray(allowable_tags)
+            ? allowable_tags
+            : String(allowable_tags).match(/<[a-z0-9]+>/gi) || [];
+        const allowed = new Set(tags.map((t) => t.replace(/[<>]/g, "").toLowerCase()));
+        return s.replace(/<!--[\s\S]*?-->|<\?(?:php)?[\s\S]*?\?>|<(?:\/)?([a-z0-9]+)[^>]*>/gi, (match, tagName) => {
+            if (tagName && allowed.has(tagName.toLowerCase()))
+                return match;
+            return "";
+        });
+    }
     /** Make a string lowercase. */
-    static strtolower(ctx, str) { return String(str ?? "").toLowerCase(); }
+    static strtolower(ctx, strArg) { return String(strArg?.get() ?? "").toLowerCase(); }
     /** Make a string uppercase. */
-    static strtoupper(ctx, str) { return String(str ?? "").toUpperCase(); }
+    static strtoupper(ctx, strArg) { return String(strArg?.get() ?? "").toUpperCase(); }
     /** Make a string's first character uppercase. */
-    static ucfirst(ctx, str) {
-        const s = String(str ?? "");
+    static ucfirst(ctx, strArg) {
+        const s = String(strArg?.get() ?? "");
         return s.charAt(0).toUpperCase() + s.slice(1);
     }
     /** Make a string's first character lowercase. */
-    static lcfirst(ctx, str) {
-        const s = String(str ?? "");
+    static lcfirst(ctx, strArg) {
+        const s = String(strArg?.get() ?? "");
         return s.charAt(0).toLowerCase() + s.slice(1);
     }
     /** Uppercase the first character of each word in a string. */
-    static ucwords(ctx, str) {
-        return String(str ?? "").replace(/\b\w/g, (l) => l.toUpperCase());
+    static ucwords(ctx, strArg) {
+        return String(strArg?.get() ?? "").replace(/\b\w/g, (l) => l.toUpperCase());
     }
     /** Binary safe string comparison. */
-    static strcmp(ctx, str1, str2) {
-        const s1 = String(str1 ?? "");
-        const s2 = String(str2 ?? "");
+    static strcmp(ctx, str1Arg, str2Arg) {
+        const s1 = String(str1Arg?.get() ?? "");
+        const s2 = String(str2Arg?.get() ?? "");
         return s1.localeCompare(s2);
     }
     /** Binary safe string comparison of the first n characters. */
-    static strncmp(ctx, str1, str2, length) {
-        return StringRuntime.strcmp(ctx, String(str1 ?? "").slice(0, length), String(str2 ?? "").slice(0, length));
+    static strncmp(ctx, str1Arg, str2Arg, lengthArg) {
+        const length = Number(lengthArg?.get()) || 0;
+        return StringRuntime.strcmp(ctx, new PHPVariable_1.PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPVariable_1.PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
     }
     /** Quote string with slashes. */
-    static addslashes(ctx, str) {
-        return String(str ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
+    static addslashes(ctx, strArg) {
+        return String(strArg?.get() ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
     }
-    static addcslashes(ctx, str, charlist) {
-        const string = String(str ?? "");
+    static addcslashes(ctx, strArg, charlistArg) {
+        const string = String(strArg?.get() ?? "");
+        const list = String(charlistArg?.get() ?? "");
         const chars = new Set();
-        const list = String(charlist ?? "");
         for (let i = 0; i < list.length; i++) {
             if (list[i] === "\\" && i + 1 < list.length) {
                 chars.add(list[++i]);
@@ -305,12 +374,15 @@ class StringRuntime {
         return res;
     }
     /** Un-quotes a quoted string. */
-    static stripslashes(ctx, str) {
-        return String(str ?? "").replace(/\\(['"\\0])/g, "$1");
+    static stripslashes(ctx, strArg) {
+        return String(strArg?.get() ?? "").replace(/\\(['"\\0])/g, "$1");
+    }
+    static stripcslashes(ctx, strArg) {
+        return StringRuntime.stripslashes(ctx, strArg);
     }
     /** Convert special characters to HTML entities. */
-    static htmlspecialchars(ctx, str) {
-        return String(str ?? "")
+    static htmlspecialchars(ctx, strArg) {
+        return String(strArg?.get() ?? "")
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -318,26 +390,154 @@ class StringRuntime {
             .replace(/'/g, "&#039;");
     }
     /** Convert special HTML entities back to characters. */
-    static htmlspecialchars_decode(ctx, str) {
-        return String(str ?? "")
+    static htmlspecialchars_decode(ctx, strArg) {
+        return String(strArg?.get() ?? "")
             .replace(/&amp;/g, "&")
             .replace(/&lt;/g, "<")
             .replace(/&gt;/g, ">")
             .replace(/&quot;/g, '"')
             .replace(/&#039;/g, "'");
     }
+    static htmlentities(ctx, strArg) {
+        return StringRuntime.htmlspecialchars(ctx, strArg);
+    }
+    static html_entity_decode(ctx, strArg) {
+        return StringRuntime.htmlspecialchars_decode(ctx, strArg);
+    }
+    static unpack(ctx, formatArg, stringArg, offsetArg) {
+        const format = String(formatArg?.get() ?? "");
+        const rawStr = stringArg?.get();
+        const offset = Number(offsetArg?.get()) || 0;
+        if (rawStr === undefined || rawStr === null || !format)
+            return false;
+        const buffer = Buffer.isBuffer(rawStr) ? rawStr : Buffer.from(String(rawStr), "binary");
+        const result = {};
+        let bufIdx = offset;
+        const codes = format.split("/");
+        let autoIdx = 1;
+        for (const item of codes) {
+            if (!item)
+                continue;
+            const type = item[0];
+            const name = item.slice(1) || String(autoIdx++);
+            if (bufIdx >= buffer.length)
+                break;
+            if (type === "N") {
+                if (bufIdx + 4 > buffer.length)
+                    break;
+                result[name] = buffer.readUInt32BE(bufIdx);
+                bufIdx += 4;
+            }
+            else if (type === "V") {
+                if (bufIdx + 4 > buffer.length)
+                    break;
+                result[name] = buffer.readUInt32LE(bufIdx);
+                bufIdx += 4;
+            }
+            else if (type === "n") {
+                if (bufIdx + 2 > buffer.length)
+                    break;
+                result[name] = buffer.readUInt16BE(bufIdx);
+                bufIdx += 2;
+            }
+            else if (type === "v") {
+                if (bufIdx + 2 > buffer.length)
+                    break;
+                result[name] = buffer.readUInt16LE(bufIdx);
+                bufIdx += 2;
+            }
+            else if (type === "C") {
+                result[name] = buffer.readUInt8(bufIdx);
+                bufIdx += 1;
+            }
+            else if (type === "c") {
+                result[name] = buffer.readInt8(bufIdx);
+                bufIdx += 1;
+            }
+        }
+        return Object.keys(result).length > 0 ? result : false;
+    }
+    static pack(ctx, formatArg, ...args) {
+        const format = String(formatArg?.get() ?? "");
+        const values = args.map((a) => a?.get());
+        const buffer = Buffer.alloc(1024);
+        let offset = 0;
+        let valIdx = 0;
+        for (let i = 0; i < format.length; i++) {
+            const type = format[i];
+            const val = Number(values[valIdx++]) || 0;
+            if (type === "N") {
+                buffer.writeUInt32BE(val, offset);
+                offset += 4;
+            }
+            else if (type === "V") {
+                buffer.writeUInt32LE(val, offset);
+                offset += 4;
+            }
+            else if (type === "n") {
+                buffer.writeUInt16BE(val, offset);
+                offset += 2;
+            }
+            else if (type === "v") {
+                buffer.writeUInt16LE(val, offset);
+                offset += 2;
+            }
+            else if (type === "C") {
+                buffer.writeUInt8(val, offset);
+                offset += 1;
+            }
+        }
+        return buffer.subarray(0, offset).toString("binary");
+    }
+    static strtokState = null;
+    static strtok(ctx, strArg, tokenArg) {
+        let str;
+        let token;
+        if (tokenArg === undefined) {
+            token = String(strArg?.get() ?? "");
+        }
+        else {
+            str = String(strArg?.get() ?? "");
+            token = String(tokenArg?.get() ?? "");
+        }
+        if (str !== undefined) {
+            StringRuntime.strtokState = { str, token, index: 0 };
+        }
+        if (!StringRuntime.strtokState)
+            return false;
+        const state = StringRuntime.strtokState;
+        if (state.index >= state.str.length)
+            return false;
+        const separators = new Set(token.split(""));
+        while (state.index < state.str.length && separators.has(state.str[state.index])) {
+            state.index++;
+        }
+        if (state.index >= state.str.length)
+            return false;
+        const start = state.index;
+        while (state.index < state.str.length && !separators.has(state.str[state.index])) {
+            state.index++;
+        }
+        return state.str.substring(start, state.index);
+    }
     /** Inserts HTML line breaks before all newlines in a string. */
-    static nl2br(ctx, str, isXhtml = true) {
+    static nl2br(ctx, strArg, isXhtmlArg) {
+        const isXhtml = isXhtmlArg?.get() !== undefined ? Boolean(isXhtmlArg.get()) : true;
         const breakTag = isXhtml ? "<br />" : "<br>";
-        return String(str ?? "").replace(/(\r\n|\n\r|\r|\n)/g, breakTag + "$1");
+        return String(strArg?.get() ?? "").replace(/(\r\n|\n\r|\r|\n)/g, breakTag + "$1");
     }
     /** Repeat a string. */
-    static str_repeat(ctx, input, multiplier) {
-        return String(input ?? "").repeat(Math.max(0, multiplier));
+    static str_repeat(ctx, inputArg, multiplierArg) {
+        const input = String(inputArg?.get() ?? "");
+        const multiplier = Number(multiplierArg?.get()) || 0;
+        return input.repeat(Math.max(0, multiplier));
     }
     /** Pad a string to a certain length with another string. */
-    static str_pad(ctx, input, padLength, padString = " ", padType = 1) {
-        let s = String(input ?? "");
+    static str_pad(ctx, inputArg, padLengthArg, padStringArg, padTypeArg) {
+        let s = String(inputArg?.get() ?? "");
+        const padLength = Number(padLengthArg?.get()) || 0;
+        const padString = padStringArg?.get() !== undefined ? String(padStringArg.get()) : " ";
+        const padType = padTypeArg?.get() !== undefined ? Number(padTypeArg.get()) : 1;
         if (s.length >= padLength)
             return s;
         const needed = padLength - s.length;
@@ -352,8 +552,9 @@ class StringRuntime {
         return s + pStr; // STR_PAD_RIGHT
     }
     /** Convert a string to an array. */
-    static str_split(ctx, string, length = 1) {
-        const s = String(string ?? "");
+    static str_split(ctx, stringArg, lengthArg) {
+        const s = String(stringArg?.get() ?? "");
+        const length = Number(lengthArg?.get()) || 1;
         const res = [];
         for (let i = 0; i < s.length; i += length) {
             res.push(s.substring(i, i + length));
@@ -361,27 +562,31 @@ class StringRuntime {
         return res;
     }
     /** Reverse a string. */
-    static strrev(ctx, string) {
-        return String(string ?? "").split("").reverse().join("");
+    static strrev(ctx, stringArg) {
+        return String(stringArg?.get() ?? "").split("").reverse().join("");
     }
     /** Generate a single-byte string from a number. */
-    static chr(ctx, ascii) {
+    static chr(ctx, asciiArg) {
+        const ascii = Number(asciiArg?.get()) || 0;
         return String.fromCharCode(ascii);
     }
     /** Convert the first byte of a string to a value between 0 and 255. */
-    static ord(ctx, character) {
-        return String(character ?? "").charCodeAt(0) || 0;
+    static ord(ctx, characterArg) {
+        return String(characterArg?.get() ?? "").charCodeAt(0) || 0;
     }
     /** Convert binary data into hexadecimal representation. */
-    static bin2hex(ctx, string) {
-        return Buffer.from(String(string ?? "")).toString("hex");
+    static bin2hex(ctx, stringArg) {
+        return Buffer.from(String(stringArg?.get() ?? "")).toString("hex");
     }
     /** Decodes a hexadecimally encoded binary string. */
-    static hex2bin(ctx, hexString) {
-        return Buffer.from(String(hexString ?? ""), "hex").toString("utf8");
+    static hex2bin(ctx, hexStringArg) {
+        return Buffer.from(String(hexStringArg?.get() ?? ""), "hex").toString("utf8");
     }
     /** Compares two "PHP-standardized" version number strings. */
-    static version_compare(ctx, v1, v2, op) {
+    static version_compare(ctx, v1Arg, v2Arg, opArg) {
+        const v1 = String(v1Arg?.get() ?? "");
+        const v2 = String(v2Arg?.get() ?? "");
+        const op = opArg?.get() !== undefined ? String(opArg.get()) : undefined;
         const parse = (v) => (v || "").split(".").map((n) => parseInt(n, 10) || 0);
         const p1 = parse(v1);
         const p2 = parse(v2);
@@ -423,9 +628,10 @@ class StringRuntime {
      * Parses encoded query string into variables.
      * @param result Output variable passed by reference to receive parsed key-value pairs.
      */
-    static parse_str(ctx, query, result) {
+    static parse_str(ctx, queryArg, result) {
+        const query = String(queryArg?.get() ?? "");
         const parsed = Object.create(null);
-        for (const [name, value] of new URLSearchParams(String(query ?? ""))) {
+        for (const [name, value] of new URLSearchParams(query)) {
             const bracket = name.indexOf("[");
             const rawBase = bracket < 0 ? name : name.slice(0, bracket);
             const base = rawBase.replace(/[ .]/g, "_");
@@ -467,11 +673,6 @@ class StringRuntime {
         if (result && typeof result.set === "function") {
             result.set(output);
         }
-        else if (result !== undefined && result !== null && typeof result === "object") {
-            for (const key of Object.keys(result))
-                delete result[key];
-            Object.assign(result, output);
-        }
         else {
             for (const [k, v] of Object.entries(output)) {
                 ctx.setVar(k, v);
@@ -481,6 +682,8 @@ class StringRuntime {
     static functions = {
         "parse_str": StringRuntime.parse_str,
         "version_compare": StringRuntime.version_compare,
+        "unpack": StringRuntime.unpack,
+        "pack": StringRuntime.pack,
         "strlen": StringRuntime.strlen,
         "substr_count": StringRuntime.substr_count,
         "substr": StringRuntime.substr,
@@ -500,6 +703,7 @@ class StringRuntime {
         "trim": StringRuntime.trim,
         "ltrim": StringRuntime.ltrim,
         "rtrim": StringRuntime.rtrim,
+        "strip_tags": StringRuntime.strip_tags,
         "strtolower": StringRuntime.strtolower,
         "strtoupper": StringRuntime.strtoupper,
         "ucfirst": StringRuntime.ucfirst,
@@ -508,9 +712,14 @@ class StringRuntime {
         "strcmp": StringRuntime.strcmp,
         "strncmp": StringRuntime.strncmp,
         "addslashes": StringRuntime.addslashes,
+        "addcslashes": StringRuntime.addcslashes,
         "stripslashes": StringRuntime.stripslashes,
+        "stripcslashes": StringRuntime.stripcslashes,
         "htmlspecialchars": StringRuntime.htmlspecialchars,
         "htmlspecialchars_decode": StringRuntime.htmlspecialchars_decode,
+        "htmlentities": StringRuntime.htmlentities,
+        "html_entity_decode": StringRuntime.html_entity_decode,
+        "strtok": StringRuntime.strtok,
         "nl2br": StringRuntime.nl2br,
         "str_repeat": StringRuntime.str_repeat,
         "str_pad": StringRuntime.str_pad,
@@ -529,9 +738,5 @@ exports.StringRuntime = StringRuntime;
 (0, Reflection_1.defineFunction)(StringRuntime.parse_str, {
     name: "parse_str",
     parameters: [{ name: "query" }, { name: "result", byref: true }],
-});
-(0, Reflection_1.defineFunction)(StringRuntime.str_replace, {
-    name: "str_replace",
-    parameters: [{ name: "search" }, { name: "replace" }, { name: "subject" }, { name: "count", byref: true }],
 });
 //# sourceMappingURL=Strings.js.map

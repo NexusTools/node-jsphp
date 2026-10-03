@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Superglobals = void 0;
+const PHPEngine_1 = require("../PHPEngine");
 class Superglobals {
     SERVER;
     GET;
@@ -12,7 +13,8 @@ class Superglobals {
     REQUEST;
     GLOBALS;
     constructor(options = {}) {
-        this.ENV = { ...process.env, ...options.env };
+        const opts = options || {};
+        this.ENV = { ...process.env, ...opts.env, ...opts.ENV };
         this.SERVER = {
             PHP_SELF: "/index.php",
             SCRIPT_NAME: "/index.php",
@@ -25,20 +27,21 @@ class Superglobals {
             SERVER_PORT: "80",
             REMOTE_ADDR: "127.0.0.1",
             DOCUMENT_ROOT: "/var/www/html",
-            SERVER_SOFTWARE: "JSPHP/8.5.0",
+            SERVER_SOFTWARE: `JSPHP/${PHPEngine_1.PHPEngine.VERSION}`,
             SERVER_PROTOCOL: "HTTP/1.1",
             GATEWAY_INTERFACE: "CGI/1.1",
             HTTP_HOST: "localhost",
             HTTP_USER_AGENT: "JSPHP Engine",
             HTTP_ACCEPT: "*/*",
-            ...options.server,
+            ...opts.server,
+            ...opts.SERVER,
         };
-        this.GET = { ...options.get };
-        this.POST = { ...options.post };
-        this.FILES = { ...options.files };
-        this.COOKIE = { ...options.cookie };
-        this.SESSION = { ...options.session };
-        this.REQUEST = { ...this.GET, ...this.POST, ...this.COOKIE };
+        this.GET = { ...opts.get, ...opts.GET };
+        this.POST = { ...opts.post, ...opts.POST };
+        this.FILES = { ...opts.files, ...opts.FILES };
+        this.COOKIE = { ...opts.cookie, ...opts.COOKIE };
+        this.SESSION = { ...opts.session, ...opts.SESSION };
+        this.REQUEST = { ...this.GET, ...this.POST, ...this.COOKIE, ...opts.request, ...opts.REQUEST };
         this.GLOBALS = {};
     }
 }

@@ -45,9 +45,8 @@ export declare class PHPObject {
     readonly phpClass: PHPClass;
     properties: Map<string, any>;
     private settingProperties;
-    private proxy;
+    private gettingProperties;
     constructor(phpClass: PHPClass);
-    asProxy(ctx: PHPContext): any;
     getProperty(ctx: PHPContext, name: string): Promise<any>;
     setProperty(ctx: PHPContext, name: string, value: any): Promise<void>;
     callMethod(ctx: PHPContext, name: string, args: any[]): Promise<any>;

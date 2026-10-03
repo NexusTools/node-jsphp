@@ -16,16 +16,24 @@ class GDExtension extends PHPExtension_1.PHPExtension {
     name = "gd";
     onInit(engine) {
         this.constants = {
-            IMG_GIF: 1,
-            IMG_JPG: 2,
-            IMG_PNG: 4,
+            img_gif: 1,
+            img_jpg: 2,
+            img_png: 4,
         };
         this.functions = {
-            imagecreatetruecolor: (ctx, width, height) => {
+            imagecreatetruecolor: (ctx, widthArg, heightArg) => {
+                const width = Number(widthArg?.get()) || 0;
+                const height = Number(heightArg?.get()) || 0;
                 return new GDImage(width, height);
             },
-            imagesx: (ctx, img) => img?.width || 0,
-            imagesy: (ctx, img) => img?.height || 0,
+            imagesx: (ctx, imgArg) => {
+                const img = imgArg?.get();
+                return img?.width || 0;
+            },
+            imagesy: (ctx, imgArg) => {
+                const img = imgArg?.get();
+                return img?.height || 0;
+            },
             gd_info: () => ({
                 "GD Version": "2.3.3",
                 "FreeType Support": true,

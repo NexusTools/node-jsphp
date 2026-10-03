@@ -38,25 +38,36 @@ const fs = __importStar(require("fs/promises"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const glob_1 = require("glob");
+function resolvePath(ctx, p) {
+    if (!p)
+        return "";
+    if (path.isAbsolute(p))
+        return p;
+    return path.resolve(ctx?.cwd || process.cwd(), p);
+}
 class FileSystemRuntime {
-    static async fileowner(ctx, filename) {
+    static async fileowner(ctx, filenameArg) {
         try {
-            return (await fs.stat(path.resolve(ctx.cwd, filename))).uid;
+            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
+            return (await fs.stat(filename)).uid;
         }
         catch {
             return false;
         }
     }
-    static async fileperms(ctx, filename) {
+    static async fileperms(ctx, filenameArg) {
         try {
-            return (await fs.stat(path.resolve(ctx.cwd, filename))).mode;
+            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
+            return (await fs.stat(filename)).mode;
         }
         catch {
             return false;
         }
     }
-    static async glob(ctx, pattern, flags = 0) {
+    static async glob(ctx, patternArg, flagsArg) {
         try {
+            const pattern = String(patternArg?.get() ?? "");
+            const flags = Number(flagsArg?.get()) || 0;
             const cwd = ctx.cwd;
             const normalizedPattern = process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
             let matches = await (0, glob_1.glob)(normalizedPattern, {
@@ -86,8 +97,10 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file(ctx, filepath, flags = 0) {
+    static async file(ctx, filepathArg, flagsArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const flags = Number(flagsArg?.get()) || 0;
             const content = await fs.readFile(filepath, "utf8");
             const lines = content.split("\n").map((line, idx, arr) => (idx < arr.length - 1 ? line + "\n" : line));
             if (flags & 2) { // FILE_SKIP_EMPTY_LINES
@@ -99,16 +112,20 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file_get_contents(ctx, filepath) {
+    static async file_get_contents(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             return await fs.readFile(filepath, "utf8");
         }
         catch {
             return false;
         }
     }
-    static async file_put_contents(ctx, filepath, data, flags = 0) {
+    static async file_put_contents(ctx, filepathArg, dataArg, flagsArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const data = dataArg?.get();
+            const flags = Number(flagsArg?.get()) || 0;
             const str = typeof data === "string" || Buffer.isBuffer(data) ? data : String(data ?? "");
             if (flags & 8) { // FILE_APPEND = 8
                 await fs.appendFile(filepath, str);
@@ -122,8 +139,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async file_exists(ctx, filepath) {
+    static async file_exists(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             await fs.access(filepath);
             return true;
         }
@@ -131,8 +149,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_dir(ctx, filepath) {
+    static async is_dir(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.isDirectory();
         }
@@ -140,8 +159,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_file(ctx, filepath) {
+    static async is_file(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.isFile();
         }
@@ -149,8 +169,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_readable(ctx, filepath) {
+    static async is_readable(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             await fs.access(filepath, fs.constants.R_OK);
             return true;
         }
@@ -158,17 +179,26 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async is_writable(ctx, filepath) {
+    static async is_writable(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             await fs.access(filepath, fs.constants.W_OK);
             return true;
         }
         catch {
-            return false;
+            try {
+                const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+                await fs.access(filepath, fs.constants.F_OK);
+                return true;
+            }
+            catch {
+                return false;
+            }
         }
     }
-    static async filesize(ctx, filepath) {
+    static async filesize(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.size;
         }
@@ -176,8 +206,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async filemtime(ctx, filepath) {
+    static async filemtime(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return Math.floor(stat.mtimeMs / 1000);
         }
@@ -185,26 +216,31 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async realpath(ctx, filepath) {
+    static async realpath(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             return await fs.realpath(filepath);
         }
         catch {
             return false;
         }
     }
-    static basename(ctx, filepath, suffix) {
-        const normalized = String(filepath ?? "").replace(/\\/g, "/");
+    static basename(ctx, filepathArg, suffixArg) {
+        const filepath = String(filepathArg?.get() ?? "");
+        const suffix = suffixArg ? String(suffixArg.get() ?? "") : undefined;
+        const normalized = filepath.replace(/\\/g, "/");
         let base = path.basename(normalized);
         if (suffix && base.endsWith(suffix)) {
             base = base.substring(0, base.length - suffix.length);
         }
         return base;
     }
-    static dirname(ctx, filepath) {
+    static dirname(ctx, filepathArg) {
+        const filepath = String(filepathArg?.get() ?? "");
         return path.dirname(filepath);
     }
-    static pathinfo(ctx, filepath, flags = 15) {
+    static pathinfo(ctx, filepathArg, flagsArg) {
+        const filepath = String(filepathArg?.get() ?? "");
         const parsed = path.parse(filepath);
         return {
             dirname: parsed.dir,
@@ -213,8 +249,11 @@ class FileSystemRuntime {
             filename: parsed.name,
         };
     }
-    static async mkdir(ctx, dirpath, mode = 0o777, recursive = false) {
+    static async mkdir(ctx, dirpathArg, modeArg, recursiveArg) {
         try {
+            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
+            const mode = Number(modeArg?.get()) || 0o777;
+            const recursive = Boolean(recursiveArg?.get());
             await fs.mkdir(dirpath, { recursive, mode });
             return true;
         }
@@ -222,8 +261,20 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async rmdir(ctx, dirpath) {
+    static async chmod(ctx, filenameArg, modeArg) {
         try {
+            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
+            const mode = Number(modeArg?.get()) || 0o666;
+            await fs.chmod(filename, mode);
+            return true;
+        }
+        catch {
+            return true;
+        }
+    }
+    static async rmdir(ctx, dirpathArg) {
+        try {
+            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
             await fs.rmdir(dirpath);
             return true;
         }
@@ -231,8 +282,9 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async unlink(ctx, filepath) {
+    static async unlink(ctx, filepathArg) {
         try {
+            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
             await fs.unlink(filepath);
             return true;
         }
@@ -240,8 +292,10 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async rename(ctx, oldname, newname) {
+    static async rename(ctx, oldnameArg, newnameArg) {
         try {
+            const oldname = resolvePath(ctx, String(oldnameArg?.get() ?? ""));
+            const newname = resolvePath(ctx, String(newnameArg?.get() ?? ""));
             await fs.rename(oldname, newname);
             return true;
         }
@@ -249,8 +303,10 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async copy(ctx, source, dest) {
+    static async copy(ctx, sourceArg, destArg) {
         try {
+            const source = resolvePath(ctx, String(sourceArg?.get() ?? ""));
+            const dest = resolvePath(ctx, String(destArg?.get() ?? ""));
             await fs.copyFile(source, dest);
             return true;
         }
@@ -258,8 +314,10 @@ class FileSystemRuntime {
             return false;
         }
     }
-    static async tempnam(ctx, dir, prefix) {
+    static async tempnam(ctx, dirArg, prefixArg) {
         try {
+            const dir = resolvePath(ctx, String(dirArg?.get() ?? ""));
+            const prefix = String(prefixArg?.get() ?? "");
             const name = path.join(dir, `${prefix}${Math.random().toString(36).substring(2)}`);
             await fs.writeFile(name, "");
             return name;
@@ -271,8 +329,9 @@ class FileSystemRuntime {
     static sys_get_temp_dir(ctx) {
         return os.tmpdir();
     }
-    static async scandir(ctx, dirpath) {
+    static async scandir(ctx, dirpathArg) {
         try {
+            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
             return await fs.readdir(dirpath);
         }
         catch {
@@ -280,18 +339,22 @@ class FileSystemRuntime {
         }
     }
     static constants = {
-        GLOB_ERR: 1,
-        GLOB_MARK: 2,
-        GLOB_NOSORT: 4,
-        GLOB_NOCHECK: 16,
-        GLOB_NOESCAPE: 64,
-        GLOB_BRACE: 1024,
-        GLOB_ONLYDIR: 8192,
+        glob_err: 1,
+        glob_mark: 2,
+        glob_nosort: 4,
+        glob_nocheck: 16,
+        glob_noescape: 64,
+        glob_brace: 1024,
+        glob_onlydir: 8192,
+        file_use_include_path: 1,
+        file_ignore_new_lines: 2,
+        file_skip_empty_lines: 4,
+        file_append: 8,
     };
     static functions = {
-        "glob": FileSystemRuntime.glob,
         "fileowner": FileSystemRuntime.fileowner,
         "fileperms": FileSystemRuntime.fileperms,
+        "glob": FileSystemRuntime.glob,
         "file": FileSystemRuntime.file,
         "file_get_contents": FileSystemRuntime.file_get_contents,
         "file_put_contents": FileSystemRuntime.file_put_contents,
@@ -307,6 +370,7 @@ class FileSystemRuntime {
         "dirname": FileSystemRuntime.dirname,
         "pathinfo": FileSystemRuntime.pathinfo,
         "mkdir": FileSystemRuntime.mkdir,
+        "chmod": FileSystemRuntime.chmod,
         "rmdir": FileSystemRuntime.rmdir,
         "unlink": FileSystemRuntime.unlink,
         "rename": FileSystemRuntime.rename,

@@ -45,11 +45,14 @@ class PHPStreamContext {
 }
 exports.PHPStreamContext = PHPStreamContext;
 class StreamRuntime {
-    static stream_context_create(ctx, options = {}) {
+    static stream_context_create(ctx, optionsArg) {
+        const options = optionsArg?.get() || {};
         return new PHPStreamContext(options);
     }
-    static async fopen(ctx, filename, mode) {
+    static async fopen(ctx, filenameArg, modeArg) {
         try {
+            const filename = String(filenameArg?.get() ?? "");
+            const mode = String(modeArg?.get() ?? "");
             const localPath = filename.startsWith("file://") ? (0, url_1.fileURLToPath)(filename) : path.resolve(ctx.cwd, filename);
             const normalizedMode = mode.replace(/[bt]/g, "");
             const flags = {
@@ -66,7 +69,8 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fclose(ctx, stream) {
+    static async fclose(ctx, streamArg) {
+        const stream = streamArg?.get();
         if (!stream?.isResource)
             return false;
         try {
@@ -78,7 +82,9 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fread(ctx, stream, length) {
+    static async fread(ctx, streamArg, lengthArg) {
+        const stream = streamArg?.get();
+        const length = Number(lengthArg?.get()) || 0;
         if (!stream?.isResource || length < 0)
             return false;
         try {
@@ -90,7 +96,10 @@ class StreamRuntime {
             return false;
         }
     }
-    static async fwrite(ctx, stream, data, length) {
+    static async fwrite(ctx, streamArg, dataArg, lengthArg) {
+        const stream = streamArg?.get();
+        const data = dataArg?.get();
+        const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
         if (!stream?.isResource)
             return false;
         try {
@@ -102,7 +111,10 @@ class StreamRuntime {
             return false;
         }
     }
-    static async stream_get_contents(ctx, stream, maxLength = -1, offset = -1) {
+    static async stream_get_contents(ctx, streamArg, maxLengthArg, offsetArg) {
+        const stream = streamArg?.get();
+        const maxLength = maxLengthArg?.get() !== undefined ? Number(maxLengthArg.get()) : -1;
+        const offset = offsetArg?.get() !== undefined ? Number(offsetArg.get()) : -1;
         try {
             if (typeof stream === "string") {
                 return await fs.readFile(stream, "utf8");
@@ -124,7 +136,8 @@ class StreamRuntime {
     static stream_get_wrappers(ctx) {
         return ["file", "http", "https", "ftp", "ftps", "compress.zlib", "compress.bzip2", "php", "data", "glob", "phar"];
     }
-    static stream_is_local(ctx, stream) {
+    static stream_is_local(ctx, streamArg) {
+        const stream = streamArg?.get();
         if (typeof stream === "string") {
             return !stream.includes("://") || stream.startsWith("file://");
         }

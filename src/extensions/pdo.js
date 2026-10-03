@@ -36,9 +36,9 @@ class PDOExtension extends PHPExtension_1.PHPExtension {
     name = "pdo";
     onInit(engine) {
         this.constants = {
-            PDO_ATTR_ERRMODE: 3,
-            PDO_ERRMODE_EXCEPTION: 2,
-            PDO_FETCH_ASSOC: 2,
+            pdo_attr_errmode: 3,
+            pdo_errmode_exception: 2,
+            pdo_fetch_assoc: 2,
         };
     }
 }

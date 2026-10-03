@@ -5,6 +5,7 @@ exports.wrapJSValue = wrapJSValue;
 exports.unwrapPHPValue = unwrapPHPValue;
 const PHPExtension_1 = require("../PHPExtension");
 const PHPObject_1 = require("../runtime/PHPObject");
+const PHPVariable_1 = require("../runtime/PHPVariable");
 function wrapJSValue(val) {
     if (val === null || val === undefined)
         return val;
@@ -16,13 +17,14 @@ function wrapJSValue(val) {
     return new NodeJSObject(val);
 }
 function unwrapPHPValue(val) {
-    if (val instanceof NodeJSObject) {
-        return val.jsValue;
+    const actual = val instanceof PHPVariable_1.PHPVariable ? val.get() : val;
+    if (actual instanceof NodeJSObject) {
+        return actual.jsValue;
     }
-    if (Array.isArray(val)) {
-        return val.map(unwrapPHPValue);
+    if (Array.isArray(actual)) {
+        return actual.map(unwrapPHPValue);
     }
-    return val;
+    return actual;
 }
 class NodeJSObject extends PHPObject_1.PHPObject {
     jsValue;
@@ -142,16 +144,20 @@ class NodeJSExtension extends PHPExtension_1.PHPExtension {
     name = "nodejs";
     onInit(engine) {
         this.functions = {
-            nodejs_require: (ctx, moduleName) => {
+            nodejs_require: (ctx, moduleNameArg) => {
+                const moduleName = String(moduleNameArg?.get() ?? "");
                 return NodeJSService.require(moduleName);
             },
-            nodejs_global: (ctx, name) => {
+            nodejs_global: (ctx, nameArg) => {
+                const name = String(nameArg?.get() ?? "");
                 return NodeJSService.global(name);
             },
-            nodejs_eval: (ctx, code) => {
+            nodejs_eval: (ctx, codeArg) => {
+                const code = String(codeArg?.get() ?? "");
                 return NodeJSService.eval(code);
             },
-            nodejs_new: (ctx, className, ...args) => {
+            nodejs_new: (ctx, classNameArg, ...args) => {
+                const className = String(classNameArg?.get() ?? "");
                 return NodeJSService.new(className, ...args);
             },
         };

@@ -38,13 +38,15 @@ const dns = __importStar(require("dns/promises"));
 const os = __importStar(require("os"));
 const PHPError_1 = require("./PHPError");
 class NetworkingRuntime {
-    static urlencode(ctx, value, raw = false) {
+    static urlencode(ctx, valueArg, raw = false) {
+        const value = valueArg?.get();
         let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
         if (!raw)
             encoded = encoded.replace(/~/g, "%7E").replace(/%20/g, "+");
         return encoded;
     }
-    static urldecode(ctx, value, raw = false) {
+    static urldecode(ctx, valueArg, raw = false) {
+        const value = valueArg?.get();
         let encoded = String(value ?? "").replace(/&/g, "%26");
         if (raw)
             encoded = encoded.replace(/\+/g, "%2B");
@@ -53,7 +55,8 @@ class NetworkingRuntime {
     static gethostname(ctx) {
         return os.hostname();
     }
-    static async gethostbyname(ctx, hostname) {
+    static async gethostbyname(ctx, hostnameArg) {
+        const hostname = String(hostnameArg?.get() ?? "");
         try {
             const res = await dns.lookup(hostname, { family: 4 });
             return res.address;
@@ -62,7 +65,8 @@ class NetworkingRuntime {
             return hostname;
         }
     }
-    static async gethostbyaddr(ctx, ip) {
+    static async gethostbyaddr(ctx, ipArg) {
+        const ip = String(ipArg?.get() ?? "");
         try {
             const names = await dns.reverse(ip);
             return names[0] || false;
@@ -71,7 +75,8 @@ class NetworkingRuntime {
             return false;
         }
     }
-    static ip2long(ctx, ip) {
+    static ip2long(ctx, ipArg) {
+        const ip = String(ipArg?.get() ?? "");
         const parts = (ip || "").split(".");
         if (parts.length !== 4)
             return false;
@@ -84,7 +89,8 @@ class NetworkingRuntime {
         }
         return num >>> 0;
     }
-    static long2ip(ctx, num) {
+    static long2ip(ctx, numArg) {
+        const num = Number(numArg?.get());
         if (typeof num !== "number" || num < 0 || num > 4294967295)
             return false;
         return [
@@ -94,7 +100,9 @@ class NetworkingRuntime {
             num & 255,
         ].join(".");
     }
-    static parse_url(ctx, urlStr, component = -1) {
+    static parse_url(ctx, urlStrArg, componentArg) {
+        const urlStr = String(urlStrArg?.get() ?? "");
+        const component = componentArg?.get() !== undefined ? Number(componentArg.get()) : -1;
         try {
             const parsed = new URL(urlStr, "http://localhost");
             const obj = {
@@ -123,7 +131,6 @@ class NetworkingRuntime {
                 return obj.query;
             if (component === 7)
                 return obj.fragment;
-            // Filter undefined
             const cleanObj = {};
             for (const [k, v] of Object.entries(obj)) {
                 if (v !== undefined)
@@ -135,7 +142,10 @@ class NetworkingRuntime {
             return false;
         }
     }
-    static http_build_query(ctx, data, numericPrefix = "", argSeparator = "&") {
+    static http_build_query(ctx, dataArg, numericPrefixArg, argSeparatorArg) {
+        const data = dataArg?.get();
+        const numericPrefix = String(numericPrefixArg?.get() ?? "");
+        const argSeparator = argSeparatorArg?.get() !== undefined ? String(argSeparatorArg.get()) : "&";
         if (!data || typeof data !== "object")
             return "";
         const params = new URLSearchParams();
@@ -157,7 +167,10 @@ class NetworkingRuntime {
         build(data);
         return params.toString().replace(/\+/g, "%20").replace(/&/g, argSeparator);
     }
-    static header(ctx, headerStr, replace = true, code) {
+    static header(ctx, headerStrArg, replaceArg, codeArg) {
+        const headerStr = String(headerStrArg?.get() ?? "");
+        const replace = replaceArg?.get() !== undefined ? Boolean(replaceArg.get()) : true;
+        const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
         if (!headerStr)
             return;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
@@ -186,7 +199,14 @@ class NetworkingRuntime {
             ctx.response.statusCode = code;
         }
     }
-    static setcookie(ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httponly = false) {
+    static setcookie(ctx, nameArg, valueArg, expiresArg, pathArg, domainArg, secureArg, httponlyArg) {
+        const name = String(nameArg?.get() ?? "");
+        const value = String(valueArg?.get() ?? "");
+        const expires = Number(expiresArg?.get()) || 0;
+        const path = String(pathArg?.get() ?? "");
+        const domain = String(domainArg?.get() ?? "");
+        const secure = Boolean(secureArg?.get());
+        const httponly = Boolean(httponlyArg?.get());
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
             throw new PHPError_1.PHPWarning("Cannot modify cookie information - no server response handler");
         }
@@ -197,7 +217,14 @@ class NetworkingRuntime {
         ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, false);
         return true;
     }
-    static setrawcookie(ctx, name, value = "", expires = 0, path = "", domain = "", secure = false, httponly = false) {
+    static setrawcookie(ctx, nameArg, valueArg, expiresArg, pathArg, domainArg, secureArg, httponlyArg) {
+        const name = String(nameArg?.get() ?? "");
+        const value = String(valueArg?.get() ?? "");
+        const expires = Number(expiresArg?.get()) || 0;
+        const path = String(pathArg?.get() ?? "");
+        const domain = String(domainArg?.get() ?? "");
+        const secure = Boolean(secureArg?.get());
+        const httponly = Boolean(httponlyArg?.get());
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
             throw new PHPError_1.PHPWarning("Cannot modify cookie information - no server response handler");
         }
@@ -208,7 +235,8 @@ class NetworkingRuntime {
         ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, true);
         return true;
     }
-    static header_remove(ctx, name) {
+    static header_remove(ctx, nameArg) {
+        const name = nameArg?.get() !== undefined ? String(nameArg.get()) : undefined;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
             throw new PHPError_1.PHPWarning("Cannot modify header information - no server response handler");
         }
@@ -223,7 +251,8 @@ class NetworkingRuntime {
     static headers_sent(ctx) {
         return ctx.response.headersSent;
     }
-    static http_response_code(ctx, code) {
+    static http_response_code(ctx, codeArg) {
+        const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
             throw new PHPError_1.PHPWarning("Cannot modify response code - no server response handler");
         }

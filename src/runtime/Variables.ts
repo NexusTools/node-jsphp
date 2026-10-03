@@ -4,12 +4,14 @@ import type { PHPEngine } from "../PHPEngine";
 import type { PHPContext } from "../PHPContext";
 import { PHPObject } from "./PHPObject";
 import { PHPError, PHPTypeError } from "./PHPError";
+import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable";
 
 export class VariablesRuntime {
   /**
    * Serializes a value into a PHP-compatible serialized string representation.
    */
-  public static serialize(ctx: PHPContext | null, value: any): string {
+  public static serialize(ctx: PHPContext | null, valueArg?: PHPReference): string {
+    const value = valueArg?.get();
     const scope: Record<string, any> = Object.create(null);
     const active = new WeakSet<object>();
     const prepare = (input: any): any => {
@@ -45,9 +47,10 @@ export class VariablesRuntime {
   /**
    * Dumps information about one or more variables.
    */
-  public static var_dump(ctx: any, ...args: any[]): void {
-    for (const val of args) {
-      if (val === null) {
+  public static var_dump(ctx: any, ...args: PHPReference[]): void {
+    for (const arg of args) {
+      const val = arg?.get();
+      if (val === null || val === undefined) {
         ctx.echo("NULL\n");
       } else if (typeof val === "boolean") {
         ctx.echo(`bool(${val})\n`);
@@ -77,9 +80,11 @@ export class VariablesRuntime {
   /**
    * Prints human-readable information about a variable.
    */
-  public static print_r(ctx: any, val: any, returnVal = false): string | true {
+  public static print_r(ctx: any, valArg?: PHPReference, returnValArg?: PHPReference): string | true {
+    const val = valArg?.get();
+    const returnVal = Boolean(returnValArg?.get());
     let str = "";
-    if (val === null) str = "";
+    if (val === null || val === undefined) str = "";
     else if (typeof val === "boolean") str = val ? "1" : "";
     else if (typeof val === "object" || Array.isArray(val)) {
       str = JSON.stringify(val, null, 4);
@@ -93,25 +98,39 @@ export class VariablesRuntime {
   }
 
   /** Finds whether a variable is an array. */
-  public static is_array(ctx: PHPContext | null, val: any): boolean { return Array.isArray(val); }
+  public static is_array(ctx: PHPContext | null, valArg?: PHPReference): boolean { return Array.isArray(valArg?.get()); }
   /** Finds whether a variable is a boolean. */
-  public static is_bool(ctx: PHPContext | null, val: any): boolean { return typeof val === "boolean"; }
+  public static is_bool(ctx: PHPContext | null, valArg?: PHPReference): boolean { return typeof valArg?.get() === "boolean"; }
   /** Finds whether a variable is a float. */
-  public static is_float(ctx: PHPContext | null, val: any): boolean { return typeof val === "number" && !Number.isInteger(val); }
+  public static is_float(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return typeof val === "number" && !Number.isInteger(val);
+  }
   /** Finds whether a variable is an integer. */
-  public static is_int(ctx: PHPContext | null, val: any): boolean { return typeof val === "number" && Number.isInteger(val); }
+  public static is_int(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return typeof val === "number" && Number.isInteger(val);
+  }
   /** Finds whether a variable is NULL. */
-  public static is_null(ctx: PHPContext | null, val: any): boolean { return val === null || val === undefined; }
+  public static is_null(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return val === null || val === undefined;
+  }
   /** Finds whether a variable is a number or a numeric string. */
-  public static is_numeric(ctx: PHPContext | null, val: any): boolean {
+  public static is_numeric(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
     if (typeof val === "number") return !Number.isNaN(val);
     if (typeof val !== "string") return false;
     return !Number.isNaN(Number(val)) && !Number.isNaN(parseFloat(val));
   }
   /** Finds whether a variable is an object. */
-  public static is_object(ctx: PHPContext | null, val: any): boolean { return typeof val === "function" || val instanceof PHPObject || (typeof val === "object" && val !== null && !Array.isArray(val)); }
+  public static is_object(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return typeof val === "function" || val instanceof PHPObject || (typeof val === "object" && val !== null && !Array.isArray(val));
+  }
   /** Gets the properties of the given object. */
-  public static get_object_vars(ctx: PHPContext | null, value: any): Record<string, any> {
+  public static get_object_vars(ctx: PHPContext | null, valueArg?: PHPReference): Record<string, any> {
+    const value = valueArg?.get();
     if (value instanceof PHPObject) {
       return Object.fromEntries([...value.properties].filter(([name]) => {
         const metadata = value.phpClass.properties.get(name);
@@ -131,20 +150,31 @@ export class VariablesRuntime {
     return { ...value };
   }
   /** Finds whether a variable is a scalar. */
-  public static is_scalar(ctx: PHPContext | null, val: any): boolean {
+  public static is_scalar(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
     const t = typeof val;
     return t === "string" || t === "number" || t === "boolean";
   }
   /** Finds whether a variable is a string. */
-  public static is_string(ctx: PHPContext | null, val: any): boolean { return typeof val === "string"; }
+  public static is_string(ctx: PHPContext | null, valArg?: PHPReference): boolean { return typeof valArg?.get() === "string"; }
   /** Verify that the contents of a variable is an iterable value. */
-  public static is_iterable(ctx: PHPContext | null, val: any): boolean { return Array.isArray(val) || (val && typeof val === "object"); }
+  public static is_iterable(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return Array.isArray(val) || (val && typeof val === "object");
+  }
   /** Verify that the contents of a variable is a countable value. */
-  public static is_countable(ctx: PHPContext | null, val: any): boolean { return Array.isArray(val) || typeof val === "string"; }
+  public static is_countable(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return Array.isArray(val) || typeof val === "string";
+  }
   /** Finds whether a variable is a resource. */
-  public static is_resource(ctx: PHPContext | null, val: any): boolean { return val && typeof val === "object" && Boolean(val.isResource); }
+  public static is_resource(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    const val = valArg?.get();
+    return val && typeof val === "object" && Boolean(val.isResource);
+  }
   /** Get the type of a variable. */
-  public static gettype(ctx: PHPContext | null, val: any): string {
+  public static gettype(ctx: PHPContext | null, valArg?: PHPReference): string {
+    const val = valArg?.get();
     if (val === null || val === undefined) return "NULL";
     if (typeof val === "boolean") return "boolean";
     if (typeof val === "number") return Number.isInteger(val) ? "integer" : "double";
@@ -154,33 +184,100 @@ export class VariablesRuntime {
     return "object";
   }
   /** Returns the name of the class of an object. */
-  public static get_class(ctx: PHPContext | null, val: any): string | false {
+  public static get_class(ctx: PHPContext | null, valArg?: PHPReference): string | false {
+    const val = valArg?.get();
     return val?.phpClass?.name || val?.constructor?.name || false;
   }
   /** Gets a prefixed unique identifier based on the current time in microseconds. */
-  public static uniqid(ctx: PHPContext | null, prefix = "", moreEntropy = false): string {
+  public static uniqid(ctx: PHPContext | null, prefixArg?: PHPReference, moreEntropyArg?: PHPReference): string {
+    const prefix = String(prefixArg?.get() ?? "");
+    const moreEntropy = Boolean(moreEntropyArg?.get());
     const timestamp = Date.now().toString(16);
     const entropy = crypto.randomBytes(moreEntropy ? 8 : 4).toString("hex");
     return `${prefix}${timestamp}${entropy}`;
   }
   /** Get the integer value of a variable. */
-  public static intval(ctx: PHPContext | null, val: any, base = 10): number {
-    const p = parseInt(String(val), base);
+  public static intval(ctx: PHPContext | null, valArg?: PHPReference, baseArg?: PHPReference): number {
+    const val = valArg?.get();
+    const base = Number(baseArg?.get()) || 10;
+    const p = parseInt(String(val ?? 0), base);
     return Number.isNaN(p) ? 0 : p;
   }
   /** Get float value of a variable. */
-  public static floatval(ctx: PHPContext | null, val: any): number {
-    const f = parseFloat(String(val));
+  public static floatval(ctx: PHPContext | null, valArg?: PHPReference): number {
+    const f = parseFloat(String(valArg?.get() ?? 0));
     return Number.isNaN(f) ? 0 : f;
   }
   /** Get string value of a variable. */
-  public static strval(ctx: PHPContext | null, val: any): string { return String(val ?? ""); }
+  public static strval(ctx: PHPContext | null, valArg?: PHPReference): string {
+    return String(valArg?.get() ?? "");
+  }
   /** Get the boolean value of a variable. */
-  public static boolval(ctx: PHPContext | null, val: any): boolean { return Boolean(val); }
+  public static boolval(ctx: PHPContext | null, valArg?: PHPReference): boolean {
+    return Boolean(valArg?.get());
+  }
+
+  public static compact(ctx: PHPContext, ...args: PHPReference[]): Record<string, any> {
+    const result: Record<string, any> = {};
+    const processName = (name: string) => {
+      const val = ctx.getVar(name);
+      if (val !== undefined) {
+        result[name] = val;
+      }
+    };
+    for (const arg of args) {
+      const val = arg?.get();
+      if (typeof val === "string") {
+        processName(val);
+      } else if (Array.isArray(val)) {
+        for (const item of val) {
+          if (typeof item === "string") processName(item);
+        }
+      }
+    }
+    return result;
+  }
+
+  public static extract(ctx: PHPContext, arrayArg?: PHPReference): number {
+    const array = arrayArg?.get();
+    if (!array || typeof array !== "object") return 0;
+    let count = 0;
+    for (const [k, v] of Object.entries(array)) {
+      ctx.setVar(k, v);
+      count++;
+    }
+    return count;
+  }
+
+  public static var_export(ctx: PHPContext, valArg?: PHPReference, returnArg?: PHPReference): string | true {
+    const val = valArg?.get();
+    const returnVal = Boolean(returnArg?.get());
+    let str = "";
+    if (val === null || val === undefined) str = "NULL";
+    else if (typeof val === "boolean") str = val ? "true" : "false";
+    else if (typeof val === "number") str = String(val);
+    else if (typeof val === "string") str = "'" + val.replace(/'/g, "\\'") + "'";
+    else if (Array.isArray(val)) {
+      const items = val.map((v, i) => `${i} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
+      str = "array (\n  " + items.join(",\n  ") + ",\n)";
+    } else if (val instanceof PHPObject) {
+      const items = Array.from(val.properties.entries()).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
+      str = `${val.phpClass.name}::__set_state(array(\n  ` + items.join(",\n  ") + "\n))";
+    } else if (typeof val === "object") {
+      const items = Object.entries(val).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
+      str = "array (\n  " + items.join(",\n  ") + ",\n)";
+    } else {
+      str = String(val);
+    }
+    if (returnVal) return str;
+    ctx.echo(str);
+    return true;
+  }
 
   static functions = {
     "var_dump": VariablesRuntime.var_dump,
     "print_r": VariablesRuntime.print_r,
+    "var_export": VariablesRuntime.var_export,
     "is_array": VariablesRuntime.is_array,
     "is_bool": VariablesRuntime.is_bool,
     "is_float": VariablesRuntime.is_float,
@@ -202,6 +299,8 @@ export class VariablesRuntime {
     "floatval": VariablesRuntime.floatval,
     "strval": VariablesRuntime.strval,
     "boolval": VariablesRuntime.boolval,
+    "compact": VariablesRuntime.compact,
+    "extract": VariablesRuntime.extract,
   };
 
   public static register(engine: PHPEngine): void {
