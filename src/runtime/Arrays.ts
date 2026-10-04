@@ -147,7 +147,14 @@ export class ArrayRuntime {
     const array = arrayArg?.get();
     const others = othersArgs.map((a) => a?.get());
     if (!array || typeof array !== "object") return Array.isArray(array) ? [] : {};
-    const values = others.map((other) => new Set(Object.values(other || {}).map(String)));
+    const values = others.map((other) => {
+      const vals = Array.isArray(other)
+        ? other
+        : (typeof other === "object" && other !== null)
+        ? Object.values(other)
+        : [other];
+      return new Set(vals.map(String));
+    });
     const isArr = Array.isArray(array);
     const result: any = isArr ? [] : {};
     for (const [key, value] of Object.entries(array)) {

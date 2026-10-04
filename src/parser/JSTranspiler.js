@@ -77,15 +77,24 @@ export class JSTranspiler {
         this.currentNamespaceName = "";
         this.classImports.clear();
         const bodyNodes = finalAst?.children || finalAst?.body || (Array.isArray(finalAst) ? finalAst : [finalAst]);
-        const topFuncs = bodyNodes.filter((n) => n?.kind === "function");
+        for (const node of bodyNodes) {
+            if (node?.kind === "use" || node?.kind === "usegroup") {
+                for (const item of node.items || []) {
+                    const name = this.getConstName(item.name || item);
+                    const alias = item.alias ? this.getConstName(item.alias) : name.split("\\").pop() || name;
+                    this.classImports.set(alias.toLowerCase(), name.toLowerCase());
+                    this.classImportsOriginal.set(alias.toLowerCase(), name);
+                }
+            }
+        }
+        const topFuncs = this.collectFunctionsInNodes(bodyNodes);
+        const registeredFuncs = new Set();
         for (const funcNode of topFuncs) {
             const funcName = (funcNode.name?.name || funcNode.name || "").toString().toLowerCase();
-            const originalFuncName = (funcNode.name?.name || funcNode.name || "").toString();
-            const safeFnId = funcName.replace(/[^a-zA-Z0-9_]/g, "_");
-            lines.push(`    if (typeof __fn_${safeFnId} === "function") {`);
-            lines.push(`      if (Object.hasOwn(ctx.functions, ${JSON.stringify(funcName)})) throw new PHPFatalError(\`Cannot redeclare ${originalFuncName}()\`);`);
-            lines.push(`      ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
-            lines.push(`    }`);
+            if (registeredFuncs.has(funcName))
+                continue;
+            registeredFuncs.add(funcName);
+            this.transpileFunctionNode(funcNode, lines, lineMap, mapGen, filepath, 4);
         }
         const scopeVars = this.collectVariablesInScope(bodyNodes);
         for (const vName of scopeVars) {
@@ -121,6 +130,83 @@ export class JSTranspiler {
             code: fullCode,
             map: mapString,
         };
+    }
+    collectFunctionsInNodes(nodes, result = []) {
+        if (!Array.isArray(nodes))
+            return result;
+        for (const node of nodes) {
+            if (!node || typeof node !== "object")
+                continue;
+            if (node.kind === "function") {
+                result.push(node);
+            }
+            if (node.body) {
+                this.collectFunctionsInNodes(Array.isArray(node.body) ? node.body : node.body.children || [node.body], result);
+            }
+            if (node.children) {
+                this.collectFunctionsInNodes(node.children, result);
+            }
+            if (node.alternate) {
+                this.collectFunctionsInNodes(Array.isArray(node.alternate) ? node.alternate : node.alternate.children || [node.alternate], result);
+            }
+        }
+        return result;
+    }
+    transpileFunctionNode(node, lines, lineMap, mapGen, filepath, indent) {
+        const pad = " ".repeat(indent);
+        const originalFuncName = (node.name?.name || node.name || "").toString();
+        const funcName = originalFuncName.toLowerCase();
+        const safeFnId = funcName.replace(/[^a-zA-Z0-9_]/g, "_");
+        const visibility = (node.visibility || "public").toString();
+        const params = (node.arguments || []).map((a, idx) => {
+            const pName = this.getConstName(a.name || a);
+            const hasDefault = Boolean(a.value);
+            const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
+            return { name: pName, position: idx, byref: Boolean(a.byref || a.byRef), variadic: Boolean(a.variadic || a.isVariadic), isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
+        });
+        const requiredCount = params.filter((p) => !p.hasDefault).length;
+        const isGen = this.containsYield(node.body?.children || node.body);
+        lines.push(`${pad}async function${isGen ? "*" : ""} __fn_${safeFnId}(ctx, ...args) {`);
+        lines.push(`${pad}  ctx.pushScope(args);`);
+        lines.push(`${pad}  try {`);
+        const scopeVars = this.collectVariablesInScope(node.body?.children || node.body);
+        for (const p of params)
+            scopeVars.add(p.name);
+        for (const vName of scopeVars) {
+            if (vName === "this" || this.isSuperglobal(vName))
+                continue;
+            const safeId = vName.replace(/[^a-zA-Z0-9_]/g, "_");
+            lines.push(`${pad}    const $v_${safeId} = ctx.getPHPVar(${JSON.stringify(vName)});`);
+        }
+        params.forEach((p, idx) => {
+            const safeId = p.name.replace(/[^a-zA-Z0-9_]/g, "_");
+            if (p.variadic) {
+                lines.push(`${pad}    $v_${safeId}.set(args.slice(${idx}).map(a => a && typeof a.get === "function" ? a.get() : a));`);
+            }
+            else if (p.byref) {
+                lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].bindRef === "function") $v_${safeId}.bindRef(args[${idx}]); else $v_${safeId}.set(args[${idx}]);`);
+            }
+            else {
+                lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].get === "function") $v_${safeId}.set(args[${idx}].get() !== undefined ? args[${idx}].get() : ${p.defaultValue}); else $v_${safeId}.set(args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
+            }
+        });
+        const savedSwitchStack = this.switchLabelStack;
+        const savedFuncName = this.currentFuncName;
+        this.currentFuncName = funcName;
+        this.switchLabelStack = [];
+        try {
+            this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, funcName);
+        }
+        finally {
+            this.switchLabelStack = savedSwitchStack;
+            this.currentFuncName = savedFuncName;
+        }
+        lines.push(`${pad}  } finally {`);
+        lines.push(`${pad}    ctx.popScope();`);
+        lines.push(`${pad}  }`);
+        lines.push(`${pad}};`);
+        lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
+        lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
     }
     transpileNodeList(nodes, lines, lineMap, mapGen, filepath, indent, currentFunc) {
         if (!nodes)
@@ -442,59 +528,6 @@ export class JSTranspiler {
                 break;
             }
             case "function": {
-                const originalFuncName = (node.name?.name || node.name || "").toString();
-                const funcName = originalFuncName.toLowerCase();
-                const safeFnId = funcName.replace(/[^a-zA-Z0-9_]/g, "_");
-                const visibility = (node.visibility || "public").toString();
-                const params = (node.arguments || []).map((a, idx) => {
-                    const pName = this.getConstName(a.name || a);
-                    const hasDefault = Boolean(a.value);
-                    const defaultVal = a.value ? this.transpileExpr(a.value, filepath) : "undefined";
-                    return { name: pName, position: idx, byref: Boolean(a.byref || a.byRef), variadic: Boolean(a.variadic || a.isVariadic), isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
-                });
-                const requiredCount = params.filter((p) => !p.hasDefault).length;
-                const isGen = this.containsYield(node.body?.children || node.body);
-                lines.push(`${pad}async function${isGen ? "*" : ""} __fn_${safeFnId}(ctx, ...args) {`);
-                lines.push(`${pad}  ctx.pushScope(args);`);
-                lines.push(`${pad}  try {`);
-                const scopeVars = this.collectVariablesInScope(node.body?.children || node.body);
-                for (const p of params)
-                    scopeVars.add(p.name);
-                for (const vName of scopeVars) {
-                    if (vName === "this" || this.isSuperglobal(vName))
-                        continue;
-                    const safeId = vName.replace(/[^a-zA-Z0-9_]/g, "_");
-                    lines.push(`${pad}    const $v_${safeId} = ctx.getPHPVar(${JSON.stringify(vName)});`);
-                }
-                params.forEach((p, idx) => {
-                    const safeId = p.name.replace(/[^a-zA-Z0-9_]/g, "_");
-                    if (p.variadic) {
-                        lines.push(`${pad}    $v_${safeId}.set(args.slice(${idx}).map(a => a && typeof a.get === "function" ? a.get() : a));`);
-                    }
-                    else if (p.byref) {
-                        lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].bindRef === "function") $v_${safeId}.bindRef(args[${idx}]); else $v_${safeId}.set(args[${idx}]);`);
-                    }
-                    else {
-                        lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].get === "function") $v_${safeId}.set(args[${idx}].get() !== undefined ? args[${idx}].get() : ${p.defaultValue}); else $v_${safeId}.set(args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
-                    }
-                });
-                const savedSwitchStack = this.switchLabelStack;
-                const savedFuncName = this.currentFuncName;
-                this.currentFuncName = funcName;
-                this.switchLabelStack = [];
-                try {
-                    this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, funcName);
-                }
-                finally {
-                    this.switchLabelStack = savedSwitchStack;
-                    this.currentFuncName = savedFuncName;
-                }
-                lines.push(`${pad}  } finally {`);
-                lines.push(`${pad}    ctx.popScope();`);
-                lines.push(`${pad}  }`);
-                lines.push(`${pad}};`);
-                lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
-                lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
                 break;
             }
             case "class": {

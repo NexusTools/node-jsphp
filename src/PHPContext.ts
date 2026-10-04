@@ -293,9 +293,6 @@ export class PHPContext {
   /** Writes output text to stdout or active output buffer. */
   public async echo(data: any): Promise<void> {
     const str = String(data ?? "");
-    if (str.includes("Database Name") || str.includes("dbname")) {
-      console.log("ECHO TRACE:", JSON.stringify(str), "level:", this.outputBuffer.getLevel());
-    }
     if (this.outputBuffer.getLevel() > 0) {
       this.outputBuffer.write(str);
     } else {
@@ -719,9 +716,6 @@ export class PHPContext {
     if (fn) {
       let res = await fn.apply(this, [this, ...callArguments]);
       if (res instanceof PHPVariable) res = res.get();
-      if (strName === "_e" || strName === "translate") {
-        console.log(`CALL ${strName}(${args.map((a) => JSON.stringify(a?.get ? a.get() : a)).join(", ")}):`, JSON.stringify(res));
-      }
       logDebug(`DONE_FUNC: ${strName}`);
       return res;
     }

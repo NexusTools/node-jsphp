@@ -36,7 +36,7 @@ import { HashExtension } from "./extensions/hash.js";
 import { OpenSSLExtension } from "./extensions/openssl.js";
 import { CoreRuntime } from "./runtime/CoreRuntime.js";
 export class PHPEngine {
-    static REVISION = 240;
+    static REVISION = 280;
     static VERSION = "8.5.0";
     static TRUE = new PHPLiteral(true);
     static FALSE = new PHPLiteral(false);

@@ -22,6 +22,8 @@ export declare class JSTranspiler {
     private foreachDepth;
     constructor();
     transpile(code: string, filepath?: string, options?: TranspileOptions): TranspilationResult;
+    private collectFunctionsInNodes;
+    private transpileFunctionNode;
     private transpileNodeList;
     private transpileStmt;
     private containsYield;

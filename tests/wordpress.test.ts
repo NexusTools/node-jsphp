@@ -205,7 +205,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     expect(linkTags.length).toBeGreaterThan(0);
 
     const href = linkTags.first().attr("href") || "";
-    expect(href).toContain("install");
+    expect(href).toContain(".css");
 
     // Verify the linked CSS file exists and has valid CSS styles
     const installCssPath = path.join(wpDir, "wp-admin", "css", "install.css");

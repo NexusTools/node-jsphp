@@ -11,7 +11,7 @@ export interface PHPEngineOptions {
     watch?: boolean;
 }
 export declare class PHPEngine {
-    static readonly REVISION = 240;
+    static readonly REVISION = 280;
     static readonly VERSION = "8.5.0";
     static readonly TRUE: PHPLiteral;
     static readonly FALSE: PHPLiteral;

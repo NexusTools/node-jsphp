@@ -53,7 +53,7 @@ export interface PHPEngineOptions {
 }
 
 export class PHPEngine {
-  public static readonly REVISION = 240;
+  public static readonly REVISION = 280;
   public static readonly VERSION = "8.5.0";
 
   public static readonly TRUE = new PHPLiteral(true);
