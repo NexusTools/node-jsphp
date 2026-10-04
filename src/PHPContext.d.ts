@@ -1,8 +1,8 @@
 import { Writable } from "stream";
-import { PHPEngine } from "./PHPEngine";
-import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals";
-import { OutputBufferStack } from "./runtime/OutputBuffer";
-import { PHPVariable, PHPReference } from "./runtime/PHPVariable";
+import { PHPEngine } from "./PHPEngine.js";
+import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals.js";
+import { OutputBufferStack } from "./runtime/OutputBuffer.js";
+import { PHPVariable, PHPReference } from "./runtime/PHPVariable.js";
 export interface PHPContextOptions {
     cwd?: string;
     env?: Record<string, string>;
@@ -57,6 +57,8 @@ export declare class PHPContext {
     constructor(engine: PHPEngine, options?: PHPContextOptions);
     currentClassStack: any[];
     get currentClass(): any;
+    get currentClassName(): string;
+    get currentParentClassName(): string;
     /**
      * Checks if an object is an instance of a class or interface.
      * @param className Class or interface name in lowercase.

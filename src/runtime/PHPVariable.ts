@@ -1,5 +1,5 @@
-import type { PHPContext } from "../PHPContext";
-import { PHPFatalError } from "./PHPError";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPFatalError } from "./PHPError.js";
 
 export interface PHPReference {
   get(): any;
@@ -14,9 +14,7 @@ export class PHPLiteral implements PHPReference {
   private readonly value: any;
 
   constructor(value: any) {
-    this.value = value && typeof value === "object" && typeof (value as any).get === "function"
-      ? (value as any).get()
-      : value;
+    this.value = value;
   }
 
   public get(): any {
@@ -41,6 +39,22 @@ export class PHPLiteral implements PHPReference {
 
   public async call(ctx: PHPContext, method: string, args: any[] = []): Promise<any> {
     throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
+  }
+
+  public toString(): string {
+    const val = this.get();
+    return val === null || val === undefined ? "" : String(val);
+  }
+
+  public valueOf(): any {
+    return this.get();
+  }
+
+  public [Symbol.toPrimitive](hint: string): any {
+    const val = this.get();
+    if (hint === "number") return Number(val) || 0;
+    if (hint === "string") return val === null || val === undefined ? "" : String(val);
+    return val;
   }
 }
 
@@ -123,25 +137,28 @@ export class PHPVariable implements PHPReference {
       if (res && typeof res === "object" && typeof res.get === "function") res = res.get();
       return res;
     }
-
     if (typeof obj[lowerMethod] === "function") {
       let res = await obj[lowerMethod].apply(obj, [ctx, ...callArgs]);
       if (res && typeof res === "object" && typeof res.get === "function") res = res.get();
       return res;
     }
 
-    let target = obj;
-    while (target && target !== Object.prototype) {
-      for (const propName of Object.getOwnPropertyNames(target)) {
-        if (propName.toLowerCase() === lowerMethod && typeof obj[propName] === "function") {
-          let res = await obj[propName].apply(obj, [ctx, ...callArgs]);
-          if (res && typeof res === "object" && typeof res.get === "function") res = res.get();
-          return res;
-        }
-      }
-      target = Object.getPrototypeOf(target);
-    }
+    throw new PHPFatalError(`Call to undefined method ${obj?.constructor?.name}::${method}()`);
+  }
 
-    throw new PHPFatalError(`Call to undefined method ${obj?.constructor?.name || "object"}::${method}()`);
+  public toString(): string {
+    const val = this.get();
+    return val === null || val === undefined ? "" : String(val);
+  }
+
+  public valueOf(): any {
+    return this.get();
+  }
+
+  public [Symbol.toPrimitive](hint: string): any {
+    const val = this.get();
+    if (hint === "number") return Number(val) || 0;
+    if (hint === "string") return val === null || val === undefined ? "" : String(val);
+    return val;
   }
 }

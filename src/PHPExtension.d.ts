@@ -1,4 +1,4 @@
-import { PHPEngine, PHPFunction } from "./PHPEngine";
+import { PHPEngine, PHPFunction } from "./PHPEngine.js";
 export declare abstract class PHPExtension {
     abstract readonly name: string;
     readonly version: string;

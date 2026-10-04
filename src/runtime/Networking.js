@@ -1,43 +1,6 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.NetworkingRuntime = void 0;
-const dns = __importStar(require("dns/promises"));
-const os = __importStar(require("os"));
-const PHPError_1 = require("./PHPError");
-class NetworkingRuntime {
+import * as dns from "dns/promises";
+import * as os from "os";
+export class NetworkingRuntime {
     static urlencode(ctx, valueArg, raw = false) {
         const value = valueArg?.get();
         let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -174,7 +137,8 @@ class NetworkingRuntime {
         if (!headerStr)
             return;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot modify header information - no server response handler");
+            ctx.triggerError("Cannot modify header information - no server response handler", 2);
+            return;
         }
         if (ctx.response.headersSent) {
             ctx.triggerError(`Cannot modify header information - headers already sent`, 2);
@@ -208,7 +172,8 @@ class NetworkingRuntime {
         const secure = Boolean(secureArg?.get());
         const httponly = Boolean(httponlyArg?.get());
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot modify cookie information - no server response handler");
+            ctx.triggerError("Cannot modify cookie information - no server response handler", 2);
+            return false;
         }
         if (ctx.response.headersSent) {
             ctx.triggerError(`Cannot set cookie - headers already sent`, 2);
@@ -226,7 +191,8 @@ class NetworkingRuntime {
         const secure = Boolean(secureArg?.get());
         const httponly = Boolean(httponlyArg?.get());
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot modify cookie information - no server response handler");
+            ctx.triggerError("Cannot modify cookie information - no server response handler", 2);
+            return false;
         }
         if (ctx.response.headersSent) {
             ctx.triggerError(`Cannot set raw cookie - headers already sent`, 2);
@@ -238,13 +204,15 @@ class NetworkingRuntime {
     static header_remove(ctx, nameArg) {
         const name = nameArg?.get() !== undefined ? String(nameArg.get()) : undefined;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot modify header information - no server response handler");
+            ctx.triggerError("Cannot modify header information - no server response handler", 2);
+            return;
         }
         ctx.response.removeHeader(name);
     }
     static headers_list(ctx) {
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot access headers - no server response handler");
+            ctx.triggerError("Cannot access headers - no server response handler", 2);
+            return [];
         }
         return ctx.response.getHeadersList();
     }
@@ -254,7 +222,8 @@ class NetworkingRuntime {
     static http_response_code(ctx, codeArg) {
         const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
         if (!ctx.getInternalVar("hasServerResponseHandler")) {
-            throw new PHPError_1.PHPWarning("Cannot modify response code - no server response handler");
+            ctx.triggerError("Cannot modify response code - no server response handler", 2);
+            return false;
         }
         if (code !== undefined) {
             ctx.response.statusCode = code;
@@ -286,5 +255,4 @@ class NetworkingRuntime {
         engine.registerFunctions(NetworkingRuntime.functions);
     }
 }
-exports.NetworkingRuntime = NetworkingRuntime;
 //# sourceMappingURL=Networking.js.map

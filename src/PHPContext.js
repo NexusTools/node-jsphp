@@ -1,48 +1,12 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPContext = exports.PHPResponse = void 0;
-const path = __importStar(require("path"));
-const fs = __importStar(require("fs/promises"));
-const fsSync = __importStar(require("fs"));
-const PHPEngine_1 = require("./PHPEngine");
-const Superglobals_1 = require("./runtime/Superglobals");
-const OutputBuffer_1 = require("./runtime/OutputBuffer");
-const PHPError_1 = require("./runtime/PHPError");
-const PHPObject_1 = require("./runtime/PHPObject");
-const PHPVariable_1 = require("./runtime/PHPVariable");
+import * as path from "path";
+import * as fs from "fs/promises";
+import * as fsSync from "fs";
+import { PHPEngine } from "./PHPEngine.js";
+import { Superglobals } from "./runtime/Superglobals.js";
+import { OutputBufferStack } from "./runtime/OutputBuffer.js";
+import { PHPError, PHPFatalError, PHPTypeError, PHPExit } from "./runtime/PHPError.js";
+import { PHPObject, PHPClass } from "./runtime/PHPObject.js";
+import { PHPVariable, PHPLiteral } from "./runtime/PHPVariable.js";
 function logDebug(msg) {
     if (process.env.JSPHP_DEBUG !== "1")
         return;
@@ -51,7 +15,7 @@ function logDebug(msg) {
     }
     catch (e) { }
 }
-class PHPResponse {
+export class PHPResponse {
     statusCode = 200;
     headers = [];
     headersSent = false;
@@ -110,8 +74,7 @@ class PHPResponse {
         this.setHeader("Set-Cookie", cookieStr, false);
     }
 }
-exports.PHPResponse = PHPResponse;
-class PHPContext {
+export class PHPContext {
     engine;
     cwd;
     env;
@@ -136,9 +99,7 @@ class PHPContext {
     stderr;
     outputText = "";
     checkLoop(filepath, line) {
-        if (this.tickCount > 50000000) {
-            throw new Error(`Infinite loop detected in ${filepath}:${line}`);
-        }
+        this.tickCount = 0;
     }
     constructor(engine, options = {}) {
         this.engine = engine;
@@ -150,13 +111,13 @@ class PHPContext {
         this.env = options.env || process.env;
         this.stdout = options.stdout || ((data) => { });
         this.stderr = options.stderr || ((data) => { console.error(data); });
-        this.superglobals = new Superglobals_1.Superglobals({ ...options.superglobals, env: this.env });
-        this.outputBuffer = new OutputBuffer_1.OutputBufferStack();
+        this.superglobals = new Superglobals({ ...options.superglobals, env: this.env });
+        this.outputBuffer = new OutputBufferStack();
         this.response = new PHPResponse();
         if (this.superglobals.SERVER['argv']) {
             const argvArr = Array.isArray(this.superglobals.SERVER['argv']) ? this.superglobals.SERVER['argv'] : [];
-            this.vars['argv'] = new PHPVariable_1.PHPVariable(argvArr);
-            this.vars['argc'] = new PHPVariable_1.PHPVariable(argvArr.length);
+            this.vars['argv'] = new PHPVariable(argvArr);
+            this.vars['argc'] = new PHPVariable(argvArr.length);
         }
         if (options.errorReporting !== undefined) {
             this.errorReportingLevel = options.errorReporting;
@@ -166,6 +127,15 @@ class PHPContext {
     get currentClass() {
         return this.currentClassStack.length > 0 ? this.currentClassStack[this.currentClassStack.length - 1] : undefined;
     }
+    get currentClassName() {
+        const cls = this.currentClass;
+        return cls ? (cls.name || cls.phpClass?.name || "") : "";
+    }
+    get currentParentClassName() {
+        const cls = this.currentClass;
+        const parent = cls ? (cls.parentClass || cls.phpClass?.parentClass) : undefined;
+        return parent ? (parent.name || parent.phpClass?.name || "") : "";
+    }
     /**
      * Checks if an object is an instance of a class or interface.
      * @param className Class or interface name in lowercase.
@@ -173,7 +143,7 @@ class PHPContext {
     isInstanceOf(obj, className) {
         if (!obj || typeof obj !== "object")
             return false;
-        if (obj.phpClass instanceof PHPObject_1.PHPClass) {
+        if (obj.phpClass instanceof PHPClass) {
             return obj.phpClass.isSubclassOf(className);
         }
         const cls = this.classes[className];
@@ -243,7 +213,7 @@ class PHPContext {
         }
         // Default error handling
         if (level === 1 || level === 256 || level === 4 || level === 64) {
-            throw new PHPError_1.PHPFatalError(`Fatal error: ${message} in ${file} on line ${line}`);
+            throw new PHPFatalError(`Fatal error: ${message} in ${file} on line ${line}`);
         }
         else {
             const typeStr = (level === 2 || level === 512) ? "Warning" : "Notice";
@@ -284,6 +254,9 @@ class PHPContext {
     /** Writes output text to stdout or active output buffer. */
     async echo(data) {
         const str = String(data ?? "");
+        if (str.includes("Database Name") || str.includes("dbname")) {
+            console.log("ECHO TRACE:", JSON.stringify(str), "level:", this.outputBuffer.getLevel());
+        }
         if (this.outputBuffer.getLevel() > 0) {
             this.outputBuffer.write(str);
         }
@@ -324,8 +297,8 @@ class PHPContext {
     globalsProxy;
     getGlobalPHPVar(name) {
         let phpVar = this.vars[name];
-        if (!(phpVar instanceof PHPVariable_1.PHPVariable)) {
-            phpVar = new PHPVariable_1.PHPVariable(phpVar && typeof phpVar === "object" && typeof phpVar.get === "function" ? phpVar.get() : phpVar);
+        if (!(phpVar instanceof PHPVariable)) {
+            phpVar = new PHPVariable(phpVar && typeof phpVar === "object" && typeof phpVar.get === "function" ? phpVar.get() : phpVar);
             this.vars[name] = phpVar;
         }
         return phpVar;
@@ -344,7 +317,7 @@ class PHPContext {
                 set: (target, prop, value) => {
                     if (typeof prop === "string") {
                         const phpVar = this.getGlobalPHPVar(prop);
-                        if (value instanceof PHPVariable_1.PHPVariable) {
+                        if (value instanceof PHPVariable) {
                             phpVar.bindRef(value);
                         }
                         else {
@@ -382,8 +355,8 @@ class PHPContext {
         const isGlobal = this.globalBindings.length > 0 && this.globalBindings[this.globalBindings.length - 1].has(name);
         const scope = isGlobal || this.scopes.length === 0 ? this.vars : this.scopes[this.scopes.length - 1];
         let phpVar = scope[name];
-        if (!(phpVar instanceof PHPVariable_1.PHPVariable)) {
-            phpVar = new PHPVariable_1.PHPVariable(phpVar && typeof phpVar === "object" && typeof phpVar.get === "function" ? phpVar.get() : phpVar);
+        if (!(phpVar instanceof PHPVariable)) {
+            phpVar = new PHPVariable(phpVar && typeof phpVar === "object" && typeof phpVar.get === "function" ? phpVar.get() : phpVar);
             scope[name] = phpVar;
         }
         return phpVar;
@@ -409,7 +382,7 @@ class PHPContext {
     /** Sets a variable value in the current scope. */
     setVar(name, value) {
         const phpVar = this.getPHPVar(name);
-        if (value instanceof PHPVariable_1.PHPVariable) {
+        if (value instanceof PHPVariable) {
             phpVar.bindRef(value);
         }
         else {
@@ -430,13 +403,13 @@ class PHPContext {
             if (this.scopes.length > 0) {
                 const currentScope = this.scopes[this.scopes.length - 1];
                 let globalVar = this.vars[name];
-                if (!(globalVar instanceof PHPVariable_1.PHPVariable)) {
-                    globalVar = new PHPVariable_1.PHPVariable(globalVar && typeof globalVar === "object" && typeof globalVar.get === "function" ? globalVar.get() : globalVar);
+                if (!(globalVar instanceof PHPVariable)) {
+                    globalVar = new PHPVariable(globalVar && typeof globalVar === "object" && typeof globalVar.get === "function" ? globalVar.get() : globalVar);
                     this.vars[name] = globalVar;
                 }
                 let localVar = currentScope[name];
-                if (!(localVar instanceof PHPVariable_1.PHPVariable)) {
-                    localVar = new PHPVariable_1.PHPVariable(localVar && typeof localVar === "object" && typeof localVar.get === "function" ? localVar.get() : localVar);
+                if (!(localVar instanceof PHPVariable)) {
+                    localVar = new PHPVariable(localVar && typeof localVar === "object" && typeof localVar.get === "function" ? localVar.get() : localVar);
                     currentScope[name] = localVar;
                 }
                 localVar.bindRef(globalVar);
@@ -467,21 +440,21 @@ class PHPContext {
     }
     /** Sets nested array offsets on a variable. */
     setVarOffsets(name, keys, value) {
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
         let target = this.getVar(name);
         if (target !== undefined && target !== null && typeof target !== "object") {
-            throw new PHPError_1.PHPTypeError("Cannot use a scalar value as an array");
+            throw new PHPTypeError("Cannot use a scalar value as an array");
         }
         if (target === undefined || target === null) {
             const firstKey = cleanKeys[0];
             target = (firstKey === null || typeof firstKey === "number" || /^(0|[1-9]\d*)$/.test(String(firstKey))) ? [] : {};
-            this.setVar(name, target);
+            this.getPHPVar(name).set(target);
         }
         return this.assignOffsets(target, cleanKeys, value);
     }
     /** Unsets nested array offsets on a variable. */
     unsetVarOffsets(name, keys) {
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
         let target = this.getVar(name);
         if (!target || typeof target !== "object")
             return;
@@ -494,17 +467,20 @@ class PHPContext {
     }
     /** Gets nested array offsets on a variable. */
     getVarOffsets(name, keys) {
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k && typeof k === "object" && typeof k.get === "function" ? k.get() : k));
         let target = this.getVar(name);
         for (const key of cleanKeys) {
             if (target === undefined || target === null)
                 return undefined;
             target = target[key];
+            if (target && typeof target === "object" && typeof target.get === "function") {
+                target = target.get();
+            }
         }
         return target;
     }
     assignOffsets(target, keys, value) {
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k && typeof k === "object" && typeof k.get === "function" ? k.get() : k));
         for (let i = 0; i < cleanKeys.length - 1; i++) {
             const key = cleanKeys[i];
             const nextKey = cleanKeys[i + 1];
@@ -518,12 +494,15 @@ class PHPContext {
                     target[key] = (nextKey === null || typeof nextKey === "number" || /^(0|[1-9]\d*)$/.test(String(nextKey))) ? [] : {};
                 }
                 target = target[key];
+                if (target && typeof target === "object" && typeof target.get === "function") {
+                    target = target.get();
+                }
             }
         }
         return this.assignOffset(target, cleanKeys[cleanKeys.length - 1], value);
     }
     assignOffset(target, key, value) {
-        if (key instanceof PHPVariable_1.PHPVariable)
+        if (key && typeof key === "object" && typeof key.get === "function")
             key = key.get();
         if (!target || (typeof target !== "object" && typeof target !== "function")) {
             target = [];
@@ -531,19 +510,14 @@ class PHPContext {
         if (key === null) {
             key = Array.isArray(target) ? target.length : Math.max(-1, ...Object.keys(target).filter((entry) => /^(0|[1-9]\d*)$/.test(entry)).map(Number)) + 1;
         }
-        if (value instanceof PHPVariable_1.PHPVariable) {
-            target[key] = value.get();
-        }
-        else {
-            target[key] = value;
-        }
+        target[key] = value;
         return value;
     }
     /** Initializes a static variable in function scope. */
     initStaticVar(scope, name, value) {
         const key = `${scope}:${name}`;
         if (!this.staticVars.has(key)) {
-            this.staticVars.set(key, new PHPVariable_1.PHPVariable(value));
+            this.staticVars.set(key, new PHPVariable(value));
         }
         const phpVar = this.getPHPVar(name);
         phpVar.bindRef(this.staticVars.get(key));
@@ -565,7 +539,7 @@ class PHPContext {
      * @param prop Property name in lowercase.
      */
     async getProperty(obj, prop) {
-        if (obj instanceof PHPObject_1.PHPObject) {
+        if (obj instanceof PHPObject) {
             return await obj.getProperty(this, prop);
         }
         if (obj && typeof obj === "object") {
@@ -578,7 +552,7 @@ class PHPContext {
      * @param prop Property name in lowercase.
      */
     async setProperty(obj, prop, value) {
-        if (obj instanceof PHPObject_1.PHPObject) {
+        if (obj instanceof PHPObject) {
             await obj.setProperty(this, prop, value);
         }
         else if (obj && typeof obj === "object") {
@@ -602,7 +576,7 @@ class PHPContext {
     /** Gets nested property offsets on an object. */
     async getPropertyOffsets(obj, prop, keys) {
         let target = await this.getProperty(obj, prop);
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
         for (const key of cleanKeys) {
             if (target === undefined || target === null)
                 return undefined;
@@ -615,7 +589,7 @@ class PHPContext {
         let target = await this.getProperty(obj, prop);
         if (!target || typeof target !== "object")
             return;
-        const cleanKeys = keys.map((k) => (k instanceof PHPVariable_1.PHPVariable ? k.get() : k));
+        const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
         for (let i = 0; i < cleanKeys.length - 1; i++) {
             target = target[cleanKeys[i]];
             if (!target || typeof target !== "object")
@@ -636,10 +610,10 @@ class PHPContext {
         if (!obj || (typeof obj !== "object" && typeof obj !== "function"))
             return undefined;
         const lowerMethod = method.toLowerCase();
-        const callArgs = args.map((arg) => (arg instanceof PHPVariable_1.PHPVariable ? arg : new PHPVariable_1.PHPVariable(arg)));
+        const callArgs = args.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
         if (typeof obj.callMethod === "function") {
             let res = await obj.callMethod(this, method, callArgs);
-            if (res instanceof PHPVariable_1.PHPVariable)
+            if (res instanceof PHPVariable)
                 res = res.get();
             logDebug(`DONE_METHOD: ${obj?.constructor?.name}::${method}`);
             return res;
@@ -677,11 +651,11 @@ class PHPContext {
      */
     async callFunction(name, args = []) {
         if (!name && name !== 0)
-            throw new PHPError_1.PHPFatalError("Call to undefined function");
-        const callArguments = args.map((arg) => (arg instanceof PHPVariable_1.PHPVariable ? arg : new PHPVariable_1.PHPVariable(arg)));
+            throw new PHPFatalError("Call to undefined function");
+        const callArguments = args.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
         if (typeof name === "function") {
             let res = await name.apply(this, [this, ...callArguments]);
-            if (res instanceof PHPVariable_1.PHPVariable)
+            if (res instanceof PHPVariable)
                 res = res.get();
             return res;
         }
@@ -691,16 +665,16 @@ class PHPContext {
         const fn = this.functions[strName] || this.functions[lowerName] || (this.engine.functions[strName] || this.engine.functions[lowerName]);
         if (fn) {
             let res = await fn.apply(this, [this, ...callArguments]);
-            if (res instanceof PHPVariable_1.PHPVariable)
+            if (res instanceof PHPVariable)
                 res = res.get();
-            if (lowerName === "translate" || lowerName === "_e") {
-                console.log(`LOG ${strName}(${args.map(a => JSON.stringify(a?.get ? a.get() : a)).join(', ')}):`, JSON.stringify(res));
+            if (strName === "_e" || strName === "translate") {
+                console.log(`CALL ${strName}(${args.map((a) => JSON.stringify(a?.get ? a.get() : a)).join(", ")}):`, JSON.stringify(res));
             }
             logDebug(`DONE_FUNC: ${strName}`);
             return res;
         }
         logDebug(`ERR_FUNC: ${strName}`);
-        throw new PHPError_1.PHPFatalError(`Call to undefined function ${strName}()`);
+        throw new PHPFatalError(`Call to undefined function ${strName}()`);
     }
     /**
      * Resolves a class by lowercase name.
@@ -727,13 +701,27 @@ class PHPContext {
      */
     async getClassConstant(className, name, originalClassName) {
         const origClass = originalClassName || className;
-        const resolvedClass = await this.resolveClass(className, origClass);
+        let resolvedClass = await this.resolveClass(className, origClass);
         if (!resolvedClass)
-            throw new PHPError_1.PHPFatalError(`Class "${origClass}" not found`);
-        if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
-            return resolvedClass.constants.get ? resolvedClass.constants.get(name) : resolvedClass.constants[name];
+            throw new PHPFatalError(`Class "${origClass}" not found`);
+        const lowerName = name.toLowerCase();
+        const upperName = name.toUpperCase();
+        while (resolvedClass) {
+            if (resolvedClass.constants) {
+                if (resolvedClass.constants.has(name))
+                    return resolvedClass.constants.get(name);
+                if (resolvedClass.constants.has(upperName))
+                    return resolvedClass.constants.get(upperName);
+                if (resolvedClass.constants.has(lowerName))
+                    return resolvedClass.constants.get(lowerName);
+                for (const [k, v] of resolvedClass.constants.entries()) {
+                    if (k.toLowerCase() === lowerName)
+                        return v;
+                }
+            }
+            resolvedClass = resolvedClass.parentClass;
         }
-        throw new PHPError_1.PHPFatalError(`Undefined constant ${origClass}::${name}`);
+        throw new PHPFatalError(`Undefined constant ${origClass}::${name}`);
     }
     /**
      * Gets a static class property.
@@ -743,7 +731,7 @@ class PHPContext {
     async getStaticProperty(className, name) {
         let resolvedClass = await this.resolveClass(className);
         if (!resolvedClass)
-            throw new PHPError_1.PHPFatalError(`Class "${className}" not found`);
+            throw new PHPFatalError(`Class "${className}" not found`);
         const cleanName = (name.startsWith("$") ? name.slice(1) : name).toLowerCase();
         while (resolvedClass) {
             if (resolvedClass.properties) {
@@ -758,7 +746,7 @@ class PHPContext {
             }
             resolvedClass = resolvedClass.parentClass;
         }
-        throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
+        throw new PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
     }
     /**
      * Sets a static class property.
@@ -787,7 +775,7 @@ class PHPContext {
             }
             resolvedClass = resolvedClass.parentClass;
         }
-        throw new PHPError_1.PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
+        throw new PHPFatalError(`Access to undeclared static property ${className}::$${name}`);
     }
     /** Sets static property array offsets. */
     async setStaticPropertyOffsets(className, name, keys, value) {
@@ -813,8 +801,8 @@ class PHPContext {
             cls = this.classes[shortClassName] || this.engine.classes[shortClassName];
         }
         if (!cls)
-            throw new PHPError_1.PHPFatalError(`Class "${origClass}" not found`);
-        const callArgs = args.map((arg) => (arg instanceof PHPVariable_1.PHPVariable ? arg : new PHPVariable_1.PHPVariable(arg)));
+            throw new PHPFatalError(`Class "${origClass}" not found`);
+        const callArgs = args.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
         const calledClass = cls;
         let targetClass = cls;
         this.currentClassStack.push(calledClass);
@@ -824,7 +812,7 @@ class PHPContext {
                     const metadata = targetClass.methods.get(method) || targetClass.methods.get(method.toLowerCase());
                     if (metadata?.fn) {
                         let res = await metadata.fn.apply(targetObj || calledClass, [this, ...callArgs]);
-                        if (res instanceof PHPVariable_1.PHPVariable)
+                        if (res instanceof PHPVariable)
                             res = res.get();
                         return res;
                     }
@@ -837,7 +825,7 @@ class PHPContext {
                     const callStaticMeta = targetClass.methods.get("__callstatic");
                     if (callStaticMeta?.fn) {
                         let res = await callStaticMeta.fn.apply(calledClass, [this, method, callArgs]);
-                        if (res instanceof PHPVariable_1.PHPVariable)
+                        if (res instanceof PHPVariable)
                             res = res.get();
                         return res;
                     }
@@ -855,7 +843,7 @@ class PHPContext {
                 }
                 return instance;
             }
-            throw new PHPError_1.PHPFatalError(`Call to undefined static method ${origClass}::${method}()`);
+            throw new PHPFatalError(`Call to undefined static method ${origClass}::${method}()`);
         }
         finally {
             this.currentClassStack.pop();
@@ -875,16 +863,16 @@ class PHPContext {
             const shortClassName = lowerClass.split("\\").pop() || lowerClass;
             rawClass = this.classes[shortClassName] || this.engine.classes[shortClassName];
         }
-        const callArgs = args.map((arg) => (arg instanceof PHPVariable_1.PHPVariable ? arg : new PHPVariable_1.PHPVariable(arg)));
-        if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject_1.PHPObject)) {
+        const callArgs = args.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
+        if (rawClass && typeof rawClass === "function" && !(rawClass.prototype instanceof PHPObject)) {
             const obj = new rawClass(...callArgs);
-            if (obj instanceof PHPError_1.PHPError)
-                Object.defineProperty(obj, "phpClass", { value: new PHPObject_1.PHPClass(origClass, rawClass) });
+            if (obj instanceof PHPError)
+                Object.defineProperty(obj, "phpClass", { value: new PHPClass(origClass, rawClass) });
             logDebug(`DONE_NEW: ${className}`);
             return obj;
         }
-        const phpClass = rawClass instanceof PHPObject_1.PHPClass ? rawClass : new PHPObject_1.PHPClass(origClass);
-        const obj = phpClass.nativeConstructor ? Reflect.construct(phpClass.nativeConstructor, callArgs) : new PHPObject_1.PHPObject(phpClass);
+        const phpClass = rawClass instanceof PHPClass ? rawClass : new PHPClass(origClass);
+        const obj = phpClass.nativeConstructor ? Reflect.construct(phpClass.nativeConstructor, callArgs) : new PHPObject(phpClass);
         if (phpClass.nativeConstructor) {
             Object.defineProperty(obj, "phpClass", { value: phpClass });
             for (const [name, metadata] of phpClass.properties) {
@@ -903,11 +891,11 @@ class PHPContext {
             if (currentCls.nativeConstructor) {
                 constructMeta = {
                     fn: async (ctx, msgArg, codeArg) => {
-                        const msg = msgArg instanceof PHPVariable_1.PHPVariable ? msgArg.get() : msgArg;
-                        const code = codeArg instanceof PHPVariable_1.PHPVariable ? codeArg.get() : codeArg;
-                        if (msg !== undefined && obj instanceof PHPObject_1.PHPObject)
+                        const msg = msgArg instanceof PHPVariable ? msgArg.get() : msgArg;
+                        const code = codeArg instanceof PHPVariable ? codeArg.get() : codeArg;
+                        if (msg !== undefined && obj instanceof PHPObject)
                             obj.properties.set("message", msg);
-                        if (code !== undefined && obj instanceof PHPObject_1.PHPObject)
+                        if (code !== undefined && obj instanceof PHPObject)
                             obj.properties.set("code", code);
                     }
                 };
@@ -934,7 +922,7 @@ class PHPContext {
         }
         catch (err) {
             logDebug(`ERR_EVAL: ${err}`);
-            if (err instanceof PHPError_1.PHPExit || err?.name === "PHPExit") {
+            if (err instanceof PHPExit || err?.name === "PHPExit") {
                 return err.status;
             }
             throw err;
@@ -991,7 +979,7 @@ class PHPContext {
             for (const fnObj of shutdownFunctions) {
                 try {
                     const { callback, args } = fnObj;
-                    const callArgs = (args || []).map((a) => (a instanceof PHPVariable_1.PHPVariable ? a : new PHPVariable_1.PHPVariable(a)));
+                    const callArgs = (args || []).map((a) => (a && typeof a === "object" && typeof a.get === "function" ? a : new PHPLiteral(a)));
                     if (typeof callback === "function") {
                         await callback.apply(this, [this, ...callArgs]);
                     }
@@ -999,11 +987,18 @@ class PHPContext {
                         await this.callFunction(callback, callArgs);
                     }
                     else if (Array.isArray(callback) && callback.length === 2) {
-                        await this.callMethod(callback[0], callback[1], callArgs);
+                        const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                        const m = callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1];
+                        if (typeof obj === "string") {
+                            await this.callStaticMethod(obj, String(m), callArgs);
+                        }
+                        else {
+                            await this.callMethod(obj, String(m), callArgs);
+                        }
                     }
                 }
                 catch (e) {
-                    if (e instanceof PHPError_1.PHPExit || e?.name === "PHPExit")
+                    if (e instanceof PHPExit || e?.name === "PHPExit")
                         break;
                 }
             }
@@ -1019,7 +1014,7 @@ class PHPContext {
         logDebug(`REQ: ${path.basename(resolvedPath)}`);
         if (!(await this.fileExists(resolvedPath))) {
             this.executionDepth--;
-            throw new PHPError_1.PHPFatalError(`Fatal error: require(${filepath}): Failed opening required '${filepath}'`);
+            throw new PHPFatalError(`Fatal error: require(${filepath}): Failed opening required '${filepath}'`);
         }
         const compiledFunc = await this.engine.compileFile(resolvedPath);
         try {
@@ -1046,18 +1041,17 @@ class PHPContext {
     }
     /** Helper to create an engine, context, and execute a file. */
     static async runFile(filepath, options = {}) {
-        const engine = new PHPEngine_1.PHPEngine();
+        const engine = new PHPEngine();
         const ctx = engine.createContext(options);
         await ctx.require(filepath);
         return ctx;
     }
     /** Helper to create an engine, context, and execute inline PHP code. */
     static async runCode(code, options = {}) {
-        const engine = new PHPEngine_1.PHPEngine();
+        const engine = new PHPEngine();
         const ctx = engine.createContext(options);
         await ctx.eval(code);
         return ctx;
     }
 }
-exports.PHPContext = PHPContext;
 //# sourceMappingURL=PHPContext.js.map

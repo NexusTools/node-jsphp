@@ -1,52 +1,12 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.runHTTPServerCLI = runHTTPServerCLI;
-exports.runHTTPServer = runHTTPServer;
-const http = __importStar(require("http"));
-const path = __importStar(require("path"));
-const fs = __importStar(require("fs/promises"));
-const os = __importStar(require("os"));
-const cluster_1 = __importDefault(require("cluster"));
-const commander_1 = require("commander");
-const PHPEngine_1 = require("../PHPEngine");
-const PHPError_1 = require("../runtime/PHPError");
-const nodejs_1 = require("../extensions/nodejs");
+import * as http from "http";
+import * as path from "path";
+import * as fs from "fs/promises";
+import * as os from "os";
+import cluster from "cluster";
+import { Command } from "commander";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPError, PHPExit } from "../runtime/PHPError.js";
+import { NodeJSExtension } from "../extensions/nodejs.js";
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
@@ -66,8 +26,8 @@ const MIME_TYPES = {
     ".woff2": "font/woff2",
     ".ttf": "font/ttf",
 };
-async function runHTTPServerCLI(rawArgs) {
-    const program = new commander_1.Command();
+export async function runHTTPServerCLI(rawArgs) {
+    const program = new Command();
     program
         .name("php-http-server")
         .description("JSPHP Multiprocess HTTP Web Server")
@@ -84,28 +44,28 @@ async function runHTTPServerCLI(rawArgs) {
     const numWorkers = parseInt(options.workers, 10) || os.cpus().length;
     const enableNodeJS = options.nodejs !== false;
     const useCluster = options.cluster !== false;
-    if (useCluster && cluster_1.default.isPrimary) {
+    if (useCluster && cluster.isPrimary) {
         console.log(`[jsphp-http-server] Primary process ${process.pid} is running`);
         console.log(`[jsphp-http-server] Spawning ${numWorkers} worker process(es)...`);
         for (let i = 0; i < numWorkers; i++) {
-            cluster_1.default.fork();
+            cluster.fork();
         }
-        cluster_1.default.on("exit", (worker) => {
+        cluster.on("exit", (worker) => {
             console.log(`[jsphp-http-server] Worker ${worker.process.pid} died. Restarting...`);
-            cluster_1.default.fork();
+            cluster.fork();
         });
     }
     else {
         await runHTTPServer(port, docRoot, { cacheDir: options.cacheDir, enableNodeJS });
     }
 }
-async function runHTTPServer(port = 8080, docRoot = process.cwd(), optionsArg) {
+export async function runHTTPServer(port = 8080, docRoot = process.cwd(), optionsArg) {
     const options = typeof optionsArg === "string" ? { cacheDir: optionsArg } : (optionsArg || {});
     const exts = [];
     if (options.enableNodeJS !== false) {
-        exts.push(new nodejs_1.NodeJSExtension());
+        exts.push(new NodeJSExtension());
     }
-    const engine = new PHPEngine_1.PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts });
+    const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts });
     const absoluteCwd = path.resolve(docRoot);
     const server = http.createServer(async (req, res) => {
         const rawUrl = req.url || "/";
@@ -167,7 +127,7 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), optionsArg) {
                         SERVER_PORT: hostPort || String(port),
                         SERVER_ADDR: "127.0.0.1",
                         REMOTE_ADDR: req.socket.remoteAddress || "127.0.0.1",
-                        SERVER_SOFTWARE: `JSPHP HTTP Server / ${PHPEngine_1.PHPEngine.VERSION}`,
+                        SERVER_SOFTWARE: `JSPHP HTTP Server / ${PHPEngine.VERSION}`,
                         HTTP_USER_AGENT: req.headers["user-agent"] || "Mozilla/5.0",
                         HTTP_ACCEPT: req.headers["accept"] || "*/*",
                     },
@@ -181,13 +141,13 @@ async function runHTTPServer(port = 8080, docRoot = process.cwd(), optionsArg) {
                 await ctx.require(fullPath);
             }
             catch (err) {
-                if (err instanceof PHPError_1.PHPExit || err?.name === "PHPExit") {
+                if (err instanceof PHPExit || err?.name === "PHPExit") {
                     // Normal exit/redirect
                 }
                 else {
                     const stackTrace = typeof err.getPHPStackTraceString === "function"
                         ? err.getPHPStackTraceString()
-                        : PHPError_1.PHPError.virtualizeJSStack(err.stack || String(err));
+                        : PHPError.virtualizeJSStack(err.stack || String(err));
                     const htmlError = `<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>` +
                         `<pre style="background:#f4f4f4;padding:12px;border:1px solid #ccc;font-family:monospace;">${escapeHtml(stackTrace)}</pre>` +
                         `</body></html>`;

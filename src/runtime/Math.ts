@@ -1,6 +1,6 @@
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
 
 export class MathRuntime {
   public static abs(ctx: PHPContext, num?: PHPReference): number { return Math.abs(Number(num?.get()) || 0); }

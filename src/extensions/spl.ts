@@ -1,8 +1,8 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPTypeError } from "../runtime/PHPError";
-import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPTypeError } from "../runtime/PHPError.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
 
 export class SPLExtension extends PHPExtension {
   public readonly name = "spl";

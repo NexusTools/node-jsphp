@@ -1,4 +1,4 @@
-import { PHPContext } from "../PHPContext";
+import { PHPContext } from "../PHPContext.js";
 export declare class CoreRuntime {
     static functions: {
         exit: (ctx: PHPContext, statusArg?: any) => never;
@@ -13,9 +13,9 @@ export declare class CoreRuntime {
         extension_loaded: (ctx: PHPContext, nameArg: any) => boolean;
         function_exists: (ctx: PHPContext, nameArg: any) => boolean;
         class_alias: (ctx: PHPContext, original: string, alias: string, autoload?: boolean) => Promise<boolean>;
-        class_exists: (ctx: PHPContext, name: string, autoload?: boolean) => Promise<boolean>;
-        interface_exists: (ctx: PHPContext, name: string, autoload?: boolean) => Promise<boolean>;
-        trait_exists: (ctx: PHPContext, name: string, autoload?: boolean) => Promise<boolean>;
+        class_exists: (ctx: PHPContext, nameArg: any, autoloadArg?: any) => Promise<boolean>;
+        interface_exists: (ctx: PHPContext, nameArg: any, autoloadArg?: any) => Promise<boolean>;
+        trait_exists: (ctx: PHPContext, nameArg: any, autoloadArg?: any) => Promise<boolean>;
         constant: (ctx: PHPContext, nameArg: any) => any;
         assert: (ctx: PHPContext, assertionArg: any, descriptionArg?: any) => boolean;
         is_callable: (ctx: PHPContext, vArg: any) => boolean;

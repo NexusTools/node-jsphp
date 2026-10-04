@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Superglobals = void 0;
-const PHPEngine_1 = require("../PHPEngine");
-class Superglobals {
+import { PHPEngine } from "../PHPEngine.js";
+export class Superglobals {
     SERVER;
     GET;
     POST;
@@ -27,7 +24,7 @@ class Superglobals {
             SERVER_PORT: "80",
             REMOTE_ADDR: "127.0.0.1",
             DOCUMENT_ROOT: "/var/www/html",
-            SERVER_SOFTWARE: `JSPHP/${PHPEngine_1.PHPEngine.VERSION}`,
+            SERVER_SOFTWARE: `JSPHP/${PHPEngine.VERSION}`,
             SERVER_PROTOCOL: "HTTP/1.1",
             GATEWAY_INTERFACE: "CGI/1.1",
             HTTP_HOST: "localhost",
@@ -45,5 +42,4 @@ class Superglobals {
         this.GLOBALS = {};
     }
 }
-exports.Superglobals = Superglobals;
 //# sourceMappingURL=Superglobals.js.map

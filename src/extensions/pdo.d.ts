@@ -1,6 +1,6 @@
 import mysql from "mysql2/promise";
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
 export declare class PDOConnection {
     connection?: mysql.Connection;
     connect(dsn: string, username?: string, password?: string): Promise<boolean>;

@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.OutputBufferRuntime = exports.OutputBufferStack = void 0;
-class OutputBufferStack {
+export class OutputBufferStack {
     buffers = [];
     start() {
         this.buffers.push("");
@@ -52,8 +49,7 @@ class OutputBufferStack {
         return this.buffers.length > 0;
     }
 }
-exports.OutputBufferStack = OutputBufferStack;
-class OutputBufferRuntime {
+export class OutputBufferRuntime {
     static functions = {
         "flush": (ctx) => { ctx.flushHeaders(); return true; },
         "ob_start": (ctx) => ctx.outputBuffer.start(),
@@ -75,5 +71,4 @@ class OutputBufferRuntime {
         engine.registerFunctions(OutputBufferRuntime.functions);
     }
 }
-exports.OutputBufferRuntime = OutputBufferRuntime;
 //# sourceMappingURL=OutputBuffer.js.map

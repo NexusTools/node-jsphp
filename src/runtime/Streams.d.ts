@@ -1,7 +1,7 @@
 import * as fs from "fs/promises";
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class PHPStreamContext {
     options: Record<string, any>;
     constructor(options?: Record<string, any>);

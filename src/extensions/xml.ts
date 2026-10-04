@@ -1,7 +1,7 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
 
 export class SimpleXMLElement {
   public xml: string;

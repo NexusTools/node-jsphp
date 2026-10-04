@@ -1,10 +1,10 @@
 import * as dns from "dns/promises";
 import * as os from "os";
-import { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
-import { PHPWarning } from "./PHPError";
-import { PHPVariable, PHPReference } from "./PHPVariable";
-import { defineFunction } from "./Reflection";
+import { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
+import { PHPWarning } from "./PHPError.js";
+import { PHPVariable, PHPReference } from "./PHPVariable.js";
+import { defineFunction } from "./Reflection.js";
 
 export class NetworkingRuntime {
 
@@ -138,7 +138,8 @@ export class NetworkingRuntime {
     const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
     if (!headerStr) return;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot modify header information - no server response handler");
+      ctx.triggerError("Cannot modify header information - no server response handler", 2);
+      return;
     }
     if (ctx.response.headersSent) {
       ctx.triggerError(`Cannot modify header information - headers already sent`, 2);
@@ -181,7 +182,8 @@ export class NetworkingRuntime {
     const secure = Boolean(secureArg?.get());
     const httponly = Boolean(httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot modify cookie information - no server response handler");
+      ctx.triggerError("Cannot modify cookie information - no server response handler", 2);
+      return false;
     }
     if (ctx.response.headersSent) {
       ctx.triggerError(`Cannot set cookie - headers already sent`, 2);
@@ -209,7 +211,8 @@ export class NetworkingRuntime {
     const secure = Boolean(secureArg?.get());
     const httponly = Boolean(httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot modify cookie information - no server response handler");
+      ctx.triggerError("Cannot modify cookie information - no server response handler", 2);
+      return false;
     }
     if (ctx.response.headersSent) {
       ctx.triggerError(`Cannot set raw cookie - headers already sent`, 2);
@@ -222,14 +225,16 @@ export class NetworkingRuntime {
   public static header_remove(ctx: PHPContext, nameArg?: PHPReference): void {
     const name = nameArg?.get() !== undefined ? String(nameArg.get()) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot modify header information - no server response handler");
+      ctx.triggerError("Cannot modify header information - no server response handler", 2);
+      return;
     }
     ctx.response.removeHeader(name);
   }
 
   public static headers_list(ctx: PHPContext): string[] {
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot access headers - no server response handler");
+      ctx.triggerError("Cannot access headers - no server response handler", 2);
+      return [];
     }
     return ctx.response.getHeadersList();
   }
@@ -241,7 +246,8 @@ export class NetworkingRuntime {
   public static http_response_code(ctx: PHPContext, codeArg?: PHPReference): number | boolean {
     const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      throw new PHPWarning("Cannot modify response code - no server response handler");
+      ctx.triggerError("Cannot modify response code - no server response handler", 2);
+      return false;
     }
     if (code !== undefined) {
       ctx.response.statusCode = code;

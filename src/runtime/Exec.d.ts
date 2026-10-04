@@ -1,6 +1,6 @@
-import type { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
-import { PHPReference } from "./PHPVariable";
+import type { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class ExecRuntime {
     /**
      * Execute an external program.

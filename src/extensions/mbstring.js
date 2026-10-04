@@ -1,12 +1,9 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.MbstringExtension = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-const PHPVariable_1 = require("../runtime/PHPVariable");
-class MbstringExtension extends PHPExtension_1.PHPExtension {
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPVariable } from "../runtime/PHPVariable.js";
+export class MbstringExtension extends PHPExtension {
     name = "mbstring";
     unwrap(val) {
-        return val instanceof PHPVariable_1.PHPVariable ? val.get() : val;
+        return val instanceof PHPVariable ? val.get() : val;
     }
     onInit(engine) {
         const unwrap = this.unwrap;
@@ -35,5 +32,4 @@ class MbstringExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.MbstringExtension = MbstringExtension;
 //# sourceMappingURL=mbstring.js.map

@@ -2,12 +2,12 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
 import { Writable } from "stream";
-import { PHPEngine } from "./PHPEngine";
-import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals";
-import { OutputBufferStack } from "./runtime/OutputBuffer";
-import { PHPError, PHPFatalError, PHPTypeError, PHPWarning, PHPNotice, PHPExit } from "./runtime/PHPError";
-import { PHPObject, PHPClass } from "./runtime/PHPObject";
-import { PHPVariable, PHPReference, PHPLiteral } from "./runtime/PHPVariable";
+import { PHPEngine } from "./PHPEngine.js";
+import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals.js";
+import { OutputBufferStack } from "./runtime/OutputBuffer.js";
+import { PHPError, PHPFatalError, PHPTypeError, PHPWarning, PHPNotice, PHPExit } from "./runtime/PHPError.js";
+import { PHPObject, PHPClass } from "./runtime/PHPObject.js";
+import { PHPVariable, PHPReference, PHPLiteral } from "./runtime/PHPVariable.js";
 
 function logDebug(msg: string) {
   if (process.env.JSPHP_DEBUG !== "1") return;
@@ -124,9 +124,7 @@ export class PHPContext {
   public outputText: string = "";
 
   public checkLoop(filepath: string, line: number) {
-    if (this.tickCount > 50000000) {
-      throw new Error(`Infinite loop detected in ${filepath}:${line}`);
-    }
+    this.tickCount = 0;
   }
 
   constructor(engine: PHPEngine, options: PHPContextOptions = {}) {
@@ -155,6 +153,17 @@ export class PHPContext {
   public currentClassStack: any[] = [];
   public get currentClass(): any {
     return this.currentClassStack.length > 0 ? this.currentClassStack[this.currentClassStack.length - 1] : undefined;
+  }
+
+  public get currentClassName(): string {
+    const cls = this.currentClass;
+    return cls ? (cls.name || cls.phpClass?.name || "") : "";
+  }
+
+  public get currentParentClassName(): string {
+    const cls = this.currentClass;
+    const parent = cls ? (cls.parentClass || cls.phpClass?.parentClass) : undefined;
+    return parent ? (parent.name || parent.phpClass?.name || "") : "";
   }
 
   /**
@@ -284,6 +293,9 @@ export class PHPContext {
   /** Writes output text to stdout or active output buffer. */
   public async echo(data: any): Promise<void> {
     const str = String(data ?? "");
+    if (str.includes("Database Name") || str.includes("dbname")) {
+      console.log("ECHO TRACE:", JSON.stringify(str), "level:", this.outputBuffer.getLevel());
+    }
     if (this.outputBuffer.getLevel() > 0) {
       this.outputBuffer.write(str);
     } else {
@@ -484,7 +496,7 @@ export class PHPContext {
     if (target === undefined || target === null) {
       const firstKey = cleanKeys[0];
       target = (firstKey === null || typeof firstKey === "number" || /^(0|[1-9]\d*)$/.test(String(firstKey))) ? [] : {};
-      this.setVar(name, target);
+      this.getPHPVar(name).set(target);
     }
     return this.assignOffsets(target, cleanKeys, value);
   }
@@ -503,17 +515,20 @@ export class PHPContext {
 
   /** Gets nested array offsets on a variable. */
   public getVarOffsets(name: string, keys: any[]): any {
-    const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
+    const cleanKeys = keys.map((k) => (k && typeof k === "object" && typeof (k as any).get === "function" ? (k as any).get() : k));
     let target = this.getVar(name);
     for (const key of cleanKeys) {
       if (target === undefined || target === null) return undefined;
       target = target[key];
+      if (target && typeof target === "object" && typeof (target as any).get === "function") {
+        target = (target as any).get();
+      }
     }
     return target;
   }
 
   private assignOffsets(target: any, keys: any[], value: any): any {
-    const cleanKeys = keys.map((k) => (k instanceof PHPVariable ? k.get() : k));
+    const cleanKeys = keys.map((k) => (k && typeof k === "object" && typeof (k as any).get === "function" ? (k as any).get() : k));
     for (let i = 0; i < cleanKeys.length - 1; i++) {
       const key = cleanKeys[i];
       const nextKey = cleanKeys[i + 1];
@@ -526,24 +541,23 @@ export class PHPContext {
           target[key] = (nextKey === null || typeof nextKey === "number" || /^(0|[1-9]\d*)$/.test(String(nextKey))) ? [] : {};
         }
         target = target[key];
+        if (target && typeof target === "object" && typeof (target as any).get === "function") {
+          target = (target as any).get();
+        }
       }
     }
     return this.assignOffset(target, cleanKeys[cleanKeys.length - 1], value);
   }
 
   private assignOffset(target: any, key: any, value: any): any {
-    if (key instanceof PHPVariable) key = key.get();
+    if (key && typeof key === "object" && typeof (key as any).get === "function") key = (key as any).get();
     if (!target || (typeof target !== "object" && typeof target !== "function")) {
       target = [];
     }
     if (key === null) {
       key = Array.isArray(target) ? target.length : Math.max(-1, ...Object.keys(target).filter((entry) => /^(0|[1-9]\d*)$/.test(entry)).map(Number)) + 1;
     }
-    if (value instanceof PHPVariable) {
-      target[key] = value.get();
-    } else {
-      target[key] = value;
-    }
+    target[key] = value;
     return value;
   }
 
@@ -640,6 +654,7 @@ export class PHPContext {
     if (obj && typeof obj === "object" && typeof (obj as any).get === "function") {
       obj = (obj as any).get();
     }
+
     logDebug(`CALL_METHOD: ${obj?.constructor?.name}::${method}`);
     if (!obj || (typeof obj !== "object" && typeof obj !== "function")) return undefined;
 
@@ -704,8 +719,8 @@ export class PHPContext {
     if (fn) {
       let res = await fn.apply(this, [this, ...callArguments]);
       if (res instanceof PHPVariable) res = res.get();
-      if (lowerName === "translate" || lowerName === "_e") {
-        console.log(`LOG ${strName}(${args.map(a => JSON.stringify(a?.get ? a.get() : a)).join(', ')}):`, JSON.stringify(res));
+      if (strName === "_e" || strName === "translate") {
+        console.log(`CALL ${strName}(${args.map((a) => JSON.stringify(a?.get ? a.get() : a)).join(", ")}):`, JSON.stringify(res));
       }
       logDebug(`DONE_FUNC: ${strName}`);
       return res;
@@ -740,10 +755,20 @@ export class PHPContext {
    */
   public async getClassConstant(className: string, name: string, originalClassName?: string): Promise<any> {
     const origClass = originalClassName || className;
-    const resolvedClass = await this.resolveClass(className, origClass);
+    let resolvedClass: PHPClass | undefined = await this.resolveClass(className, origClass);
     if (!resolvedClass) throw new PHPFatalError(`Class "${origClass}" not found`);
-    if (resolvedClass.constants?.has ? resolvedClass.constants.has(name) : (name in resolvedClass.constants)) {
-      return resolvedClass.constants.get ? resolvedClass.constants.get(name) : resolvedClass.constants[name];
+    const lowerName = name.toLowerCase();
+    const upperName = name.toUpperCase();
+    while (resolvedClass) {
+      if (resolvedClass.constants) {
+        if (resolvedClass.constants.has(name)) return resolvedClass.constants.get(name);
+        if (resolvedClass.constants.has(upperName)) return resolvedClass.constants.get(upperName);
+        if (resolvedClass.constants.has(lowerName)) return resolvedClass.constants.get(lowerName);
+        for (const [k, v] of resolvedClass.constants.entries()) {
+          if (k.toLowerCase() === lowerName) return v;
+        }
+      }
+      resolvedClass = resolvedClass.parentClass;
     }
     throw new PHPFatalError(`Undefined constant ${origClass}::${name}`);
   }
@@ -999,13 +1024,19 @@ export class PHPContext {
       for (const fnObj of shutdownFunctions) {
         try {
           const { callback, args } = fnObj;
-          const callArgs = (args || []).map((a: any) => (a instanceof PHPVariable ? a : new PHPVariable(a)));
+          const callArgs = (args || []).map((a: any) => (a && typeof a === "object" && typeof a.get === "function" ? a : new PHPLiteral(a)));
           if (typeof callback === "function") {
             await callback.apply(this, [this, ...callArgs]);
           } else if (typeof callback === "string") {
             await this.callFunction(callback, callArgs);
           } else if (Array.isArray(callback) && callback.length === 2) {
-            await this.callMethod(callback[0], callback[1], callArgs);
+            const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+            const m = callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1];
+            if (typeof obj === "string") {
+              await this.callStaticMethod(obj, String(m), callArgs);
+            } else {
+              await this.callMethod(obj, String(m), callArgs);
+            }
           }
         } catch (e) {
           if (e instanceof PHPExit || (e as any)?.name === "PHPExit") break;

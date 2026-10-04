@@ -1,6 +1,6 @@
-import type { PHPContext } from "../PHPContext";
-import { PHPFatalError } from "./PHPError";
-import { PHPVariable } from "./PHPVariable";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPFatalError } from "./PHPError.js";
+import { PHPVariable } from "./PHPVariable.js";
 
 export interface PHPParameterMetadata {
   name: string;
@@ -129,7 +129,7 @@ export class PHPObject {
           const methodMeta = cls.methods.get(lowerName);
           if (methodMeta?.fn) {
             let res = await methodMeta.fn.apply(this, [ctx, ...args]);
-            if (res instanceof PHPVariable) res = res.get();
+            if (res && typeof res === "object" && typeof (res as any).get === "function") res = (res as any).get();
             return res;
           }
         }

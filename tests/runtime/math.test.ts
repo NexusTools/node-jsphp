@@ -1,4 +1,4 @@
-import { PHPEngine } from "../../index";
+import { PHPEngine } from "../../index.js";
 
 describe("Math Runtime Tests", () => {
   let engine: PHPEngine;

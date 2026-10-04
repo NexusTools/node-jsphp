@@ -1,5 +1,5 @@
-import type { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
+import type { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
 export declare class PHPFiberError extends Error {
 }
 export declare class PHPFiberExit extends Error {

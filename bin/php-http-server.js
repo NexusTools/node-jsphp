@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-require('source-map-support').install();
+import sourceMapSupport from "source-map-support";
+import { runHTTPServerCLI } from "../src/cli/php-http-server.js";
 
-const { runHTTPServerCLI } = require("../src/cli/php-http-server");
+sourceMapSupport.install();
 
 runHTTPServerCLI(process.argv.slice(2)).catch((err) => {
   console.error(err);

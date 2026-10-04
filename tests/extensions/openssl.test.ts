@@ -1,4 +1,4 @@
-import { PHPEngine } from "../../index";
+import { PHPEngine } from "../../index.js";
 
 describe("OpenSSL Extension Tests", () => {
   let engine: PHPEngine;

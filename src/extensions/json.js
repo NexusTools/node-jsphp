@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JSONExtension = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-class JSONExtension extends PHPExtension_1.PHPExtension {
+import { PHPExtension } from "../PHPExtension.js";
+export class JSONExtension extends PHPExtension {
     name = "json";
     onInit(engine) {
         this.constants = {
@@ -65,5 +62,4 @@ class JSONExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.JSONExtension = JSONExtension;
 //# sourceMappingURL=json.js.map

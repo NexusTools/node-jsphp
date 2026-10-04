@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ExecRuntime = void 0;
-const child_process_1 = require("child_process");
-const util_1 = require("util");
-const Reflection_1 = require("./Reflection");
-const execAsync = (0, util_1.promisify)(child_process_1.exec);
-class ExecRuntime {
+import { exec } from "child_process";
+import { promisify } from "util";
+import { defineFunction } from "./Reflection.js";
+const execAsync = promisify(exec);
+export class ExecRuntime {
     /**
      * Execute an external program.
      * @param outputArray Output variable passed by reference to receive output lines.
@@ -59,8 +56,7 @@ class ExecRuntime {
         engine.registerFunctions(ExecRuntime.functions);
     }
 }
-exports.ExecRuntime = ExecRuntime;
-(0, Reflection_1.defineFunction)(ExecRuntime.exec, {
+defineFunction(ExecRuntime.exec, {
     name: "exec",
     parameters: [{ name: "command" }, { name: "output", byref: true }, { name: "result_code", byref: true }],
 });

@@ -1,4 +1,4 @@
-import { PHPEngine } from "../../index";
+import { PHPEngine } from "../../index.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";

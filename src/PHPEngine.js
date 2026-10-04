@@ -1,89 +1,46 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPEngine = void 0;
-const fs = __importStar(require("fs/promises"));
-const path = __importStar(require("path"));
-const os = __importStar(require("os"));
-const crypto = __importStar(require("crypto"));
-const chokidar_1 = __importDefault(require("chokidar"));
-const PHPContext_1 = require("./PHPContext");
-const JSTranspiler_1 = require("./parser/JSTranspiler");
-const PHPObject_1 = require("./runtime/PHPObject");
-const PHPVariable_1 = require("./runtime/PHPVariable");
-try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require("source-map-support").install({ environment: "node", hookRequire: true });
-}
-catch { }
-const Strings_1 = require("./runtime/Strings");
-const Arrays_1 = require("./runtime/Arrays");
-const FileSystem_1 = require("./runtime/FileSystem");
-const Networking_1 = require("./runtime/Networking");
-const Math_1 = require("./runtime/Math");
-const Variables_1 = require("./runtime/Variables");
-const DateTime_1 = require("./runtime/DateTime");
-const Streams_1 = require("./runtime/Streams");
-const Exec_1 = require("./runtime/Exec");
-const Fiber_1 = require("./runtime/Fiber");
-const Enum_1 = require("./runtime/Enum");
-const PHPError_1 = require("./runtime/PHPError");
-const Reflection_1 = require("./runtime/Reflection");
-const OutputBuffer_1 = require("./runtime/OutputBuffer");
-const mysqli_1 = require("./extensions/mysqli");
-const pdo_1 = require("./extensions/pdo");
-const gd_1 = require("./extensions/gd");
-const pcre_1 = require("./extensions/pcre");
-const mbstring_1 = require("./extensions/mbstring");
-const json_1 = require("./extensions/json");
-const curl_1 = require("./extensions/curl");
-const session_1 = require("./extensions/session");
-const xml_1 = require("./extensions/xml");
-const spl_1 = require("./extensions/spl");
-const hash_1 = require("./extensions/hash");
-const openssl_1 = require("./extensions/openssl");
-const CoreRuntime_1 = require("./runtime/CoreRuntime");
-class PHPEngine {
-    static REVISION = 135;
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
+import * as crypto from "crypto";
+import chokidar from "chokidar";
+import { PHPContext } from "./PHPContext.js";
+import { JSTranspiler } from "./parser/JSTranspiler.js";
+import { PHPClass, PHPObject } from "./runtime/PHPObject.js";
+import { PHPVariable, PHPLiteral } from "./runtime/PHPVariable.js";
+import vm from "vm";
+import { StringRuntime } from "./runtime/Strings.js";
+import { ArrayRuntime } from "./runtime/Arrays.js";
+import { FileSystemRuntime } from "./runtime/FileSystem.js";
+import { NetworkingRuntime } from "./runtime/Networking.js";
+import { MathRuntime } from "./runtime/Math.js";
+import { VariablesRuntime } from "./runtime/Variables.js";
+import { DateTimeRuntime } from "./runtime/DateTime.js";
+import { StreamRuntime } from "./runtime/Streams.js";
+import { ExecRuntime } from "./runtime/Exec.js";
+import { FiberRuntime } from "./runtime/Fiber.js";
+import { EnumRuntime } from "./runtime/Enum.js";
+import { ErrorRuntime, PHPFatalError } from "./runtime/PHPError.js";
+import { ReflectionRuntime } from "./runtime/Reflection.js";
+import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
+import { MySQLiExtension } from "./extensions/mysqli.js";
+import { PDOExtension } from "./extensions/pdo.js";
+import { GDExtension } from "./extensions/gd.js";
+import { PCREExtension } from "./extensions/pcre.js";
+import { MbstringExtension } from "./extensions/mbstring.js";
+import { JSONExtension } from "./extensions/json.js";
+import { CurlExtension } from "./extensions/curl.js";
+import { SessionExtension } from "./extensions/session.js";
+import { XMLExtension } from "./extensions/xml.js";
+import { SPLExtension } from "./extensions/spl.js";
+import { HashExtension } from "./extensions/hash.js";
+import { OpenSSLExtension } from "./extensions/openssl.js";
+import { CoreRuntime } from "./runtime/CoreRuntime.js";
+export class PHPEngine {
+    static REVISION = 240;
     static VERSION = "8.5.0";
-    static TRUE = new PHPVariable_1.PHPLiteral(true);
-    static FALSE = new PHPVariable_1.PHPLiteral(false);
-    static NULL = new PHPVariable_1.PHPLiteral(null);
+    static TRUE = new PHPLiteral(true);
+    static FALSE = new PHPLiteral(false);
+    static NULL = new PHPLiteral(null);
     extensions = new Map();
     constants = {};
     functions = {};
@@ -121,7 +78,7 @@ class PHPEngine {
         case_upper: 1,
     };
     constructor(options = {}) {
-        this.transpiler = new JSTranspiler_1.JSTranspiler();
+        this.transpiler = new JSTranspiler();
         this.cacheDir = options.cacheDir === null
             ? null
             : (options.cacheDir || process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache"));
@@ -140,19 +97,20 @@ class PHPEngine {
         }
         this.registerRuntimeImplementations();
         // Default extensions list if not explicitly provided
-        const defaultExtensions = options.extensions || [
-            new mysqli_1.MySQLiExtension(),
-            new pdo_1.PDOExtension(),
-            new gd_1.GDExtension(),
-            new pcre_1.PCREExtension(),
-            new mbstring_1.MbstringExtension(),
-            new json_1.JSONExtension(),
-            new curl_1.CurlExtension(),
-            new session_1.SessionExtension(),
-            new xml_1.XMLExtension(),
-            new spl_1.SPLExtension(),
-            new hash_1.HashExtension(),
-            new openssl_1.OpenSSLExtension(),
+        const defaultExtensions = [
+            new MySQLiExtension(),
+            new PDOExtension(),
+            new GDExtension(),
+            new PCREExtension(),
+            new MbstringExtension(),
+            new JSONExtension(),
+            new CurlExtension(),
+            new SessionExtension(),
+            new XMLExtension(),
+            new SPLExtension(),
+            new HashExtension(),
+            new OpenSSLExtension(),
+            ...(options.extensions || []),
         ];
         defaultExtensions.forEach((ext) => this.registerExtension(ext));
         if (options.watch !== false) {
@@ -234,21 +192,21 @@ class PHPEngine {
         return undefined;
     }
     registerRuntimeImplementations() {
-        CoreRuntime_1.CoreRuntime.register(this);
-        Strings_1.StringRuntime.register(this);
-        Arrays_1.ArrayRuntime.register(this);
-        DateTime_1.DateTimeRuntime.register(this);
-        FileSystem_1.FileSystemRuntime.register(this);
-        Networking_1.NetworkingRuntime.register(this);
-        Math_1.MathRuntime.register(this);
-        Variables_1.VariablesRuntime.register(this);
-        Streams_1.StreamRuntime.register(this);
-        Exec_1.ExecRuntime.register(this);
-        OutputBuffer_1.OutputBufferRuntime.register(this);
-        PHPError_1.ErrorRuntime.register(this);
-        Reflection_1.ReflectionRuntime.register(this);
-        Fiber_1.FiberRuntime.register(this);
-        Enum_1.EnumRuntime.register(this);
+        CoreRuntime.register(this);
+        StringRuntime.register(this);
+        ArrayRuntime.register(this);
+        DateTimeRuntime.register(this);
+        FileSystemRuntime.register(this);
+        NetworkingRuntime.register(this);
+        MathRuntime.register(this);
+        VariablesRuntime.register(this);
+        StreamRuntime.register(this);
+        ExecRuntime.register(this);
+        OutputBufferRuntime.register(this);
+        ErrorRuntime.register(this);
+        ReflectionRuntime.register(this);
+        FiberRuntime.register(this);
+        EnumRuntime.register(this);
     }
     registerExtension(extension) {
         this.extensions.set(extension.name.toLowerCase(), extension);
@@ -283,7 +241,7 @@ class PHPEngine {
             source = await fs.readFile(resolvedPath, "utf8");
         }
         catch {
-            throw new PHPError_1.PHPFatalError(`Fatal error: require(${resolvedPath}): Failed opening required '${resolvedPath}'`);
+            throw new PHPFatalError(`Fatal error: require(${resolvedPath}): Failed opening required '${resolvedPath}'`);
         }
         const func = await this.compileCode(source, resolvedPath);
         this.compiledCache.set(resolvedPath, func);
@@ -300,14 +258,13 @@ class PHPEngine {
         });
         const moduleObj = { exports: {} };
         try {
-            const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
-            factory(moduleObj, moduleObj.exports, require, PHPObject_1.PHPClass, PHPObject_1.PHPObject, PHPVariable_1.PHPVariable, PHPVariable_1.PHPLiteral, PHPError_1.PHPFatalError);
+            const factory = new Function("module", "exports", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
+            factory(moduleObj, moduleObj.exports, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
             return moduleObj.exports;
         }
         catch (err) {
             if (err.name === "SyntaxError") {
                 try {
-                    const vm = require("vm");
                     new vm.Script(transpilation.code);
                 }
                 catch (scriptErr) {
@@ -324,10 +281,10 @@ class PHPEngine {
         }
     }
     createContext(options = {}) {
-        return new PHPContext_1.PHPContext(this, options);
+        return new PHPContext(this, options);
     }
     initWatcher() {
-        this.watcher = chokidar_1.default.watch([], { ignoreInitial: true });
+        this.watcher = chokidar.watch([], { ignoreInitial: true });
         this.watcher.on("change", (changedPath) => {
             const resolved = path.resolve(changedPath);
             this.compiledCache.delete(resolved);
@@ -339,5 +296,4 @@ class PHPEngine {
         }
     }
 }
-exports.PHPEngine = PHPEngine;
 //# sourceMappingURL=PHPEngine.js.map

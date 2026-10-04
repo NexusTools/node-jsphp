@@ -1,19 +1,14 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPVariable = exports.PHPLiteral = void 0;
-const PHPError_1 = require("./PHPError");
-class PHPLiteral {
+import { PHPFatalError } from "./PHPError.js";
+export class PHPLiteral {
     value;
     constructor(value) {
-        this.value = value && typeof value === "object" && typeof value.get === "function"
-            ? value.get()
-            : value;
+        this.value = value;
     }
     get() {
         return this.value;
     }
     set(val) {
-        throw new PHPError_1.PHPFatalError(`Literals cannot be changed`);
+        throw new PHPFatalError(`Literals cannot be changed`);
     }
     bindRef(target) {
         // Literal variables do not bind references
@@ -25,11 +20,25 @@ class PHPLiteral {
         return false;
     }
     async call(ctx, method, args = []) {
-        throw new PHPError_1.PHPFatalError(`Call to a member function ${method}() on a non-object`);
+        throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
+    }
+    toString() {
+        const val = this.get();
+        return val === null || val === undefined ? "" : String(val);
+    }
+    valueOf() {
+        return this.get();
+    }
+    [Symbol.toPrimitive](hint) {
+        const val = this.get();
+        if (hint === "number")
+            return Number(val) || 0;
+        if (hint === "string")
+            return val === null || val === undefined ? "" : String(val);
+        return val;
     }
 }
-exports.PHPLiteral = PHPLiteral;
-class PHPVariable {
+export class PHPVariable {
     value;
     refTarget;
     constructor(initialValue = undefined) {
@@ -81,7 +90,7 @@ class PHPVariable {
     async call(ctx, method, args = []) {
         const obj = this.get();
         if (!obj || (typeof obj !== "object" && typeof obj !== "function")) {
-            throw new PHPError_1.PHPFatalError(`Call to a member function ${method}() on a non-object`);
+            throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
         }
         const lowerMethod = method.toLowerCase();
         const callArgs = args.map((arg) => (arg && typeof arg === "object" && typeof arg.get === "function" ? arg : new PHPLiteral(arg)));
@@ -110,20 +119,22 @@ class PHPVariable {
                 res = res.get();
             return res;
         }
-        let target = obj;
-        while (target && target !== Object.prototype) {
-            for (const propName of Object.getOwnPropertyNames(target)) {
-                if (propName.toLowerCase() === lowerMethod && typeof obj[propName] === "function") {
-                    let res = await obj[propName].apply(obj, [ctx, ...callArgs]);
-                    if (res && typeof res === "object" && typeof res.get === "function")
-                        res = res.get();
-                    return res;
-                }
-            }
-            target = Object.getPrototypeOf(target);
-        }
-        throw new PHPError_1.PHPFatalError(`Call to undefined method ${obj?.constructor?.name || "object"}::${method}()`);
+        throw new PHPFatalError(`Call to undefined method ${obj?.constructor?.name}::${method}()`);
+    }
+    toString() {
+        const val = this.get();
+        return val === null || val === undefined ? "" : String(val);
+    }
+    valueOf() {
+        return this.get();
+    }
+    [Symbol.toPrimitive](hint) {
+        const val = this.get();
+        if (hint === "number")
+            return Number(val) || 0;
+        if (hint === "string")
+            return val === null || val === undefined ? "" : String(val);
+        return val;
     }
 }
-exports.PHPVariable = PHPVariable;
 //# sourceMappingURL=PHPVariable.js.map

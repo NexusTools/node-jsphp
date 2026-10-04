@@ -1,8 +1,8 @@
 import sharp from "sharp";
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 
 export class GDImage {
   public width: number;

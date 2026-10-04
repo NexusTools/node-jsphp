@@ -1,6 +1,6 @@
-import { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
-import { PHPReference } from "./PHPVariable";
+import { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class ArrayRuntime {
     static count(ctx: PHPContext, arrayOrCountableArg?: PHPReference): number;
     static array_keys(ctx: PHPContext, inputArg?: PHPReference): any[];

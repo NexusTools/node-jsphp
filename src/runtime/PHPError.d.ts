@@ -1,5 +1,5 @@
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
 export interface PHPStackFrame {
     file: string;
     line: number;

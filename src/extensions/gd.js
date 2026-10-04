@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.GDExtension = exports.GDImage = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-class GDImage {
+import { PHPExtension } from "../PHPExtension.js";
+export class GDImage {
     width;
     height;
     buffer;
@@ -11,8 +8,7 @@ class GDImage {
         this.height = height;
     }
 }
-exports.GDImage = GDImage;
-class GDExtension extends PHPExtension_1.PHPExtension {
+export class GDExtension extends PHPExtension {
     name = "gd";
     onInit(engine) {
         this.constants = {
@@ -45,5 +41,4 @@ class GDExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.GDExtension = GDExtension;
 //# sourceMappingURL=gd.js.map

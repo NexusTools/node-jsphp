@@ -1,15 +1,12 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ErrorRuntime = exports.ErrorException = exports.PHPExit = exports.PHPWarning = exports.PHPNotice = exports.PHPFatalError = exports.PHPParseError = exports.PHPTypeError = exports.PHPException = exports.PHPError = void 0;
-const PHPVariable_1 = require("./PHPVariable");
-class PHPError extends Error {
+import { PHPVariable } from "./PHPVariable.js";
+export class PHPError extends Error {
     phpCode;
     phpFile;
     phpLine;
     phpTrace;
     previous;
     rawJSStack = "";
-    constructor(messageArg = "", codeArg = 0, fileArg = __filename, lineArg = 0, traceArg = [], previousArg = null) {
+    constructor(messageArg = "", codeArg = 0, fileArg = "[INTERNAL]", lineArg = 0, traceArg = [], previousArg = null) {
         const message = String(messageArg?.get ? messageArg.get() : (messageArg ?? ""));
         const code = Number(codeArg?.get ? codeArg.get() : (codeArg || 0));
         const file = String(fileArg?.get ? fileArg.get() : (fileArg || __filename));
@@ -17,6 +14,8 @@ class PHPError extends Error {
         const trace = traceArg?.get ? traceArg.get() : (traceArg || []);
         const previous = previousArg?.get ? previousArg.get() : previousArg;
         super(message);
+        if (message.includes("Class \"\" not found"))
+            console.log("CRITICAL CLASS NOT FOUND STACK:\n", this.stack);
         this.name = this.constructor.name;
         this.phpCode = code;
         this.phpFile = file;
@@ -83,38 +82,30 @@ class PHPError extends Error {
         return PHPError.virtualizeJSStack(this.rawJSStack || this.stack || "", this.phpFile, this.phpLine, this.phpTrace);
     }
 }
-exports.PHPError = PHPError;
-class PHPException extends PHPError {
+export class PHPException extends PHPError {
     static phpName = "Exception";
     constructor(messageArg = "", codeArg = 0, previousArg = null) {
-        super(messageArg, codeArg, __filename, 0, [], previousArg);
+        super(messageArg, codeArg, "[INTERNAL]", 0, [], previousArg);
     }
 }
-exports.PHPException = PHPException;
-class PHPTypeError extends PHPError {
+export class PHPTypeError extends PHPError {
 }
-exports.PHPTypeError = PHPTypeError;
-class PHPParseError extends PHPError {
+export class PHPParseError extends PHPError {
 }
-exports.PHPParseError = PHPParseError;
-class PHPFatalError extends PHPError {
+export class PHPFatalError extends PHPError {
 }
-exports.PHPFatalError = PHPFatalError;
-class PHPNotice extends PHPError {
+export class PHPNotice extends PHPError {
 }
-exports.PHPNotice = PHPNotice;
-class PHPWarning extends PHPError {
+export class PHPWarning extends PHPError {
 }
-exports.PHPWarning = PHPWarning;
-class PHPExit extends PHPError {
+export class PHPExit extends PHPError {
     status;
     constructor(status = 0) {
         super(`PHP Exit with status ${status}`);
         this.status = status;
     }
 }
-exports.PHPExit = PHPExit;
-class ErrorException extends PHPError {
+export class ErrorException extends PHPError {
     severity;
     constructor(message = "", code = 0, severity = 1, file = __filename, line = 0, previous = null) {
         super(message, code, file, line, [], previous);
@@ -124,8 +115,7 @@ class ErrorException extends PHPError {
         return this.severity;
     }
 }
-exports.ErrorException = ErrorException;
-class ErrorRuntime {
+export class ErrorRuntime {
     static debug_backtrace(ctx) {
         return ctx.getPHPBacktrace();
     }
@@ -135,20 +125,20 @@ class ErrorRuntime {
         return trace;
     }
     static set_error_handler(ctx, handlerArg, levelsArg = 32767) {
-        const handler = handlerArg instanceof PHPVariable_1.PHPVariable ? handlerArg.get() : handlerArg;
-        const levels = levelsArg instanceof PHPVariable_1.PHPVariable ? levelsArg.get() : levelsArg;
+        const handler = handlerArg instanceof PHPVariable ? handlerArg.get() : handlerArg;
+        const levels = levelsArg instanceof PHPVariable ? levelsArg.get() : levelsArg;
         return ctx.setErrorHandler(handler, levels !== undefined ? Number(levels) : 32767);
     }
     static restore_error_handler(ctx) {
         return ctx.restoreErrorHandler();
     }
     static async trigger_error(ctx, messageArg, levelArg = 1024) {
-        const message = messageArg instanceof PHPVariable_1.PHPVariable ? messageArg.get() : messageArg;
-        const level = levelArg instanceof PHPVariable_1.PHPVariable ? levelArg.get() : levelArg;
+        const message = messageArg instanceof PHPVariable ? messageArg.get() : messageArg;
+        const level = levelArg instanceof PHPVariable ? levelArg.get() : levelArg;
         return await ctx.triggerError(String(message ?? ""), level !== undefined ? Number(level) : 1024);
     }
     static error_reporting(ctx, levelArg) {
-        const level = levelArg instanceof PHPVariable_1.PHPVariable ? levelArg.get() : levelArg;
+        const level = levelArg instanceof PHPVariable ? levelArg.get() : levelArg;
         const previous = ctx.errorReportingLevel;
         if (level !== undefined && level !== null)
             ctx.errorReportingLevel = Number(level);
@@ -189,5 +179,4 @@ class ErrorRuntime {
         engine.registerClasses(ErrorRuntime.classes);
     }
 }
-exports.ErrorRuntime = ErrorRuntime;
 //# sourceMappingURL=PHPError.js.map

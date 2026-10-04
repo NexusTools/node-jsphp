@@ -4,9 +4,9 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import cluster from "cluster";
 import { Command } from "commander";
-import { PHPEngine } from "../PHPEngine";
-import { PHPError, PHPExit } from "../runtime/PHPError";
-import { NodeJSExtension } from "../extensions/nodejs";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPError, PHPExit } from "../runtime/PHPError.js";
+import { NodeJSExtension } from "../extensions/nodejs.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

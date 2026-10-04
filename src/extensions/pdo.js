@@ -1,12 +1,6 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PDOExtension = exports.PDOConnection = void 0;
-const promise_1 = __importDefault(require("mysql2/promise"));
-const PHPExtension_1 = require("../PHPExtension");
-class PDOConnection {
+import mysql from "mysql2/promise";
+import { PHPExtension } from "../PHPExtension.js";
+export class PDOConnection {
     connection;
     async connect(dsn, username = "", password = "") {
         const hostMatch = dsn.match(/host=([^;]+)/);
@@ -15,7 +9,7 @@ class PDOConnection {
         const host = hostMatch ? hostMatch[1] : "127.0.0.1";
         const database = dbMatch ? dbMatch[1] : "";
         const port = portMatch ? parseInt(portMatch[1], 10) : 3306;
-        this.connection = await promise_1.default.createConnection({ host, user: username, password, database, port });
+        this.connection = await mysql.createConnection({ host, user: username, password, database, port });
         return true;
     }
     async exec(sql) {
@@ -31,8 +25,7 @@ class PDOConnection {
         return rows;
     }
 }
-exports.PDOConnection = PDOConnection;
-class PDOExtension extends PHPExtension_1.PHPExtension {
+export class PDOExtension extends PHPExtension {
     name = "pdo";
     onInit(engine) {
         this.constants = {
@@ -42,5 +35,4 @@ class PDOExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.PDOExtension = PDOExtension;
 //# sourceMappingURL=pdo.js.map

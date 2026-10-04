@@ -1,12 +1,9 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.NodeJSExtension = exports.NodeJSService = exports.NodeJSObject = void 0;
-exports.wrapJSValue = wrapJSValue;
-exports.unwrapPHPValue = unwrapPHPValue;
-const PHPExtension_1 = require("../PHPExtension");
-const PHPObject_1 = require("../runtime/PHPObject");
-const PHPVariable_1 = require("../runtime/PHPVariable");
-function wrapJSValue(val) {
+import { createRequire } from "module";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
+import { PHPVariable } from "../runtime/PHPVariable.js";
+const customRequire = createRequire(import.meta.url);
+export function wrapJSValue(val) {
     if (val === null || val === undefined)
         return val;
     if (typeof val === "boolean" || typeof val === "number" || typeof val === "string")
@@ -16,8 +13,8 @@ function wrapJSValue(val) {
     }
     return new NodeJSObject(val);
 }
-function unwrapPHPValue(val) {
-    const actual = val instanceof PHPVariable_1.PHPVariable ? val.get() : val;
+export function unwrapPHPValue(val) {
+    const actual = val instanceof PHPVariable ? val.get() : val;
     if (actual instanceof NodeJSObject) {
         return actual.jsValue;
     }
@@ -26,11 +23,11 @@ function unwrapPHPValue(val) {
     }
     return actual;
 }
-class NodeJSObject extends PHPObject_1.PHPObject {
+export class NodeJSObject extends PHPObject {
     jsValue;
     constructor(jsValue) {
         const clsName = typeof jsValue === "function" ? (jsValue.name || "NodeJSFunction") : "NodeJSObject";
-        super(new PHPObject_1.PHPClass(clsName));
+        super(new PHPClass(clsName));
         this.jsValue = jsValue;
     }
     async getProperty(ctx, name) {
@@ -106,10 +103,9 @@ class NodeJSObject extends PHPObject_1.PHPObject {
         return undefined;
     }
 }
-exports.NodeJSObject = NodeJSObject;
-class NodeJSService {
+export class NodeJSService {
     static require(moduleName) {
-        const mod = require(moduleName);
+        const mod = customRequire(moduleName);
         return wrapJSValue(mod);
     }
     static global(name) {
@@ -118,7 +114,7 @@ class NodeJSService {
     }
     static eval(code) {
         const fn = new Function("require", "process", "global", `return (${code});`);
-        const res = fn(require, process, global);
+        const res = fn(customRequire, process, global);
         return wrapJSValue(res);
     }
     static new(classNameOrModule, ...args) {
@@ -126,7 +122,7 @@ class NodeJSService {
         let targetClass = globalThis[classNameOrModule];
         if (!targetClass) {
             try {
-                targetClass = require(classNameOrModule);
+                targetClass = customRequire(classNameOrModule);
             }
             catch {
                 targetClass = null;
@@ -139,8 +135,7 @@ class NodeJSService {
         return null;
     }
 }
-exports.NodeJSService = NodeJSService;
-class NodeJSExtension extends PHPExtension_1.PHPExtension {
+export class NodeJSExtension extends PHPExtension {
     name = "nodejs";
     onInit(engine) {
         this.functions = {
@@ -166,5 +161,4 @@ class NodeJSExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.NodeJSExtension = NodeJSExtension;
 //# sourceMappingURL=nodejs.js.map

@@ -1,4 +1,4 @@
-import type { PHPEngine } from "../PHPEngine";
+import type { PHPEngine } from "../PHPEngine.js";
 export interface TranspileOptions {
     engineSHA1?: string;
     cacheDir?: string;
@@ -12,6 +12,7 @@ export declare class JSTranspiler {
     private parser;
     private currentClassName;
     private currentClassNameOriginal;
+    private currentFuncName;
     private currentNamespaceName;
     private currentNamespaceNameOriginal;
     private classImports;

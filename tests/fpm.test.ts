@@ -1,7 +1,11 @@
 import * as net from "net";
 import * as path from "path";
 import * as fs from "fs";
-import { runFPM } from "../index";
+import { fileURLToPath } from "url";
+import { runFPM } from "../index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to encode FastCGI record
 function makeFCGIRecord(type: number, requestId: number, content: Buffer): Buffer {

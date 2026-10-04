@@ -1,6 +1,6 @@
-import { PHPObject, PHPMethodMetadata, PHPPropertyMetadata } from "./PHPObject";
-import type { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
+import { PHPObject, PHPMethodMetadata, PHPPropertyMetadata } from "./PHPObject.js";
+import type { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
 export interface FunctionMetaOptions {
     name: string;
     visibility?: "public" | "protected" | "private";

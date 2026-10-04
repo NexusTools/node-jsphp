@@ -1,5 +1,7 @@
-import { PHPEngine, ASTOptimizer } from "../index";
+import { jest } from "@jest/globals";
+import { PHPEngine, ASTOptimizer } from "../index.js";
 import * as fs from "fs/promises";
+import fsSync from "fs";
 import * as os from "os";
 import * as path from "path";
 
@@ -23,7 +25,7 @@ describe("PHPEngine & AST Unit Tests", () => {
   test("Does not synchronously write execution traces by default", async () => {
     const previousDebug = process.env.JSPHP_DEBUG;
     delete process.env.JSPHP_DEBUG;
-    const appendSpy = jest.spyOn(require("fs"), "appendFileSync");
+    const appendSpy = jest.spyOn(fsSync, "appendFileSync");
     try {
       await engine.createContext().eval("echo 'ready';");
       expect(appendSpy).not.toHaveBeenCalled();

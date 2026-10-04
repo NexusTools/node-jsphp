@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PCREExtension = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-const PHPVariable_1 = require("../runtime/PHPVariable");
-const PHPObject_1 = require("../runtime/PHPObject");
-const Reflection_1 = require("../runtime/Reflection");
-class PCREExtension extends PHPExtension_1.PHPExtension {
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPLiteral } from "../runtime/PHPVariable.js";
+import { PHPObject } from "../runtime/PHPObject.js";
+import { defineFunction } from "../runtime/Reflection.js";
+export class PCREExtension extends PHPExtension {
     name = "pcre";
     compilePattern(pattern, global = false, offsets = false) {
         const opening = pattern[0];
@@ -138,18 +135,18 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
                         let replacement = "";
                         const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
                         if (typeof cb === "string") {
-                            replacement = String((await ctx.callFunction(cb, [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                            replacement = String((await ctx.callFunction(cb, [new PHPLiteral(captures)])) ?? "");
                         }
                         else if (Array.isArray(cb) && cb.length === 2) {
                             const obj = cb[0] && typeof cb[0] === "object" && typeof cb[0].get === "function" ? cb[0].get() : cb[0];
                             const m = cb[1] && typeof cb[1] === "object" && typeof cb[1].get === "function" ? cb[1].get() : cb[1];
-                            replacement = String((await ctx.callMethod(obj, String(m), [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                            replacement = String((await ctx.callMethod(obj, String(m), [new PHPLiteral(captures)])) ?? "");
                         }
                         else if (typeof cb === "function") {
-                            replacement = String((await cb.apply(ctx, [ctx, new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                            replacement = String((await cb.apply(ctx, [ctx, new PHPLiteral(captures)])) ?? "");
                         }
-                        else if (cb instanceof PHPObject_1.PHPObject) {
-                            replacement = String((await ctx.callMethod(cb, "__invoke", [new PHPVariable_1.PHPLiteral(captures)])) ?? "");
+                        else if (cb instanceof PHPObject) {
+                            replacement = String((await ctx.callMethod(cb, "__invoke", [new PHPLiteral(captures)])) ?? "");
                         }
                         output += replacement;
                         lastIndex = current.index + current[0].length;
@@ -184,15 +181,14 @@ class PCREExtension extends PHPExtension_1.PHPExtension {
                 }
             },
         };
-        (0, Reflection_1.defineFunction)(this.functions.preg_match, {
+        defineFunction(this.functions.preg_match, {
             name: "preg_match",
             parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
         });
-        (0, Reflection_1.defineFunction)(this.functions.preg_match_all, {
+        defineFunction(this.functions.preg_match_all, {
             name: "preg_match_all",
             parameters: [{ name: "pattern" }, { name: "subject" }, { name: "matches", byref: true }, { name: "flags" }, { name: "offset" }],
         });
     }
 }
-exports.PCREExtension = PCREExtension;
 //# sourceMappingURL=pcre.js.map

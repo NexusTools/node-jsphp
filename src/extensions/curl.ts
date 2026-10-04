@@ -1,7 +1,7 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 
 export class CurlHandle {
   public url: string = "";
@@ -17,9 +17,22 @@ export class CurlExtension extends PHPExtension {
       curlopt_returnstream: 19913,
       curlopt_post: 47,
       curlopt_postfields: 10015,
+      curl_version_ssl: 4,
     };
 
     this.functions = {
+      curl_version: (ctx: PHPContext) => {
+        return {
+          version_number: 0x074e00,
+          version: "7.78.0",
+          ssl_version_number: 0,
+          ssl_version: "OpenSSL/1.1.1l",
+          host: "x86_64-pc-win32",
+          age: 3,
+          features: 4,
+          protocols: ["http", "https"],
+        };
+      },
       curl_init: (ctx: PHPContext, urlArg?: PHPReference) => {
         const handle = new CurlHandle();
         const url = urlArg ? String(urlArg.get() ?? "") : undefined;

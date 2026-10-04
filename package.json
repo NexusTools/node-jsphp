@@ -2,6 +2,7 @@
   "name": "@nexustools/php",
   "version": "1.0.2",
   "description": "PHP 8.5 runtime, FastCGI PHP-FPM, HTTP server and CLI written in TypeScript for Node.js",
+  "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
   "bin": {
@@ -14,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "prepare": "npm run build"
   },
   "keywords": [

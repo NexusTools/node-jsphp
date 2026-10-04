@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.MathRuntime = void 0;
-class MathRuntime {
+export class MathRuntime {
     static abs(ctx, num) { return Math.abs(Number(num?.get()) || 0); }
     static ceil(ctx, num) { return Math.ceil(Number(num?.get()) || 0); }
     static floor(ctx, num) { return Math.floor(Number(num?.get()) || 0); }
@@ -118,5 +115,4 @@ class MathRuntime {
         engine.registerFunctions(MathRuntime.functions);
     }
 }
-exports.MathRuntime = MathRuntime;
 //# sourceMappingURL=Math.js.map

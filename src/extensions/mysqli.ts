@@ -1,9 +1,9 @@
 import mysql from "mysql2/promise";
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPObject, PHPClass } from "../runtime/PHPObject";
-import { PHPVariable, PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
+import { PHPVariable, PHPReference } from "../runtime/PHPVariable.js";
 
 export class MySQLiResult {
   public rows: any[];

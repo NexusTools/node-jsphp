@@ -1,7 +1,11 @@
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
-import { runHTTPServer } from "../index";
+import { fileURLToPath } from "url";
+import { runHTTPServer } from "../index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 describe("HTTP Server SAPI Tests", () => {
   let server: http.Server;
@@ -141,4 +145,37 @@ cause_error();
     expect(res.body).not.toContain("PHPContext.ts");
     expect(res.body).not.toContain("node:internal");
   });
+
+  test("Serves WordPress setup-config.php with rendered text and stylesheet", async () => {
+    const wpDir = path.join(__dirname, "../wordpress-test");
+    const wpServer = await runHTTPServer(8889, wpDir);
+    try {
+      const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        http.get("http://127.0.0.1:8889/wp-admin/setup-config.php", (r) => {
+          let b = "";
+          r.on("data", (chunk) => { b += chunk; });
+          r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+        }).on("error", reject);
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("wp-core-ui");
+
+      const resStep1 = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        http.get("http://127.0.0.1:8889/wp-admin/setup-config.php?step=1", (r) => {
+          let b = "";
+          r.on("data", (chunk) => { b += chunk; });
+          r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+        }).on("error", reject);
+      });
+
+      expect(resStep1.status).toBe(200);
+      expect(resStep1.body).toContain("Database Name");
+      expect(resStep1.body).toContain("Username");
+      expect(resStep1.body).toContain("Password");
+      expect(resStep1.body).toContain("wp-core-ui");
+    } finally {
+      wpServer.close();
+    }
+  }, 30000);
 });

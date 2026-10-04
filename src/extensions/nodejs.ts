@@ -1,8 +1,11 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPObject, PHPClass } from "../runtime/PHPObject";
-import { PHPVariable, PHPReference } from "../runtime/PHPVariable";
+import { createRequire } from "module";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
+import { PHPVariable, PHPReference } from "../runtime/PHPVariable.js";
+
+const customRequire = createRequire(import.meta.url);
 
 export function wrapJSValue(val: any): any {
   if (val === null || val === undefined) return val;
@@ -111,7 +114,7 @@ export class NodeJSObject extends PHPObject {
 
 export class NodeJSService {
   public static require(moduleName: string): any {
-    const mod = require(moduleName);
+    const mod = customRequire(moduleName);
     return wrapJSValue(mod);
   }
 
@@ -122,7 +125,7 @@ export class NodeJSService {
 
   public static eval(code: string): any {
     const fn = new Function("require", "process", "global", `return (${code});`);
-    const res = fn(require, process, global);
+    const res = fn(customRequire, process, global);
     return wrapJSValue(res);
   }
 
@@ -131,7 +134,7 @@ export class NodeJSService {
     let targetClass: any = (globalThis as any)[classNameOrModule];
     if (!targetClass) {
       try {
-        targetClass = require(classNameOrModule);
+        targetClass = customRequire(classNameOrModule);
       } catch {
         targetClass = null;
       }

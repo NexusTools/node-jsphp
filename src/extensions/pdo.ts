@@ -1,7 +1,7 @@
 import mysql from "mysql2/promise";
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
 
 export class PDOConnection {
   public connection?: mysql.Connection;

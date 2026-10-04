@@ -1,15 +1,11 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPEnum = exports.EnumRuntime = void 0;
-const PHPObject_1 = require("./PHPObject");
-const PHPError_1 = require("./PHPError");
-class EnumRuntime {
+import { PHPObject } from "./PHPObject.js";
+import { PHPFatalError } from "./PHPError.js";
+export class EnumRuntime {
     static register(engine) {
         engine.registerClass("enum", PHPEnum);
     }
 }
-exports.EnumRuntime = EnumRuntime;
-class PHPEnum extends PHPObject_1.PHPObject {
+export class PHPEnum extends PHPObject {
     name;
     value;
     constructor(enumClass, name, value) {
@@ -24,7 +20,7 @@ class PHPEnum extends PHPObject_1.PHPObject {
                 return new PHPEnum(enumClass, caseName, caseVal);
             }
         }
-        throw new PHPError_1.PHPFatalError(`ValueError: ${value} is not a valid backing value for enum ${enumClass.name}`);
+        throw new PHPFatalError(`ValueError: ${value} is not a valid backing value for enum ${enumClass.name}`);
     }
     static tryFrom(enumClass, value) {
         try {
@@ -35,5 +31,4 @@ class PHPEnum extends PHPObject_1.PHPObject {
         }
     }
 }
-exports.PHPEnum = PHPEnum;
 //# sourceMappingURL=Enum.js.map

@@ -1,42 +1,10 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const http = __importStar(require("http"));
-const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
-const index_1 = require("../index");
+import * as http from "http";
+import * as path from "path";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
+import { runHTTPServer } from "../index.js";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 describe("HTTP Server SAPI Tests", () => {
     let server;
     const testPort = 8888;
@@ -77,7 +45,7 @@ function cause_error() {
 cause_error();
 `);
         fs.writeFileSync(path.join(docRoot, "unexpected_error.php"), "<?php $value = 1; $value['invalid'] = 2;");
-        server = await (0, index_1.runHTTPServer)(testPort, docRoot);
+        server = await runHTTPServer(testPort, docRoot);
     });
     afterAll((done) => {
         if (server) {
@@ -146,5 +114,35 @@ cause_error();
         expect(res.body).not.toContain("PHPContext.ts");
         expect(res.body).not.toContain("node:internal");
     });
+    test("Serves WordPress setup-config.php with rendered text and stylesheet", async () => {
+        const wpDir = path.join(__dirname, "../wordpress-test");
+        const wpServer = await runHTTPServer(8889, wpDir);
+        try {
+            const res = await new Promise((resolve, reject) => {
+                http.get("http://127.0.0.1:8889/wp-admin/setup-config.php", (r) => {
+                    let b = "";
+                    r.on("data", (chunk) => { b += chunk; });
+                    r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+                }).on("error", reject);
+            });
+            expect(res.status).toBe(200);
+            expect(res.body).toContain("wp-core-ui");
+            const resStep1 = await new Promise((resolve, reject) => {
+                http.get("http://127.0.0.1:8889/wp-admin/setup-config.php?step=1", (r) => {
+                    let b = "";
+                    r.on("data", (chunk) => { b += chunk; });
+                    r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+                }).on("error", reject);
+            });
+            expect(resStep1.status).toBe(200);
+            expect(resStep1.body).toContain("Database Name");
+            expect(resStep1.body).toContain("Username");
+            expect(resStep1.body).toContain("Password");
+            expect(resStep1.body).toContain("wp-core-ui");
+        }
+        finally {
+            wpServer.close();
+        }
+    }, 30000);
 });
 //# sourceMappingURL=http_server.test.js.map

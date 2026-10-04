@@ -1,10 +1,7 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.StringRuntime = void 0;
-const PHPVariable_1 = require("./PHPVariable");
-const PHPObject_1 = require("./PHPObject");
-const Reflection_1 = require("./Reflection");
-class StringRuntime {
+import { PHPLiteral } from "./PHPVariable.js";
+import { PHPObject } from "./PHPObject.js";
+import { defineFunction } from "./Reflection.js";
+export class StringRuntime {
     /** Gets string length. */
     static strlen(ctx, strArg) {
         const str = strArg?.get();
@@ -49,7 +46,7 @@ class StringRuntime {
         const offset = offsetArg?.get();
         const length = lengthArg?.get();
         if (Array.isArray(subject)) {
-            return subject.map((value, index) => StringRuntime.substr_replace(ctx, new PHPVariable_1.PHPLiteral(value), new PHPVariable_1.PHPLiteral(Array.isArray(replacement) ? replacement[index] ?? "" : replacement), new PHPVariable_1.PHPLiteral(Array.isArray(offset) ? offset[index] ?? 0 : offset), new PHPVariable_1.PHPLiteral(Array.isArray(length) ? length[index] : length)));
+            return subject.map((value, index) => StringRuntime.substr_replace(ctx, new PHPLiteral(value), new PHPLiteral(Array.isArray(replacement) ? replacement[index] ?? "" : replacement), new PHPLiteral(Array.isArray(offset) ? offset[index] ?? 0 : offset), new PHPLiteral(Array.isArray(length) ? length[index] : length)));
         }
         const source = String(subject ?? "");
         const startValue = Math.trunc(Number(offset) || 0);
@@ -113,7 +110,7 @@ class StringRuntime {
         const subject = subjectArg?.get();
         var replaceCount = 0;
         if (Array.isArray(subject)) {
-            const res = subject.map((s) => StringRuntime.str_replace(ctx, new PHPVariable_1.PHPLiteral(search), new PHPVariable_1.PHPLiteral(replace), new PHPVariable_1.PHPLiteral(s), countRef));
+            const res = subject.map((s) => StringRuntime.str_replace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef));
             if (countRef && typeof countRef.set === "function")
                 countRef.set(replaceCount);
             return res;
@@ -152,7 +149,7 @@ class StringRuntime {
         const replace = replaceArg?.get();
         const subject = subjectArg?.get();
         if (Array.isArray(subject)) {
-            return subject.map((s) => StringRuntime.str_ireplace(ctx, new PHPVariable_1.PHPLiteral(search), new PHPVariable_1.PHPLiteral(replace), new PHPVariable_1.PHPLiteral(s), countRef));
+            return subject.map((s) => StringRuntime.str_ireplace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef));
         }
         let s = String(subject ?? "");
         const searches = Array.isArray(search) ? search : [search];
@@ -247,11 +244,11 @@ class StringRuntime {
         const val2 = piecesArg?.get();
         let glue = "";
         let pieces = [];
-        if (Array.isArray(val1) || (val1 && typeof val1 === "object" && !(val1 instanceof PHPObject_1.PHPObject))) {
+        if (Array.isArray(val1) || (val1 && typeof val1 === "object" && !(val1 instanceof PHPObject))) {
             pieces = Array.isArray(val1) ? val1 : Object.values(val1);
             glue = val2 !== undefined && val2 !== null ? String(val2) : "";
         }
-        else if (Array.isArray(val2) || (val2 && typeof val2 === "object" && !(val2 instanceof PHPObject_1.PHPObject))) {
+        else if (Array.isArray(val2) || (val2 && typeof val2 === "object" && !(val2 instanceof PHPObject))) {
             pieces = Array.isArray(val2) ? val2 : Object.values(val2);
             glue = val1 !== undefined && val1 !== null ? String(val1) : "";
         }
@@ -328,7 +325,7 @@ class StringRuntime {
     /** Binary safe string comparison of the first n characters. */
     static strncmp(ctx, str1Arg, str2Arg, lengthArg) {
         const length = Number(lengthArg?.get()) || 0;
-        return StringRuntime.strcmp(ctx, new PHPVariable_1.PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPVariable_1.PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
+        return StringRuntime.strcmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
     }
     /** Quote string with slashes. */
     static addslashes(ctx, strArg) {
@@ -734,8 +731,7 @@ class StringRuntime {
         engine.registerFunctions(StringRuntime.functions);
     }
 }
-exports.StringRuntime = StringRuntime;
-(0, Reflection_1.defineFunction)(StringRuntime.parse_str, {
+defineFunction(StringRuntime.parse_str, {
     name: "parse_str",
     parameters: [{ name: "query" }, { name: "result", byref: true }],
 });

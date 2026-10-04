@@ -1,12 +1,10 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const index_1 = require("../../index");
+import { PHPEngine, NodeJSExtension } from "../../index.js";
 describe("Node.js Extension Interop Tests", () => {
     let engine;
     beforeEach(() => {
-        engine = new index_1.PHPEngine({
+        engine = new PHPEngine({
             watch: false,
-            extensions: [new index_1.NodeJSExtension()],
+            extensions: [new NodeJSExtension()],
         });
     });
     afterEach(() => {

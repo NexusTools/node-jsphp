@@ -1,6 +1,6 @@
 import * as net from "net";
 import * as path from "path";
-import { PHPEngine } from "../PHPEngine";
+import { PHPEngine } from "../PHPEngine.js";
 
 const FCGI_VERSION_1 = 1;
 const FCGI_BEGIN_REQUEST = 1;

@@ -1,4 +1,4 @@
-import type { PHPContext } from "../PHPContext";
+import type { PHPContext } from "../PHPContext.js";
 export interface PHPParameterMetadata {
     name: string;
     position: number;

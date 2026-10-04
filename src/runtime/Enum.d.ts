@@ -1,5 +1,5 @@
-import { PHPClass, PHPObject } from "./PHPObject";
-import type { PHPEngine } from "../PHPEngine";
+import { PHPClass, PHPObject } from "./PHPObject.js";
+import type { PHPEngine } from "../PHPEngine.js";
 export declare class EnumRuntime {
     static register(engine: PHPEngine): void;
 }

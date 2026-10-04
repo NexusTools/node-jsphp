@@ -1,6 +1,6 @@
-import { PHPClass, PHPObject } from "./PHPObject";
-import { PHPFatalError } from "./PHPError";
-import type { PHPEngine } from "../PHPEngine";
+import { PHPClass, PHPObject } from "./PHPObject.js";
+import { PHPFatalError } from "./PHPError.js";
+import type { PHPEngine } from "../PHPEngine.js";
 
 export class EnumRuntime {
   public static register(engine: PHPEngine): void {

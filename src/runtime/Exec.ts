@@ -1,9 +1,9 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import type { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
-import { PHPVariable, PHPReference } from "./PHPVariable";
-import { defineFunction } from "./Reflection";
+import type { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
+import { PHPVariable, PHPReference } from "./PHPVariable.js";
+import { defineFunction } from "./Reflection.js";
 
 const execAsync = promisify(exec);
 

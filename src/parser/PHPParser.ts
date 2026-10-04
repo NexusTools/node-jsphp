@@ -1,4 +1,4 @@
-const Engine = require("php-parser");
+import engineParser from "php-parser";
 
 export interface PHPParserOptions {
   filename?: string;
@@ -9,7 +9,7 @@ export class PHPParser {
   private engine: any;
 
   constructor() {
-    this.engine = new Engine({
+    this.engine = new ((engineParser as any).Engine || (engineParser as any))({
       parser: {
         extractDoc: true,
         php7: true,

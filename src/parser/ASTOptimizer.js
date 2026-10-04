@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ASTOptimizer = void 0;
-class ASTOptimizer {
+export class ASTOptimizer {
     static optimize(ast, engine) {
         if (!ast || typeof ast !== "object")
             return ast;
@@ -113,5 +110,4 @@ class ASTOptimizer {
         return [bodyNode];
     }
 }
-exports.ASTOptimizer = ASTOptimizer;
 //# sourceMappingURL=ASTOptimizer.js.map

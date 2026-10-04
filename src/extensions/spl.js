@@ -1,10 +1,7 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SPLExtension = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-const PHPError_1 = require("../runtime/PHPError");
-const PHPVariable_1 = require("../runtime/PHPVariable");
-class SPLExtension extends PHPExtension_1.PHPExtension {
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPTypeError } from "../runtime/PHPError.js";
+import { PHPLiteral } from "../runtime/PHPVariable.js";
+export class SPLExtension extends PHPExtension {
     name = "spl";
     autoloaders = [];
     objectIds = new WeakMap();
@@ -12,7 +9,7 @@ class SPLExtension extends PHPExtension_1.PHPExtension {
     getObjectId(valueArg, functionName) {
         const value = valueArg && typeof valueArg === "object" && typeof valueArg.get === "function" ? valueArg.get() : valueArg;
         if (value === null || (typeof value !== "object" && typeof value !== "function") || Array.isArray(value)) {
-            throw new PHPError_1.PHPTypeError(`${functionName}(): Argument #1 ($object) must be of type object`);
+            throw new PHPTypeError(`${functionName}(): Argument #1 ($object) must be of type object`);
         }
         let objectId = this.objectIds.get(value);
         if (objectId === undefined) {
@@ -25,11 +22,11 @@ class SPLExtension extends PHPExtension_1.PHPExtension {
         engine.registerClassResolver(async (ctx, requestedName) => {
             for (const callback of this.autoloaders) {
                 if (typeof callback === "string")
-                    await ctx.callFunction(callback.toLowerCase(), [new PHPVariable_1.PHPLiteral(requestedName)]);
+                    await ctx.callFunction(callback.toLowerCase(), [new PHPLiteral(requestedName)]);
                 else if (Array.isArray(callback) && callback.length === 2)
-                    await ctx.callStaticMethod(String(callback[0]).toLowerCase(), String(callback[1]).toLowerCase(), [new PHPVariable_1.PHPLiteral(requestedName)], undefined, String(callback[0]));
+                    await ctx.callStaticMethod(String(callback[0]).toLowerCase(), String(callback[1]).toLowerCase(), [new PHPLiteral(requestedName)], undefined, String(callback[0]));
                 else if (typeof callback === "function")
-                    await callback.apply(ctx, [ctx, new PHPVariable_1.PHPLiteral(requestedName)]);
+                    await callback.apply(ctx, [ctx, new PHPLiteral(requestedName)]);
                 if (String(requestedName).toLowerCase() in engine.classes || String(requestedName).toLowerCase() in ctx.classes)
                     return;
             }
@@ -54,5 +51,4 @@ class SPLExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.SPLExtension = SPLExtension;
 //# sourceMappingURL=spl.js.map

@@ -1,4 +1,4 @@
-import { PHPEngine, ReflectionClass, ReflectionFunction } from "../../index";
+import { PHPEngine, ReflectionClass, ReflectionFunction } from "../../index.js";
 
 describe("Reflection Runtime Tests", () => {
   let engine: PHPEngine;

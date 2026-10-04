@@ -1,13 +1,7 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.MySQLiExtension = exports.MySQLiObject = exports.MySQLiResult = void 0;
-const promise_1 = __importDefault(require("mysql2/promise"));
-const PHPExtension_1 = require("../PHPExtension");
-const PHPObject_1 = require("../runtime/PHPObject");
-class MySQLiResult {
+import mysql from "mysql2/promise";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
+export class MySQLiResult {
     rows;
     index = 0;
     num_rows;
@@ -41,8 +35,7 @@ class MySQLiResult {
         return res;
     }
 }
-exports.MySQLiResult = MySQLiResult;
-class MySQLiObject extends PHPObject_1.PHPObject {
+export class MySQLiObject extends PHPObject {
     connection;
     connect_error = null;
     connect_errno = 0;
@@ -51,7 +44,7 @@ class MySQLiObject extends PHPObject_1.PHPObject {
     error = "";
     errno = 0;
     constructor() {
-        super(new PHPObject_1.PHPClass("mysqli"));
+        super(new PHPClass("mysqli"));
     }
     async real_connect(hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) {
         let actualHost = String(hostArg?.get() ?? "127.0.0.1") || "127.0.0.1";
@@ -71,7 +64,7 @@ class MySQLiObject extends PHPObject_1.PHPObject {
             actualHost = "127.0.0.1";
         }
         try {
-            this.connection = await promise_1.default.createConnection({
+            this.connection = await mysql.createConnection({
                 host: actualHost,
                 user: user,
                 password: password,
@@ -129,8 +122,7 @@ class MySQLiObject extends PHPObject_1.PHPObject {
         return true;
     }
 }
-exports.MySQLiObject = MySQLiObject;
-class MySQLiExtension extends PHPExtension_1.PHPExtension {
+export class MySQLiExtension extends PHPExtension {
     name = "mysqli";
     onInit(engine) {
         this.constants = {
@@ -257,5 +249,4 @@ class MySQLiExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.MySQLiExtension = MySQLiExtension;
 //# sourceMappingURL=mysqli.js.map

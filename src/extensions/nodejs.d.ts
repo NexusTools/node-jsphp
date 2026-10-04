@@ -1,7 +1,7 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPObject } from "../runtime/PHPObject";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPObject } from "../runtime/PHPObject.js";
 export declare function wrapJSValue(val: any): any;
 export declare function unwrapPHPValue(val: any): any;
 export declare class NodeJSObject extends PHPObject {

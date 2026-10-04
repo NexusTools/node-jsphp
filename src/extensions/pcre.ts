@@ -1,9 +1,9 @@
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable";
-import { PHPObject } from "../runtime/PHPObject";
-import { defineFunction } from "../runtime/Reflection";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
+import { PHPObject } from "../runtime/PHPObject.js";
+import { defineFunction } from "../runtime/Reflection.js";
 
 export class PCREExtension extends PHPExtension {
   public readonly name = "pcre";

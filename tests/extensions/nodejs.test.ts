@@ -1,4 +1,4 @@
-import { PHPEngine, NodeJSExtension } from "../../index";
+import { PHPEngine, NodeJSExtension } from "../../index.js";
 
 describe("Node.js Extension Interop Tests", () => {
   let engine: PHPEngine;

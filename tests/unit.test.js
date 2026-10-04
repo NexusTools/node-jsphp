@@ -1,46 +1,13 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const index_1 = require("../index");
-const fs = __importStar(require("fs/promises"));
-const os = __importStar(require("os"));
-const path = __importStar(require("path"));
+import { jest } from "@jest/globals";
+import { PHPEngine, ASTOptimizer } from "../index.js";
+import * as fs from "fs/promises";
+import fsSync from "fs";
+import * as os from "os";
+import * as path from "path";
 describe("PHPEngine & AST Unit Tests", () => {
     let engine;
     beforeEach(() => {
-        engine = new index_1.PHPEngine({ watch: false });
+        engine = new PHPEngine({ watch: false });
     });
     afterEach(() => {
         engine.close();
@@ -53,7 +20,7 @@ describe("PHPEngine & AST Unit Tests", () => {
     test("Does not synchronously write execution traces by default", async () => {
         const previousDebug = process.env.JSPHP_DEBUG;
         delete process.env.JSPHP_DEBUG;
-        const appendSpy = jest.spyOn(require("fs"), "appendFileSync");
+        const appendSpy = jest.spyOn(fsSync, "appendFileSync");
         try {
             await engine.createContext().eval("echo 'ready';");
             expect(appendSpy).not.toHaveBeenCalled();
@@ -70,7 +37,7 @@ describe("PHPEngine & AST Unit Tests", () => {
         const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "jsphp-memory-cache-"));
         const sourcePath = path.join(temporaryDirectory, "cached.php");
         engine.close();
-        engine = new index_1.PHPEngine({
+        engine = new PHPEngine({
             watch: false,
             cacheDir: cacheDirectory === null ? null : path.join(temporaryDirectory, cacheDirectory),
         });
@@ -333,7 +300,7 @@ describe("PHPEngine & AST Unit Tests", () => {
             body: [{ kind: "echo", arguments: [{ kind: "string", value: "Yes" }] }],
             alternate: [{ kind: "echo", arguments: [{ kind: "string", value: "No" }] }],
         };
-        const optimized = index_1.ASTOptimizer.optimize(ast, engine);
+        const optimized = ASTOptimizer.optimize(ast, engine);
         expect(Array.isArray(optimized)).toBe(true);
         expect(optimized[0].kind).toBe("echo");
         expect(optimized[0].arguments[0].value).toBe("Yes");
@@ -344,7 +311,7 @@ describe("PHPEngine & AST Unit Tests", () => {
             test: { kind: "boolean", value: false },
             body: [{ kind: "echo", arguments: [{ kind: "string", value: "Dead code" }] }],
         };
-        const optimized = index_1.ASTOptimizer.optimize(ast, engine);
+        const optimized = ASTOptimizer.optimize(ast, engine);
         expect(optimized).toBeNull();
     });
     test("Virtualizes stack traces replacing internal frames", async () => {

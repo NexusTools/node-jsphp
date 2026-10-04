@@ -1,4 +1,4 @@
-import type { PHPContext } from "../PHPContext";
+import type { PHPContext } from "../PHPContext.js";
 export interface PHPReference {
     get(): any;
     set(val: any): any;
@@ -16,6 +16,9 @@ export declare class PHPLiteral implements PHPReference {
     unbindRef(): void;
     isReference(): boolean;
     call(ctx: PHPContext, method: string, args?: any[]): Promise<any>;
+    toString(): string;
+    valueOf(): any;
+    [Symbol.toPrimitive](hint: string): any;
 }
 export declare class PHPVariable implements PHPReference {
     private value;
@@ -27,4 +30,7 @@ export declare class PHPVariable implements PHPReference {
     unbindRef(): void;
     isReference(): boolean;
     call(ctx: PHPContext, method: string, args?: any[]): Promise<any>;
+    toString(): string;
+    valueOf(): any;
+    [Symbol.toPrimitive](hint: string): any;
 }

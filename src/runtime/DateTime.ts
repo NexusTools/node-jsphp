@@ -1,6 +1,6 @@
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPVariable, PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPVariable, PHPReference } from "./PHPVariable.js";
 
 export class DateTimeRuntime {
   private static defaultTimezone = "UTC";

@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SessionExtension = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-class SessionExtension extends PHPExtension_1.PHPExtension {
+import { PHPExtension } from "../PHPExtension.js";
+export class SessionExtension extends PHPExtension {
     name = "session";
     onInit(engine) {
         this.functions = {
@@ -20,5 +17,4 @@ class SessionExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.SessionExtension = SessionExtension;
 //# sourceMappingURL=session.js.map

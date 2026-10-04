@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPDateTime = exports.DateTimeRuntime = void 0;
-class DateTimeRuntime {
+export class DateTimeRuntime {
     static defaultTimezone = "UTC";
     static time(ctx) {
         return Math.floor(Date.now() / 1000);
@@ -89,8 +86,7 @@ class DateTimeRuntime {
         engine.registerClass("datetime", PHPDateTime);
     }
 }
-exports.DateTimeRuntime = DateTimeRuntime;
-class PHPDateTime {
+export class PHPDateTime {
     date;
     constructor(timeStr = "now") {
         this.date = timeStr === "now" ? new Date() : new Date(Date.parse(timeStr) || Date.now());
@@ -99,5 +95,4 @@ class PHPDateTime {
         return format;
     }
 }
-exports.PHPDateTime = PHPDateTime;
 //# sourceMappingURL=DateTime.js.map

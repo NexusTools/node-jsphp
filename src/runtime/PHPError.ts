@@ -1,6 +1,6 @@
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPVariable } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPVariable } from "./PHPVariable.js";
 
 export interface PHPStackFrame {
   file: string;
@@ -22,7 +22,7 @@ export class PHPError extends Error {
   constructor(
     messageArg: any = "",
     codeArg: any = 0,
-    fileArg: any = __filename,
+    fileArg: any = "[INTERNAL]",
     lineArg: any = 0,
     traceArg: any = [],
     previousArg: any = null
@@ -35,6 +35,7 @@ export class PHPError extends Error {
     const previous = previousArg?.get ? previousArg.get() : previousArg;
 
     super(message);
+    if (message.includes("Class \"\" not found")) console.log("CRITICAL CLASS NOT FOUND STACK:\n", this.stack);
     this.name = this.constructor.name;
     this.phpCode = code;
     this.phpFile = file;
@@ -122,7 +123,7 @@ export class PHPException extends PHPError {
   public static phpName = "Exception";
 
   constructor(messageArg: any = "", codeArg: any = 0, previousArg: any = null) {
-    super(messageArg, codeArg, __filename, 0, [], previousArg);
+    super(messageArg, codeArg, "[INTERNAL]", 0, [], previousArg);
   }
 }
 export class PHPTypeError extends PHPError {}

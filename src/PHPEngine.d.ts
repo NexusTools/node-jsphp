@@ -1,6 +1,6 @@
-import { PHPExtension } from "./PHPExtension";
-import { PHPContext, PHPContextOptions } from "./PHPContext";
-import { PHPLiteral, PHPReference } from "./runtime/PHPVariable";
+import { PHPExtension } from "./PHPExtension.js";
+import { PHPContext, PHPContextOptions } from "./PHPContext.js";
+import { PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
 export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
@@ -11,7 +11,7 @@ export interface PHPEngineOptions {
     watch?: boolean;
 }
 export declare class PHPEngine {
-    static readonly REVISION = 135;
+    static readonly REVISION = 240;
     static readonly VERSION = "8.5.0";
     static readonly TRUE: PHPLiteral;
     static readonly FALSE: PHPLiteral;

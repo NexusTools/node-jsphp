@@ -4,45 +4,42 @@ import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import chokidar from "chokidar";
-import { PHPExtension } from "./PHPExtension";
-import { PHPContext, PHPContextOptions } from "./PHPContext";
-import { JSTranspiler } from "./parser/JSTranspiler";
-import { PHPClass, PHPObject } from "./runtime/PHPObject";
-import { PHPVariable, PHPLiteral, PHPReference } from "./runtime/PHPVariable";
+import { PHPExtension } from "./PHPExtension.js";
+import { PHPContext, PHPContextOptions } from "./PHPContext.js";
+import { JSTranspiler } from "./parser/JSTranspiler.js";
+import { PHPClass, PHPObject } from "./runtime/PHPObject.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
 
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require("source-map-support").install({ environment: "node", hookRequire: true });
-} catch {}
+import vm from "vm";
 
-import { StringRuntime } from "./runtime/Strings";
-import { ArrayRuntime } from "./runtime/Arrays";
-import { FileSystemRuntime } from "./runtime/FileSystem";
-import { NetworkingRuntime } from "./runtime/Networking";
-import { MathRuntime } from "./runtime/Math";
-import { VariablesRuntime } from "./runtime/Variables";
-import { DateTimeRuntime } from "./runtime/DateTime";
-import { StreamRuntime } from "./runtime/Streams";
-import { ExecRuntime } from "./runtime/Exec";
-import { FiberRuntime } from "./runtime/Fiber";
-import { EnumRuntime } from "./runtime/Enum";
-import { ErrorRuntime, PHPFatalError, PHPExit } from "./runtime/PHPError";
-import { ReflectionRuntime } from "./runtime/Reflection";
-import { OutputBufferRuntime } from "./runtime/OutputBuffer";
+import { StringRuntime } from "./runtime/Strings.js";
+import { ArrayRuntime } from "./runtime/Arrays.js";
+import { FileSystemRuntime } from "./runtime/FileSystem.js";
+import { NetworkingRuntime } from "./runtime/Networking.js";
+import { MathRuntime } from "./runtime/Math.js";
+import { VariablesRuntime } from "./runtime/Variables.js";
+import { DateTimeRuntime } from "./runtime/DateTime.js";
+import { StreamRuntime } from "./runtime/Streams.js";
+import { ExecRuntime } from "./runtime/Exec.js";
+import { FiberRuntime } from "./runtime/Fiber.js";
+import { EnumRuntime } from "./runtime/Enum.js";
+import { ErrorRuntime, PHPFatalError, PHPExit } from "./runtime/PHPError.js";
+import { ReflectionRuntime } from "./runtime/Reflection.js";
+import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
 
-import { MySQLiExtension } from "./extensions/mysqli";
-import { PDOExtension } from "./extensions/pdo";
-import { GDExtension } from "./extensions/gd";
-import { PCREExtension } from "./extensions/pcre";
-import { MbstringExtension } from "./extensions/mbstring";
-import { JSONExtension } from "./extensions/json";
-import { CurlExtension } from "./extensions/curl";
-import { SessionExtension } from "./extensions/session";
-import { XMLExtension } from "./extensions/xml";
-import { SPLExtension } from "./extensions/spl";
-import { HashExtension } from "./extensions/hash";
-import { OpenSSLExtension } from "./extensions/openssl";
-import { CoreRuntime } from "./runtime/CoreRuntime";
+import { MySQLiExtension } from "./extensions/mysqli.js";
+import { PDOExtension } from "./extensions/pdo.js";
+import { GDExtension } from "./extensions/gd.js";
+import { PCREExtension } from "./extensions/pcre.js";
+import { MbstringExtension } from "./extensions/mbstring.js";
+import { JSONExtension } from "./extensions/json.js";
+import { CurlExtension } from "./extensions/curl.js";
+import { SessionExtension } from "./extensions/session.js";
+import { XMLExtension } from "./extensions/xml.js";
+import { SPLExtension } from "./extensions/spl.js";
+import { HashExtension } from "./extensions/hash.js";
+import { OpenSSLExtension } from "./extensions/openssl.js";
+import { CoreRuntime } from "./runtime/CoreRuntime.js";
 
 export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 
@@ -56,7 +53,7 @@ export interface PHPEngineOptions {
 }
 
 export class PHPEngine {
-  public static readonly REVISION = 135;
+  public static readonly REVISION = 240;
   public static readonly VERSION = "8.5.0";
 
   public static readonly TRUE = new PHPLiteral(true);
@@ -127,7 +124,7 @@ export class PHPEngine {
     this.registerRuntimeImplementations();
 
     // Default extensions list if not explicitly provided
-    const defaultExtensions: PHPExtension[] = options.extensions || [
+    const defaultExtensions: PHPExtension[] = [
       new MySQLiExtension(),
       new PDOExtension(),
       new GDExtension(),
@@ -140,6 +137,7 @@ export class PHPEngine {
       new SPLExtension(),
       new HashExtension(),
       new OpenSSLExtension(),
+      ...(options.extensions || []),
     ];
 
     defaultExtensions.forEach((ext) => this.registerExtension(ext));
@@ -305,13 +303,12 @@ export class PHPEngine {
 
     const moduleObj = { exports: {} as any };
     try {
-      const factory = new Function("module", "exports", "require", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
-      factory(moduleObj, moduleObj.exports, require, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
+      const factory = new Function("module", "exports", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
+      factory(moduleObj, moduleObj.exports, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
       return moduleObj.exports;
     } catch (err: any) {
       if (err.name === "SyntaxError") {
         try {
-          const vm = require("vm");
           new vm.Script(transpilation.code);
         } catch (scriptErr: any) {
           console.error(`SYNTAX_ERR in ${filepath}: ${scriptErr.message}\nSTACK:\n${scriptErr.stack}`);

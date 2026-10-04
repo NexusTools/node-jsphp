@@ -2,12 +2,11 @@ import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import { SourceMapGenerator } from "source-map";
-import { PHPFatalError } from "../runtime/PHPError";
-import { ASTOptimizer } from "./ASTOptimizer";
-import type { PHPEngine } from "../PHPEngine";
+import { PHPFatalError } from "../runtime/PHPError.js";
+import { ASTOptimizer } from "./ASTOptimizer.js";
+import type { PHPEngine } from "../PHPEngine.js";
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const engineParser = require("php-parser");
+import engineParser from "php-parser";
 
 export interface TranspileOptions {
   engineSHA1?: string;
@@ -24,6 +23,7 @@ export class JSTranspiler {
   private parser: any;
   private currentClassName = "";
   private currentClassNameOriginal = "";
+  private currentFuncName = "";
   private currentNamespaceName = "";
   private currentNamespaceNameOriginal = "";
   private classImports: Map<string, string> = new Map();
@@ -33,7 +33,7 @@ export class JSTranspiler {
   private foreachDepth = 0;
 
   constructor() {
-    this.parser = new engineParser({
+    this.parser = new ((engineParser as any).Engine || (engineParser as any))({
       parser: {
         extractDoc: true,
         phpVersion: "8.1",
@@ -70,7 +70,7 @@ export class JSTranspiler {
     }
 
     const codeToParse = code.includes("<?") ? code : "<?php\n" + code;
-    const parser = new engineParser({
+    const parser = new ((engineParser as any).Engine || (engineParser as any))({
       parser: {
         extractDoc: true,
         phpVersion: "8.1",
@@ -362,11 +362,12 @@ export class JSTranspiler {
       }
 
       case "static": {
-        for (const v of node.result || node.items || []) {
+        const scopeKey = this.currentClassName ? `${this.currentClassName}::${this.currentFuncName}` : (this.currentFuncName || "{main}");
+        for (const v of node.result || node.items || node.variables || []) {
           const varName = this.getConstName(v.variable?.name || v.variable || v.name || v);
           const valueNode = v.defaultValue || v.value;
           const value = valueNode ? this.transpileExpr(valueNode, filepath) : "undefined";
-          lines.push(`${pad}ctx.initStaticVar(${JSON.stringify(this.currentClassName)}, ${JSON.stringify(varName)}, ${value});`);
+          lines.push(`${pad}ctx.initStaticVar(${JSON.stringify(scopeKey)}, ${JSON.stringify(varName)}, ${value});`);
         }
         break;
       }
@@ -482,11 +483,30 @@ export class JSTranspiler {
       case "interface": {
         const name = (node.name?.name || node.name || "").toString();
         const safeId = name.replace(/[^a-zA-Z0-9_]/g, "_");
-        const originalName = this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name;
+        const originalName = this.currentNamespaceNameOriginal ? `${this.currentNamespaceNameOriginal}\\${name}` : (this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name);
         const qualifiedName = originalName.toLowerCase();
         lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare ${node.kind} ${originalName}, because the name is already in use\`);`);
         lines.push(`${pad}var __cls_${safeId} = ctx.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
         lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
+
+        const previousClassName = this.currentClassName;
+        const previousClassNameOriginal = this.currentClassNameOriginal;
+        this.currentClassName = qualifiedName;
+        this.currentClassNameOriginal = originalName;
+
+        try {
+          const bodyItems = (node.body?.children || node.body || []).filter(Boolean);
+          const constants = bodyItems.filter((item: any) => item.kind === "classconstant");
+          for (const cItem of constants) {
+            for (const constant of cItem.constants || []) {
+              const cName = this.getConstName(constant.name || constant);
+              lines.push(`${pad}__cls_${safeId}.constants.set(${JSON.stringify(cName)}, ${this.transpileExpr(constant.value, filepath)});`);
+            }
+          }
+        } finally {
+          this.currentClassName = previousClassName;
+          this.currentClassNameOriginal = previousClassNameOriginal;
+        }
         break;
       }
 
@@ -529,23 +549,21 @@ export class JSTranspiler {
         });
 
         const savedSwitchStack = this.switchLabelStack;
+        const savedFuncName = this.currentFuncName;
+        this.currentFuncName = funcName;
         this.switchLabelStack = [];
         try {
           this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen!, filepath, indent + 2, funcName);
         } finally {
           this.switchLabelStack = savedSwitchStack;
+          this.currentFuncName = savedFuncName;
         }
 
         lines.push(`${pad}  } finally {`);
         lines.push(`${pad}    ctx.popScope();`);
         lines.push(`${pad}  }`);
         lines.push(`${pad}};`);
-        if (funcName === "translate") {
-          console.log("=== TRANSPILED translate ===");
-          const startIndex = lines.findIndex((l) => l.includes("function __fn_translate"));
-          console.log(lines.slice(startIndex).join("\n"));
-          console.log("============================");
-        }
+
         lines.push(`${pad}__fn_${safeFnId}.phpMeta = { name: ${JSON.stringify(originalFuncName)}, visibility: ${JSON.stringify(visibility)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)} };`);
         lines.push(`${pad}ctx.functions[${JSON.stringify(funcName)}] = __fn_${safeFnId};`);
         break;
@@ -627,11 +645,14 @@ export class JSTranspiler {
             });
 
             const savedSwitchStack = this.switchLabelStack;
+            const savedFuncName = this.currentFuncName;
+            this.currentFuncName = `${this.currentClassName}::${mName}`;
             this.switchLabelStack = [];
             try {
               this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen!, filepath, indent + 4, mName);
             } finally {
               this.switchLabelStack = savedSwitchStack;
+              this.currentFuncName = savedFuncName;
             }
 
             lines.push(`${pad}  } finally {`);
@@ -812,18 +833,32 @@ export class JSTranspiler {
         return "null";
 
       case "magic": {
-        const m = (node.value || node.name || "").toString();
+        const m = (node.value || node.name || "").toString().toUpperCase();
         if (m === "__DIR__") return JSON.stringify(path.dirname(filepath));
         if (m === "__FILE__") return JSON.stringify(filepath);
         if (m === "__LINE__") return String(node.loc?.start?.line || 1);
+        if (m === "__CLASS__") return JSON.stringify(this.currentClassNameOriginal);
+        if (m === "__METHOD__") return JSON.stringify(this.currentClassNameOriginal ? `${this.currentClassNameOriginal}::${this.currentFuncName}` : this.currentFuncName);
+        if (m === "__FUNCTION__") return JSON.stringify(this.currentFuncName);
+        if (m === "__NAMESPACE__") return JSON.stringify(this.currentNamespaceNameOriginal);
         return JSON.stringify(m);
       }
       case "name":
       case "constref": {
         const rawName = this.getConstName(node.name || node);
-        if (rawName.toLowerCase() === "true") return "true";
-        if (rawName.toLowerCase() === "false") return "false";
-        if (rawName.toLowerCase() === "null") return "null";
+        const upper = rawName.toUpperCase();
+        if (upper === "TRUE") return "true";
+        if (upper === "FALSE") return "false";
+        if (upper === "NULL") return "null";
+        if (upper === "__DIR__") return JSON.stringify(path.dirname(filepath));
+        if (upper === "__FILE__") return JSON.stringify(filepath);
+        if (upper === "SELF" || upper === "STATIC") return `(ctx.currentClassName || ${JSON.stringify(this.currentClassName ? this.currentClassName.toLowerCase() : "")})`;
+        if (upper === "PARENT") return `ctx.currentParentClassName`;
+        if (upper === "__LINE__") return String(node.loc?.start?.line || 1);
+        if (upper === "__CLASS__") return JSON.stringify(this.currentClassNameOriginal);
+        if (upper === "__METHOD__") return JSON.stringify(this.currentClassNameOriginal ? `${this.currentClassNameOriginal}::${this.currentFuncName}` : this.currentFuncName);
+        if (upper === "__FUNCTION__") return JSON.stringify(this.currentFuncName);
+        if (upper === "__NAMESPACE__") return JSON.stringify(this.currentNamespaceNameOriginal);
         const constName = rawName.toLowerCase();
         return `(ctx.getConstant(${JSON.stringify(constName)}) ?? ${JSON.stringify(rawName)})`;
       }

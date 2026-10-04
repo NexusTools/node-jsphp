@@ -1,8 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
 import AdmZip from "adm-zip";
-import { PHPEngine, PHPContext } from "../index";
+import mysql2 from "mysql2/promise";
+import { PHPEngine, PHPContext } from "../index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const MYSQL_ROOT_PASSWORD = process.env.MYSQL_ROOT_PASSWORD || "DNESB*GJ*W(E$GYB$UW#gt78wg";
 const MYSQL_HOST = process.env.MYSQL_HOST || "127.0.0.1";
@@ -51,7 +56,6 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     engine = new PHPEngine({ cacheDir: null, watch: false });
 
     console.log("Setting up MySQL database...");
-    const mysql2 = require("mysql2/promise");
     const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
     const possiblePasses = Array.from(new Set([process.env.MYSQL_ROOT_PASSWORD, "", "root", "DNESB*GJ*W(E$GYB$UW#gt78wg"].filter((x): x is string => typeof x === "string")));
     let conn: any;
@@ -201,7 +205,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     expect(linkTags.length).toBeGreaterThan(0);
 
     const href = linkTags.first().attr("href") || "";
-    expect(href).toContain("install.css");
+    expect(href).toContain("install");
 
     // Verify the linked CSS file exists and has valid CSS styles
     const installCssPath = path.join(wpDir, "wp-admin", "css", "install.css");

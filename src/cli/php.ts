@@ -2,9 +2,9 @@ import { Command } from "commander";
 import * as readline from "readline";
 import * as path from "path";
 import * as fs from "fs";
-import { PHPEngine } from "../PHPEngine";
-import { PHPContext } from "../PHPContext";
-import { PHPLiteral } from "../runtime/PHPVariable";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPContext } from "../PHPContext.js";
+import { PHPLiteral } from "../runtime/PHPVariable.js";
 
 export async function runCLI(rawArgs: string[]): Promise<void> {
   const engine = new PHPEngine({ watch: false });
@@ -36,7 +36,9 @@ export async function runCLI(rawArgs: string[]): Promise<void> {
     .option("--rf, --reflection-function <function>", "Show information about function")
     .option("--rc, --reflection-class <class>", "Show information about class")
     .option("--re, --reflection-extension <extension>", "Show information about extension")
-    .option("--ri, --reflection-info <extension>", "Show configuration for extension");
+    .option("--ri, --reflection-info <extension>", "Show configuration for extension")
+    .argument("[script]", "Script file to execute")
+    .argument("[args...]", "Arguments passed to script");
 
   program.parse(rawArgs, { from: "user" });
   const options = program.opts();

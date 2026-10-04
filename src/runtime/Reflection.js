@@ -1,10 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReflectionRuntime = exports.ReflectionClass = exports.ReflectionFunction = exports.ReflectionMethod = exports.ReflectionProperty = exports.ReflectionParameter = exports.ReflectionType = exports.Reflection = void 0;
-exports.defineFunction = defineFunction;
-exports.parseJSFunctionMetadata = parseJSFunctionMetadata;
-const PHPObject_1 = require("./PHPObject");
-function defineFunction(fn, meta) {
+import { PHPClass, PHPObject } from "./PHPObject.js";
+export function defineFunction(fn, meta) {
     const params = (meta.parameters || []).map((p, idx) => {
         const hasDefault = p.hasDefault ?? p.isOptional ?? false;
         return {
@@ -27,7 +22,7 @@ function defineFunction(fn, meta) {
     };
     return fn;
 }
-function parseJSFunctionMetadata(fn, name = "") {
+export function parseJSFunctionMetadata(fn, name = "") {
     if (!fn || typeof fn !== "function") {
         return {
             name: name.toLowerCase(),
@@ -134,7 +129,7 @@ function parseSimpleLiteral(valStr) {
     }
     return valStr;
 }
-class Reflection {
+export class Reflection {
     static getModifierNames(modifiers) {
         const res = [];
         if (modifiers & 1)
@@ -154,8 +149,7 @@ class Reflection {
         return res;
     }
 }
-exports.Reflection = Reflection;
-class ReflectionType {
+export class ReflectionType {
     typeName;
     allowsNullFlag;
     constructor(typeName = "mixed", allowsNullFlag = true) {
@@ -166,8 +160,7 @@ class ReflectionType {
     getName() { return this.typeName; }
     __toString() { return this.typeName; }
 }
-exports.ReflectionType = ReflectionType;
-class ReflectionParameter {
+export class ReflectionParameter {
     paramName;
     paramPosition;
     defaultValue;
@@ -186,8 +179,7 @@ class ReflectionParameter {
     isPassedByReference() { return false; }
     getType() { return new ReflectionType(); }
 }
-exports.ReflectionParameter = ReflectionParameter;
-class ReflectionProperty {
+export class ReflectionProperty {
     name;
     declaringClassName;
     meta;
@@ -212,8 +204,7 @@ class ReflectionProperty {
         await obj.setProperty(ctx, this.name, val);
     }
 }
-exports.ReflectionProperty = ReflectionProperty;
-class ReflectionMethod {
+export class ReflectionMethod {
     className;
     methodName;
     meta;
@@ -247,8 +238,7 @@ class ReflectionMethod {
         return undefined;
     }
 }
-exports.ReflectionMethod = ReflectionMethod;
-class ReflectionFunction {
+export class ReflectionFunction {
     name;
     meta;
     constructor(name, fnOrCtx) {
@@ -279,8 +269,7 @@ class ReflectionFunction {
         return await ctx.callFunction(this.name, args);
     }
 }
-exports.ReflectionFunction = ReflectionFunction;
-class ReflectionClass {
+export class ReflectionClass {
     name;
     phpClass;
     constructor(nameOrInstance) {
@@ -357,12 +346,11 @@ class ReflectionClass {
         return await ctx.createObject(this.name, args);
     }
     async newInstanceWithoutConstructor(ctx) {
-        const cls = this.phpClass || new PHPObject_1.PHPClass(this.name);
-        return new PHPObject_1.PHPObject(cls);
+        const cls = this.phpClass || new PHPClass(this.name);
+        return new PHPObject(cls);
     }
 }
-exports.ReflectionClass = ReflectionClass;
-class ReflectionRuntime {
+export class ReflectionRuntime {
     static classes = {
         "reflectionclass": ReflectionClass,
         "reflectionmethod": ReflectionMethod,
@@ -375,5 +363,4 @@ class ReflectionRuntime {
         engine.registerClasses(ReflectionRuntime.classes);
     }
 }
-exports.ReflectionRuntime = ReflectionRuntime;
 //# sourceMappingURL=Reflection.js.map

@@ -2,9 +2,9 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { glob as matchGlob } from "glob";
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import type { PHPVariable, PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import type { PHPVariable, PHPReference } from "./PHPVariable.js";
 
 function resolvePath(ctx: PHPContext, p: string): string {
   if (!p) return "";

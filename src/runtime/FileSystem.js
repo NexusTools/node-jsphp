@@ -1,43 +1,7 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.FileSystemRuntime = void 0;
-const fs = __importStar(require("fs/promises"));
-const path = __importStar(require("path"));
-const os = __importStar(require("os"));
-const glob_1 = require("glob");
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
+import { glob as matchGlob } from "glob";
 function resolvePath(ctx, p) {
     if (!p)
         return "";
@@ -45,7 +9,7 @@ function resolvePath(ctx, p) {
         return p;
     return path.resolve(ctx?.cwd || process.cwd(), p);
 }
-class FileSystemRuntime {
+export class FileSystemRuntime {
     static async fileowner(ctx, filenameArg) {
         try {
             const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
@@ -70,7 +34,7 @@ class FileSystemRuntime {
             const flags = Number(flagsArg?.get()) || 0;
             const cwd = ctx.cwd;
             const normalizedPattern = process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
-            let matches = await (0, glob_1.glob)(normalizedPattern, {
+            let matches = await matchGlob(normalizedPattern, {
                 cwd,
                 mark: Boolean(flags & 2),
                 nobrace: !(flags & 1024),
@@ -384,5 +348,4 @@ class FileSystemRuntime {
         engine.registerFunctions(FileSystemRuntime.functions);
     }
 }
-exports.FileSystemRuntime = FileSystemRuntime;
 //# sourceMappingURL=FileSystem.js.map

@@ -1,10 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const index_1 = require("../../index");
+import { PHPEngine } from "../../index.js";
 describe("MySQLi Extension Tests", () => {
     let engine;
     beforeEach(() => {
-        engine = new index_1.PHPEngine({ watch: false });
+        engine = new PHPEngine({ watch: false });
     });
     afterEach(() => {
         engine.close();

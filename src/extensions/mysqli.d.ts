@@ -1,8 +1,8 @@
 import mysql from "mysql2/promise";
-import { PHPExtension } from "../PHPExtension";
-import { PHPEngine } from "../PHPEngine";
-import { PHPObject } from "../runtime/PHPObject";
-import { PHPReference } from "../runtime/PHPVariable";
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPEngine } from "../PHPEngine.js";
+import { PHPObject } from "../runtime/PHPObject.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 export declare class MySQLiResult {
     rows: any[];
     index: number;

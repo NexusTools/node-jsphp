@@ -1,9 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPObject = exports.PHPClass = void 0;
-const PHPError_1 = require("./PHPError");
-const PHPVariable_1 = require("./PHPVariable");
-class PHPClass {
+import { PHPFatalError } from "./PHPError.js";
+import { PHPVariable } from "./PHPVariable.js";
+export class PHPClass {
     name;
     parentClass;
     nativeConstructor;
@@ -38,8 +35,7 @@ class PHPClass {
         return this.interfaces.some((iface) => iface.isSubclassOf(className));
     }
 }
-exports.PHPClass = PHPClass;
-class PHPObject {
+export class PHPObject {
     phpClass;
     properties = new Map();
     settingProperties = new Set();
@@ -100,7 +96,7 @@ class PHPObject {
                     const methodMeta = cls.methods.get(lowerName);
                     if (methodMeta?.fn) {
                         let res = await methodMeta.fn.apply(this, [ctx, ...args]);
-                        if (res instanceof PHPVariable_1.PHPVariable)
+                        if (res && typeof res === "object" && typeof res.get === "function")
                             res = res.get();
                         return res;
                     }
@@ -113,7 +109,7 @@ class PHPObject {
                     const __callMeta = cls.methods.get("__call");
                     if (__callMeta?.fn) {
                         let res = await __callMeta.fn.call(this, ctx, name, args);
-                        if (res instanceof PHPVariable_1.PHPVariable)
+                        if (res instanceof PHPVariable)
                             res = res.get();
                         return res;
                     }
@@ -125,14 +121,14 @@ class PHPObject {
                 for (const propName of Object.getOwnPropertyNames(target)) {
                     if (propName.toLowerCase() === lowerName && typeof this[propName] === "function") {
                         let res = await this[propName].apply(this, args);
-                        if (res instanceof PHPVariable_1.PHPVariable)
+                        if (res instanceof PHPVariable)
                             res = res.get();
                         return res;
                     }
                 }
                 target = Object.getPrototypeOf(target);
             }
-            throw new PHPError_1.PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
+            throw new PHPFatalError(`Call to undefined method ${this.phpClass.name}::${name}()`);
         }
         finally {
             ctx.currentClassStack.pop();
@@ -146,5 +142,4 @@ class PHPObject {
         return `Object(${this.phpClass.name})`;
     }
 }
-exports.PHPObject = PHPObject;
 //# sourceMappingURL=PHPObject.js.map

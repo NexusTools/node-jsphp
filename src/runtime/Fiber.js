@@ -1,13 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.FiberRuntime = exports.PHPFiber = exports.PHPFiberExit = exports.PHPFiberError = void 0;
-class PHPFiberError extends Error {
+export class PHPFiberError extends Error {
 }
-exports.PHPFiberError = PHPFiberError;
-class PHPFiberExit extends Error {
+export class PHPFiberExit extends Error {
 }
-exports.PHPFiberExit = PHPFiberExit;
-class PHPFiber {
+export class PHPFiber {
     callback;
     running = false;
     started = false;
@@ -42,8 +37,7 @@ class PHPFiber {
         return value;
     }
 }
-exports.PHPFiber = PHPFiber;
-class FiberRuntime {
+export class FiberRuntime {
     static classes = {
         "fiber": PHPFiber,
     };
@@ -51,5 +45,4 @@ class FiberRuntime {
         engine.registerClasses(FiberRuntime.classes);
     }
 }
-exports.FiberRuntime = FiberRuntime;
 //# sourceMappingURL=Fiber.js.map

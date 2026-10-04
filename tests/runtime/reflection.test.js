@@ -1,10 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const index_1 = require("../../index");
+import { PHPEngine, ReflectionClass, ReflectionFunction } from "../../index.js";
 describe("Reflection Runtime Tests", () => {
     let engine;
     beforeEach(() => {
-        engine = new index_1.PHPEngine({ watch: false });
+        engine = new PHPEngine({ watch: false });
     });
     afterEach(() => {
         engine.close();
@@ -14,11 +12,11 @@ describe("Reflection Runtime Tests", () => {
         await ctx.eval("function my_fn($a, $b = 'default') { return $a; }");
         const fn = ctx.functions["my_fn"] || engine.functions["my_fn"];
         expect(fn).toBeDefined();
-        const refFn = new index_1.ReflectionFunction("my_fn", fn);
+        const refFn = new ReflectionFunction("my_fn", fn);
         expect(refFn.getName()).toBe("my_fn");
         expect(refFn.getNumberOfParameters()).toBe(2);
         expect(refFuncRequired(refFn)).toBe(1);
-        const refCls = new index_1.ReflectionClass("ReflectionClass");
+        const refCls = new ReflectionClass("ReflectionClass");
         expect(refCls.getName()).toBe("ReflectionClass");
         expect(refCls.isInstantiable()).toBe(true);
     });
@@ -26,7 +24,7 @@ describe("Reflection Runtime Tests", () => {
         function rawJsFunction(ctx, paramOne, paramTwo = "hello", paramThree = 42) {
             return paramOne;
         }
-        const refFn = new index_1.ReflectionFunction("rawJsFunction", rawJsFunction);
+        const refFn = new ReflectionFunction("rawJsFunction", rawJsFunction);
         expect(refFn.getName()).toBe("rawJsFunction");
         expect(refFn.getNumberOfParameters()).toBe(3);
         expect(refFn.getNumberOfRequiredParameters()).toBe(1);

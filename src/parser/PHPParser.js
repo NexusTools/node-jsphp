@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PHPParser = void 0;
-const Engine = require("php-parser");
-class PHPParser {
+import engineParser from "php-parser";
+export class PHPParser {
     engine;
     constructor() {
-        this.engine = new Engine({
+        this.engine = new (engineParser.Engine || engineParser)({
             parser: {
                 extractDoc: true,
                 php7: true,
@@ -32,5 +29,4 @@ class PHPParser {
         }
     }
 }
-exports.PHPParser = PHPParser;
 //# sourceMappingURL=PHPParser.js.map

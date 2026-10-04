@@ -1,13 +1,9 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.CurlExtension = exports.CurlHandle = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-class CurlHandle {
+import { PHPExtension } from "../PHPExtension.js";
+export class CurlHandle {
     url = "";
     options = {};
 }
-exports.CurlHandle = CurlHandle;
-class CurlExtension extends PHPExtension_1.PHPExtension {
+export class CurlExtension extends PHPExtension {
     name = "curl";
     onInit(engine) {
         this.constants = {
@@ -15,8 +11,21 @@ class CurlExtension extends PHPExtension_1.PHPExtension {
             curlopt_returnstream: 19913,
             curlopt_post: 47,
             curlopt_postfields: 10015,
+            curl_version_ssl: 4,
         };
         this.functions = {
+            curl_version: (ctx) => {
+                return {
+                    version_number: 0x074e00,
+                    version: "7.78.0",
+                    ssl_version_number: 0,
+                    ssl_version: "OpenSSL/1.1.1l",
+                    host: "x86_64-pc-win32",
+                    age: 3,
+                    features: 4,
+                    protocols: ["http", "https"],
+                };
+            },
             curl_init: (ctx, urlArg) => {
                 const handle = new CurlHandle();
                 const url = urlArg ? String(urlArg.get() ?? "") : undefined;
@@ -52,5 +61,4 @@ class CurlExtension extends PHPExtension_1.PHPExtension {
         };
     }
 }
-exports.CurlExtension = CurlExtension;
 //# sourceMappingURL=curl.js.map

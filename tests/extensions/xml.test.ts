@@ -1,4 +1,4 @@
-import { PHPEngine } from "../../index";
+import { PHPEngine } from "../../index.js";
 
 describe("XML Extension Tests", () => {
   let engine: PHPEngine;

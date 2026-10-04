@@ -1,4 +1,4 @@
-import { PHPEngine, ErrorException } from "../../index";
+import { PHPEngine, ErrorException } from "../../index.js";
 
 describe("PHP Error Handling & set_error_handler Tests", () => {
   let engine: PHPEngine;

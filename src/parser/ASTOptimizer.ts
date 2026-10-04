@@ -1,4 +1,4 @@
-import type { PHPEngine } from "../PHPEngine";
+import type { PHPEngine } from "../PHPEngine.js";
 
 export class ASTOptimizer {
   public static optimize(ast: any, engine: PHPEngine): any {

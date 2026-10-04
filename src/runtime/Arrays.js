@@ -1,9 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ArrayRuntime = void 0;
-const PHPError_1 = require("./PHPError");
-const PHPVariable_1 = require("./PHPVariable");
-class ArrayRuntime {
+import { PHPFatalError } from "./PHPError.js";
+import { PHPLiteral } from "./PHPVariable.js";
+export class ArrayRuntime {
     static count(ctx, arrayOrCountableArg) {
         const arrayOrCountable = arrayOrCountableArg?.get();
         if (!arrayOrCountable)
@@ -111,7 +108,7 @@ class ArrayRuntime {
         const count = Number(countArg?.get()) || 0;
         const value = valueArg?.get();
         if (count < 0)
-            throw new PHPError_1.PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
+            throw new PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
         if (count === 0 || startIndex === 0)
             return Array.from({ length: count }, () => value);
         const result = {};
@@ -325,7 +322,7 @@ class ArrayRuntime {
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
             const args = arrays.map((a) => (Array.isArray(a) ? a[i] : a[key]));
-            const wrapArgs = args.map((a) => (a && typeof a === "object" && typeof a.get === "function" ? a : new PHPVariable_1.PHPLiteral(a)));
+            const wrapArgs = args.map((a) => (a && typeof a === "object" && typeof a.get === "function" ? a : new PHPLiteral(a)));
             let mapped;
             if (typeof callback === "function") {
                 mapped = await callback.apply(ctx, [ctx, ...wrapArgs]);
@@ -363,7 +360,7 @@ class ArrayRuntime {
                 keep = Boolean(v);
             }
             else {
-                const args = mode === 1 ? [new PHPVariable_1.PHPLiteral(k)] : mode === 2 ? [new PHPVariable_1.PHPLiteral(v), new PHPVariable_1.PHPLiteral(k)] : [new PHPVariable_1.PHPLiteral(v)];
+                const args = mode === 1 ? [new PHPLiteral(k)] : mode === 2 ? [new PHPLiteral(v), new PHPLiteral(k)] : [new PHPLiteral(v)];
                 if (typeof callback === "function") {
                     keep = Boolean(await callback.apply(ctx, [ctx, ...args]));
                 }
@@ -531,5 +528,4 @@ class ArrayRuntime {
         engine.registerFunctions(ArrayRuntime.functions);
     }
 }
-exports.ArrayRuntime = ArrayRuntime;
 //# sourceMappingURL=Arrays.js.map

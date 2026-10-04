@@ -1,10 +1,10 @@
-import { PHPContext } from "../PHPContext";
-import { PHPVariable } from "./PHPVariable";
-import { PHPExit, PHPFatalError, PHPError, PHPWarning } from "./PHPError";
-import { PHPObject } from "./PHPObject";
+import { PHPContext } from "../PHPContext.js";
+import { PHPVariable } from "./PHPVariable.js";
+import { PHPExit, PHPFatalError, PHPError, PHPWarning } from "./PHPError.js";
+import { PHPObject } from "./PHPObject.js";
 import * as path from "path";
 import * as fs from "fs";
-import { PHPEngine } from "../PHPEngine";
+import { PHPEngine } from "../PHPEngine.js";
 
 export class CoreRuntime {
   static functions = {
@@ -142,7 +142,9 @@ export class CoreRuntime {
       }
       return false;
     },
-    "class_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+    "class_exists": async (ctx: PHPContext, nameArg: any, autoloadArg?: any) => {
+      const name = nameArg && typeof nameArg === "object" && typeof (nameArg as any).get === "function" ? (nameArg as any).get() : nameArg;
+      const autoload = autoloadArg !== undefined ? (autoloadArg && typeof autoloadArg === "object" && typeof (autoloadArg as any).get === "function" ? (autoloadArg as any).get() : autoloadArg) : true;
       if (!name || typeof name !== "string") return false;
       const lower = String(name).replace(/^\\/, "").toLowerCase();
       if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
@@ -156,7 +158,9 @@ export class CoreRuntime {
       }
       return false;
     },
-    "interface_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+    "interface_exists": async (ctx: PHPContext, nameArg: any, autoloadArg?: any) => {
+      const name = nameArg && typeof nameArg === "object" && typeof (nameArg as any).get === "function" ? (nameArg as any).get() : nameArg;
+      const autoload = autoloadArg !== undefined ? (autoloadArg && typeof autoloadArg === "object" && typeof (autoloadArg as any).get === "function" ? (autoloadArg as any).get() : autoloadArg) : true;
       if (!name || typeof name !== "string") return false;
       const lower = String(name).replace(/^\\/, "").toLowerCase();
       if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
@@ -170,7 +174,9 @@ export class CoreRuntime {
       }
       return false;
     },
-    "trait_exists": async (ctx: PHPContext, name: string, autoload = true) => {
+    "trait_exists": async (ctx: PHPContext, nameArg: any, autoloadArg?: any) => {
+      const name = nameArg && typeof nameArg === "object" && typeof (nameArg as any).get === "function" ? (nameArg as any).get() : nameArg;
+      const autoload = autoloadArg !== undefined ? (autoloadArg && typeof autoloadArg === "object" && typeof (autoloadArg as any).get === "function" ? (autoloadArg as any).get() : autoloadArg) : true;
       if (!name || typeof name !== "string") return false;
       const lower = String(name).replace(/^\\/, "").toLowerCase();
       if (ctx.classes[lower] || ctx.engine.classes[lower]) return true;
@@ -235,7 +241,10 @@ export class CoreRuntime {
     },
     "ini_set": (ctx: PHPContext, option: string, value: any) => "",
     "register_shutdown_function": (ctx: PHPContext, callback: any, ...args: any[]) => {
-      ctx.setInternalVar("shutdownFunctions", [...(ctx.getInternalVar("shutdownFunctions") || []), { callback, args }]);
+      const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
+      const list = ctx.getInternalVar("shutdownFunctions") || [];
+      list.push({ callback: cb, args });
+      ctx.setInternalVar("shutdownFunctions", list);
       return true;
     },
     "register_tick_function": (ctx: PHPContext, callback: any, ...args: any[]) => true,

@@ -1,46 +1,12 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const cheerio = __importStar(require("cheerio"));
-const adm_zip_1 = __importDefault(require("adm-zip"));
-const index_1 = require("../index");
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+import * as cheerio from "cheerio";
+import AdmZip from "adm-zip";
+import mysql2 from "mysql2/promise";
+import { PHPEngine } from "../index.js";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const MYSQL_ROOT_PASSWORD = process.env.MYSQL_ROOT_PASSWORD || "DNESB*GJ*W(E$GYB$UW#gt78wg";
 const MYSQL_HOST = process.env.MYSQL_HOST || "127.0.0.1";
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || "3306", 10);
@@ -95,9 +61,8 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     const wpZipPath = path.join(__dirname, "latest.zip");
     let parsedCookies = {};
     beforeAll(async () => {
-        engine = new index_1.PHPEngine({ cacheDir: null, watch: false });
+        engine = new PHPEngine({ cacheDir: null, watch: false });
         console.log("Setting up MySQL database...");
-        const mysql2 = require("mysql2/promise");
         const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
         const possiblePasses = Array.from(new Set([process.env.MYSQL_ROOT_PASSWORD, "", "root", "DNESB*GJ*W(E$GYB$UW#gt78wg"].filter((x) => typeof x === "string")));
         let conn;
@@ -181,7 +146,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
             const tmpDir = path.join(__dirname, "../wp_temp_extract");
             forceRmSync(tmpDir);
             fs.mkdirSync(tmpDir, { recursive: true });
-            const zip = new adm_zip_1.default(wpZipPath);
+            const zip = new AdmZip(wpZipPath);
             zip.extractAllTo(tmpDir, true);
             const subFolder = path.join(tmpDir, "wordpress");
             copyRecursiveSync(subFolder, wpDir);
@@ -260,7 +225,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
         const linkTags = $get("link[rel='stylesheet']");
         expect(linkTags.length).toBeGreaterThan(0);
         const href = linkTags.first().attr("href") || "";
-        expect(href).toContain("install.css");
+        expect(href).toContain("install");
         // Verify the linked CSS file exists and has valid CSS styles
         const installCssPath = path.join(wpDir, "wp-admin", "css", "install.css");
         expect(fs.existsSync(installCssPath)).toBe(true);

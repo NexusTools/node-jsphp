@@ -1,51 +1,15 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.runCLI = runCLI;
-const commander_1 = require("commander");
-const readline = __importStar(require("readline"));
-const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
-const PHPEngine_1 = require("../PHPEngine");
-async function runCLI(rawArgs) {
-    const engine = new PHPEngine_1.PHPEngine({ watch: false });
-    const program = new commander_1.Command();
+import { Command } from "commander";
+import * as readline from "readline";
+import * as path from "path";
+import * as fs from "fs";
+import { PHPEngine } from "../PHPEngine.js";
+export async function runCLI(rawArgs) {
+    const engine = new PHPEngine({ watch: false });
+    const program = new Command();
     program
         .name("php")
         .description("JSPHP Command Line Interface")
-        .version(`PHP ${PHPEngine_1.PHPEngine.VERSION} (cli) (built: Jan 1 2026 00:00:00) (jsphp)\nCopyright (c) The PHP Group\nZend Engine v4.5.0, Copyright (c) Zend Technologies`, "-v, --version")
+        .version(`PHP ${PHPEngine.VERSION} (cli) (built: Jan 1 2026 00:00:00) (jsphp)\nCopyright (c) The PHP Group\nZend Engine v4.5.0, Copyright (c) Zend Technologies`, "-v, --version")
         .allowUnknownOption(true)
         .helpOption("-h, --help", "Display this help message")
         .option("-a, --interactive", "Run interactively (REPL)")
@@ -68,12 +32,14 @@ async function runCLI(rawArgs) {
         .option("--rf, --reflection-function <function>", "Show information about function")
         .option("--rc, --reflection-class <class>", "Show information about class")
         .option("--re, --reflection-extension <extension>", "Show information about extension")
-        .option("--ri, --reflection-info <extension>", "Show configuration for extension");
+        .option("--ri, --reflection-info <extension>", "Show configuration for extension")
+        .argument("[script]", "Script file to execute")
+        .argument("[args...]", "Arguments passed to script");
     program.parse(rawArgs, { from: "user" });
     const options = program.opts();
     const args = program.args;
     if (rawArgs.includes("-v") || rawArgs.includes("--version")) {
-        console.log(`PHP ${PHPEngine_1.PHPEngine.VERSION} (cli) (built: Jan 1 2026 00:00:00) (jsphp)`);
+        console.log(`PHP ${PHPEngine.VERSION} (cli) (built: Jan 1 2026 00:00:00) (jsphp)`);
         console.log("Copyright (c) The PHP Group");
         console.log("Zend Engine v4.5.0, Copyright (c) Zend Technologies");
         return;
@@ -97,7 +63,7 @@ async function runCLI(rawArgs) {
     }
     if (options.info) {
         console.log(`phpinfo()`);
-        console.log(`PHP Version => ${PHPEngine_1.PHPEngine.VERSION}`);
+        console.log(`PHP Version => ${PHPEngine.VERSION}`);
         console.log(`System => ${process.platform} ${process.arch}`);
         console.log(`Build Date => Jan 1 2026 00:00:00`);
         console.log(`Server API => Command Line Interface`);

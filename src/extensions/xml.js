@@ -1,16 +1,12 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.XMLExtension = exports.SimpleXMLElement = void 0;
-const PHPExtension_1 = require("../PHPExtension");
-const PHPVariable_1 = require("../runtime/PHPVariable");
-class SimpleXMLElement {
+import { PHPExtension } from "../PHPExtension.js";
+import { PHPLiteral } from "../runtime/PHPVariable.js";
+export class SimpleXMLElement {
     xml;
     constructor(xmlArg) {
         this.xml = xmlArg && typeof xmlArg === "object" && typeof xmlArg.get === "function" ? String(xmlArg.get() ?? "") : String(xmlArg ?? "");
     }
 }
-exports.SimpleXMLElement = SimpleXMLElement;
-class XMLExtension extends PHPExtension_1.PHPExtension {
+export class XMLExtension extends PHPExtension {
     name = "xml";
     onInit(engine) {
         this.classes = {
@@ -19,10 +15,9 @@ class XMLExtension extends PHPExtension_1.PHPExtension {
         this.functions = {
             simplexml_load_string: (ctx, xmlStrArg) => {
                 const xmlStr = String(xmlStrArg?.get() ?? "");
-                return new SimpleXMLElement(new PHPVariable_1.PHPLiteral(xmlStr));
+                return new SimpleXMLElement(new PHPLiteral(xmlStr));
             },
         };
     }
 }
-exports.XMLExtension = XMLExtension;
 //# sourceMappingURL=xml.js.map

@@ -1,10 +1,10 @@
 import * as crypto from "crypto";
 import { serialize as serializePHP } from "php-serialize";
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPObject } from "./PHPObject";
-import { PHPError, PHPTypeError } from "./PHPError";
-import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPObject } from "./PHPObject.js";
+import { PHPError, PHPTypeError } from "./PHPError.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
 
 export class VariablesRuntime {
   /**

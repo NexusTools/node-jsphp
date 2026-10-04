@@ -1,7 +1,7 @@
-import { PHPContext } from "../PHPContext";
-import type { PHPEngine } from "../PHPEngine";
-import { PHPFatalError } from "./PHPError";
-import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable";
+import { PHPContext } from "../PHPContext.js";
+import type { PHPEngine } from "../PHPEngine.js";
+import { PHPFatalError } from "./PHPError.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
 
 export class ArrayRuntime {
   public static count(ctx: PHPContext, arrayOrCountableArg?: PHPReference): number {

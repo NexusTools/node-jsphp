@@ -1,5 +1,5 @@
-import { PHPEngine, PHPFunction } from "./PHPEngine";
-import { defineFunction, FunctionMetaOptions } from "./runtime/Reflection";
+import { PHPEngine, PHPFunction } from "./PHPEngine.js";
+import { defineFunction, FunctionMetaOptions } from "./runtime/Reflection.js";
 
 export abstract class PHPExtension {
   public abstract readonly name: string;

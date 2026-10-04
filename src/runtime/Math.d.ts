@@ -1,6 +1,6 @@
-import type { PHPEngine } from "../PHPEngine";
-import type { PHPContext } from "../PHPContext";
-import { PHPReference } from "./PHPVariable";
+import type { PHPEngine } from "../PHPEngine.js";
+import type { PHPContext } from "../PHPContext.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class MathRuntime {
     static abs(ctx: PHPContext, num?: PHPReference): number;
     static ceil(ctx: PHPContext, num?: PHPReference): number;

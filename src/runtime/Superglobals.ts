@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as os from "os";
-import { PHPEngine } from "../PHPEngine";
+import { PHPEngine } from "../PHPEngine.js";
 
 export interface SuperglobalsOptions {
   env?: Record<string, string>;
