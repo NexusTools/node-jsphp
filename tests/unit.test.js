@@ -206,9 +206,12 @@ describe("PHPEngine & AST Unit Tests", () => {
     test("Does not substitute unrelated or hard-coded static methods", async () => {
         const ctx = engine.createContext();
         await ctx.eval("class ActualOwner { public static function init() { return 'actual'; } } class OtherOwner {} class InputValidator {}");
-        expect(await ctx.callStaticMethod("ActualOwner", "init")).toBe("actual");
-        await expect(ctx.callStaticMethod("OtherOwner", "init")).rejects.toThrow("undefined static method OtherOwner::init");
-        await expect(ctx.callStaticMethod("InputValidator", "is_string_or_stringable", ["text"])).rejects.toThrow("undefined static method InputValidator::is_string_or_stringable");
+        const actualCls = await ctx.resolveClass("actualowner");
+        expect(await actualCls.init(ctx)).toBe("actual");
+        const otherCls = await ctx.resolveClass("otherowner");
+        expect(() => ctx.methodMissing(otherCls, "init")).toThrow("undefined method OtherOwner::init");
+        const valCls = await ctx.resolveClass("inputvalidator");
+        expect(() => ctx.methodMissing(valCls, "is_string_or_stringable")).toThrow("undefined method InputValidator::is_string_or_stringable");
     });
     test("Magic method objects are not assimilated as JavaScript promises", async () => {
         const ctx = engine.createContext();

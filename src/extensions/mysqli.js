@@ -1,6 +1,6 @@
 import mysql from "mysql2/promise";
 import { PHPExtension } from "../PHPExtension.js";
-import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
+import { PHPVariable } from "../runtime/PHPVariable.js";
 export class MySQLiResult {
     rows;
     index = 0;
@@ -35,18 +35,32 @@ export class MySQLiResult {
         return res;
     }
 }
-export class MySQLiObject extends PHPObject {
+export class MySQLiObject {
     connection;
-    connect_error = null;
-    connect_errno = 0;
-    insert_id = 0;
-    affected_rows = 0;
-    error = "";
-    errno = 0;
-    constructor() {
-        super(new PHPClass("mysqli"));
+    connect_error = new PHPVariable(null);
+    connect_errno = new PHPVariable(0);
+    insert_id = new PHPVariable(0);
+    affected_rows = new PHPVariable(0);
+    error = new PHPVariable("");
+    errno = new PHPVariable(0);
+    static async __$$__new(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
+        const obj = Object.create(this.prototype);
+        obj.connect_error = new PHPVariable(null);
+        obj.connect_errno = new PHPVariable(0);
+        obj.insert_id = new PHPVariable(0);
+        obj.affected_rows = new PHPVariable(0);
+        obj.error = new PHPVariable("");
+        obj.errno = new PHPVariable(0);
+        if (typeof obj.__construct === "function")
+            await obj.__construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
+        return obj;
     }
-    async real_connect(hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) {
+    async __construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
+        if (hostArg || userArg || passwordArg || databaseArg) {
+            await this.real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
+        }
+    }
+    async real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) {
         let actualHost = String(hostArg?.get() ?? "127.0.0.1") || "127.0.0.1";
         let user = String(userArg?.get() ?? "root") || "root";
         let password = String(passwordArg?.get() ?? "");
@@ -72,22 +86,22 @@ export class MySQLiObject extends PHPObject {
                 port: actualPort,
                 connectTimeout: 1000,
             });
-            this.connect_error = null;
-            this.connect_errno = 0;
-            this.error = "";
-            this.errno = 0;
+            this.connect_error.set(null);
+            this.connect_errno.set(0);
+            this.error.set("");
+            this.errno.set(0);
             return true;
         }
         catch (err) {
             console.error("MYSQL CONNECT ERR:", err);
-            this.connect_error = err.message;
-            this.connect_errno = err.errno || 1045;
-            this.error = err.message;
-            this.errno = err.errno || 1045;
+            this.connect_error.set(err.message);
+            this.connect_errno.set(err.errno || 1045);
+            this.error.set(err.message);
+            this.errno.set(err.errno || 1045);
             return false;
         }
     }
-    async query(sqlArg) {
+    async query(ctx, sqlArg) {
         if (!this.connection)
             return false;
         const sql = String(sqlArg?.get() ?? "");
@@ -97,24 +111,24 @@ export class MySQLiObject extends PHPObject {
                 return new MySQLiResult(results);
             }
             else {
-                this.insert_id = results.insertId || 0;
-                this.affected_rows = results.affectedRows || 0;
+                this.insert_id.set(results.insertId || 0);
+                this.affected_rows.set(results.affectedRows || 0);
                 return true;
             }
         }
         catch (err) {
-            this.error = err.message;
-            this.errno = err.errno || 1064;
+            this.error.set(err.message);
+            this.errno.set(err.errno || 1064);
             return false;
         }
     }
-    escape_string(strArg) {
+    escape_string(ctx, strArg) {
         const str = String(strArg?.get() ?? "");
         if (!this.connection)
             return str.replace(/'/g, "\\'");
         return this.connection.escape(str).slice(1, -1);
     }
-    async close() {
+    async close(ctx) {
         if (this.connection) {
             await this.connection.end();
             this.connection = undefined;
@@ -140,18 +154,18 @@ export class MySQLiExtension extends PHPExtension {
             mysqli: MySQLiObject,
         };
         this.functions = {
-            mysqli_init: (ctx) => new MySQLiObject(),
+            mysqli_init: async (ctx) => await MySQLiObject.__$$__new(ctx),
             mysqli_report: (ctx, flags) => true,
             mysqli_connect: async (ctx, host, user, pass, db, port) => {
-                const conn = new MySQLiObject();
-                await conn.real_connect(host, user, pass, db, port);
+                const conn = await MySQLiObject.__$$__new(ctx);
+                await conn.real_connect(ctx, host, user, pass, db, port);
                 return conn;
             },
             mysqli_real_connect: async (ctx, connArg, host, user, pass, db, port, socket, flags) => {
                 const conn = connArg?.get();
                 if (!conn)
                     return false;
-                return await conn.real_connect(host, user, pass, db, port, socket, flags);
+                return await conn.real_connect(ctx, host, user, pass, db, port, socket, flags);
             },
             mysqli_options: (ctx, connArg, option, value) => true,
             mysqli_select_db: async (ctx, connArg, dbnameArg) => {
@@ -182,7 +196,7 @@ export class MySQLiExtension extends PHPExtension {
             },
             mysqli_query: async (ctx, connArg, sqlArg) => {
                 const conn = connArg?.get();
-                return conn ? await conn.query(sqlArg) : false;
+                return conn ? await conn.query(ctx, sqlArg) : false;
             },
             mysqli_fetch_assoc: (ctx, resultArg) => {
                 const result = resultArg?.get();
@@ -199,25 +213,25 @@ export class MySQLiExtension extends PHPExtension {
             },
             mysqli_real_escape_string: (ctx, connArg, strArg) => {
                 const conn = connArg?.get();
-                return conn ? conn.escape_string(strArg) : String(strArg?.get() ?? "");
+                return conn ? conn.escape_string(ctx, strArg) : String(strArg?.get() ?? "");
             },
             mysqli_close: async (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? await conn.close() : true;
+                return conn ? await conn.close(ctx) : true;
             },
             mysqli_error: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? conn.error : "";
+                return conn ? conn.error.get() : "";
             },
             mysqli_connect_errno: (ctx) => 0,
             mysqli_connect_error: (ctx) => "",
             mysqli_errno: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? conn.connect_errno : 0;
+                return conn ? conn.connect_errno.get() : 0;
             },
             mysqli_sqlstate: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? (conn.connect_errno ? "HY000" : "00000") : "00000";
+                return conn ? (conn.connect_errno.get() ? "HY000" : "00000") : "00000";
             },
             mysqli_free_result: (ctx, res) => true,
             mysqli_more_results: (ctx, conn) => false,

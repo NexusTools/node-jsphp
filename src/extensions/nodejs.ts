@@ -2,8 +2,10 @@ import { createRequire } from "module";
 import { PHPExtension } from "../PHPExtension.js";
 import { PHPEngine } from "../PHPEngine.js";
 import { PHPContext } from "../PHPContext.js";
-import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
-import { PHPVariable, PHPReference } from "../runtime/PHPVariable.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
+
+export const SYMBOL_PHP_NODEJS_PROXY = Symbol.for("php.nodejsProxy");
+export const SYMBOL_PHP_NODEJS_VALUE = Symbol.for("php.nodejsValue");
 
 const customRequire = createRequire(import.meta.url);
 
@@ -13,13 +15,128 @@ export function wrapJSValue(val: any): any {
   if (Array.isArray(val)) {
     return val.map(wrapJSValue);
   }
-  return new NodeJSObject(val);
+  if (typeof val !== "object" && typeof val !== "function") {
+    return val;
+  }
+  if (val[SYMBOL_PHP_NODEJS_PROXY]) {
+    return val[SYMBOL_PHP_NODEJS_PROXY];
+  }
+
+  const proxy = new Proxy(val, {
+    get(target, prop, receiver) {
+      if (prop === SYMBOL_PHP_NODEJS_PROXY || prop === SYMBOL_PHP_NODEJS_VALUE) {
+        return target;
+      }
+      if (
+        prop === "get" ||
+        prop === "set" ||
+        prop === "then" ||
+        prop === "catch" ||
+        prop === "finally" ||
+        typeof prop === "symbol"
+      ) {
+        return target[prop];
+      }
+
+      if (prop === "__$$__new") {
+        return async (ctx: PHPContext, ...args: PHPReference[]) => {
+          const unwrappedArgs = args.map(unwrapPHPValue);
+          if (typeof target === "function") {
+            try {
+              const instance = new (target as any)(...unwrappedArgs);
+              return wrapJSValue(instance);
+            } catch {
+              const instance = (target as any)(...unwrappedArgs);
+              return wrapJSValue(instance);
+            }
+          }
+          return null;
+        };
+      }
+
+      const propStr = typeof prop === "string" ? (prop.startsWith("$") ? prop.slice(1) : prop) : String(prop);
+      const lowerProp = propStr.toLowerCase();
+
+      let targetName = propStr;
+      if (target && (typeof target === "object" || typeof target === "function")) {
+        if (!(propStr in target)) {
+          let curr = target;
+          while (curr && curr !== Object.prototype) {
+            for (const p of Object.getOwnPropertyNames(curr)) {
+              if (p.toLowerCase() === lowerProp) {
+                targetName = p;
+                break;
+              }
+            }
+            curr = Object.getPrototypeOf(curr);
+          }
+        }
+      }
+
+      const item = target[targetName];
+      if (typeof item === "function") {
+        const boundFn = item.bind(target);
+        return async (ctx: PHPContext, ...args: PHPReference[]) => {
+          const unwrappedArgs = args.map(unwrapPHPValue);
+          const res = await Promise.resolve(boundFn(...unwrappedArgs));
+          return wrapJSValue(res);
+        };
+      }
+      return wrapJSValue(item);
+    },
+
+    set(target, prop, value, receiver) {
+      const propStr = typeof prop === "string" ? (prop.startsWith("$") ? prop.slice(1) : prop) : String(prop);
+      const lowerProp = propStr.toLowerCase();
+      let targetName = propStr;
+      if (target && (typeof target === "object" || typeof target === "function")) {
+        if (!(propStr in target)) {
+          let curr = target;
+          while (curr && curr !== Object.prototype) {
+            for (const p of Object.getOwnPropertyNames(curr)) {
+              if (p.toLowerCase() === lowerProp) {
+                targetName = p;
+                break;
+              }
+            }
+            curr = Object.getPrototypeOf(curr);
+          }
+        }
+      }
+      target[targetName] = unwrapPHPValue(value);
+      return true;
+    },
+
+    apply(target, thisArg, argArray) {
+      if (typeof target === "function") {
+        const unwrappedArgs = (argArray || []).slice(1).map(unwrapPHPValue);
+        const res = target.apply(thisArg, unwrappedArgs);
+        return wrapJSValue(res);
+      }
+      return undefined;
+    }
+  });
+
+  try {
+    Object.defineProperty(val, SYMBOL_PHP_NODEJS_PROXY, {
+      value: proxy,
+      writable: false,
+      configurable: true,
+      enumerable: false,
+    });
+  } catch {}
+
+  return proxy;
 }
 
 export function unwrapPHPValue(val: any): any {
-  const actual = val instanceof PHPVariable ? val.get() : val;
-  if (actual instanceof NodeJSObject) {
-    return actual.jsValue;
+  if (val === null || val === undefined) return val;
+  const actual = val && typeof val === "object" && typeof val.get === "function" ? val.get() : val;
+  if (actual && (typeof actual === "object" || typeof actual === "function") && actual[SYMBOL_PHP_NODEJS_PROXY]) {
+    return actual[SYMBOL_PHP_NODEJS_PROXY];
+  }
+  if (actual && (typeof actual === "object" || typeof actual === "function") && actual[SYMBOL_PHP_NODEJS_VALUE]) {
+    return actual[SYMBOL_PHP_NODEJS_VALUE];
   }
   if (Array.isArray(actual)) {
     return actual.map(unwrapPHPValue);
@@ -27,151 +144,60 @@ export function unwrapPHPValue(val: any): any {
   return actual;
 }
 
-export class NodeJSObject extends PHPObject {
-  public jsValue: any;
-
-  constructor(jsValue: any) {
-    const clsName = typeof jsValue === "function" ? (jsValue.name || "NodeJSFunction") : "NodeJSObject";
-    super(new PHPClass(clsName));
-    this.jsValue = jsValue;
-  }
-
-  public async getProperty(ctx: PHPContext, name: string): Promise<any> {
-    if (!this.jsValue || (typeof this.jsValue !== "object" && typeof this.jsValue !== "function")) return undefined;
-    const lowerName = name.toLowerCase();
-    let targetName = name;
-    if (!(name in this.jsValue)) {
-      let target = this.jsValue;
-      while (target && target !== Object.prototype) {
-        for (const prop of Object.getOwnPropertyNames(target)) {
-          if (prop.toLowerCase() === lowerName) {
-            targetName = prop;
-            break;
-          }
-        }
-        target = Object.getPrototypeOf(target);
-      }
-    }
-    const val = this.jsValue[targetName];
-    if (typeof val === "function") {
-      const boundFn = val.bind(this.jsValue);
-      return wrapJSValue(boundFn);
-    }
-    return wrapJSValue(val);
-  }
-
-  public async setProperty(ctx: PHPContext, name: string, value: any): Promise<void> {
-    if (this.jsValue && (typeof this.jsValue === "object" || typeof this.jsValue === "function")) {
-      const lowerName = name.toLowerCase();
-      let targetName = name;
-      if (!(name in this.jsValue)) {
-        let target = this.jsValue;
-        while (target && target !== Object.prototype) {
-          for (const prop of Object.getOwnPropertyNames(target)) {
-            if (prop.toLowerCase() === lowerName) {
-              targetName = prop;
-              break;
-            }
-          }
-          target = Object.getPrototypeOf(target);
-        }
-      }
-      this.jsValue[targetName] = unwrapPHPValue(value);
-    }
-  }
-
-  public async callMethod(ctx: PHPContext, name: string, args: any[] = []): Promise<any> {
-    if (!this.jsValue) return undefined;
-    const lowerName = name.toLowerCase();
-    let targetName = name;
-    if (typeof this.jsValue[name] !== "function") {
-      let target = this.jsValue;
-      while (target && target !== Object.prototype) {
-        for (const prop of Object.getOwnPropertyNames(target)) {
-          if (prop.toLowerCase() === lowerName && typeof target[prop] === "function") {
-            targetName = prop;
-            break;
-          }
-        }
-        target = Object.getPrototypeOf(target);
-      }
-    }
-
-    if (typeof this.jsValue[targetName] === "function") {
-      const unwrappedArgs = args.map(unwrapPHPValue);
-      const res = await Promise.resolve(this.jsValue[targetName].apply(this.jsValue, unwrappedArgs));
-      return wrapJSValue(res);
-    }
-
-    if (typeof this.jsValue === "function" && lowerName === "__invoke") {
-      const unwrappedArgs = args.map(unwrapPHPValue);
-      const res = await Promise.resolve(this.jsValue.apply(null, unwrappedArgs));
-      return wrapJSValue(res);
-    }
-    return undefined;
-  }
-}
-
-export class NodeJSService {
-  public static require(moduleName: string): any {
-    const mod = customRequire(moduleName);
-    return wrapJSValue(mod);
-  }
-
-  public static global(name: string): any {
-    const val = (globalThis as any)[name];
-    return wrapJSValue(val);
-  }
-
-  public static eval(code: string): any {
-    const fn = new Function("require", "process", "global", `return (${code});`);
-    const res = fn(customRequire, process, global);
-    return wrapJSValue(res);
-  }
-
-  public static new(classNameOrModule: string, ...args: any[]): any {
-    const unwrappedArgs = args.map(unwrapPHPValue);
-    let targetClass: any = (globalThis as any)[classNameOrModule];
-    if (!targetClass) {
-      try {
-        targetClass = customRequire(classNameOrModule);
-      } catch {
-        targetClass = null;
-      }
-    }
-    if (typeof targetClass === "function") {
-      const instance = new targetClass(...unwrappedArgs);
-      return wrapJSValue(instance);
-    }
-    return null;
-  }
-}
-
 export class NodeJSExtension extends PHPExtension {
   public readonly name = "nodejs";
 
   public onInit(engine: PHPEngine): void {
-    this.functions = {
-      nodejs_require: (ctx: PHPContext, moduleNameArg?: PHPReference) => {
-        const moduleName = String(moduleNameArg?.get() ?? "");
-        return NodeJSService.require(moduleName);
-      },
-      nodejs_global: (ctx: PHPContext, nameArg?: PHPReference) => {
-        const name = String(nameArg?.get() ?? "");
-        return NodeJSService.global(name);
-      },
-      nodejs_eval: (ctx: PHPContext, codeArg?: PHPReference) => {
-        const code = String(codeArg?.get() ?? "");
-        return NodeJSService.eval(code);
-      },
-      nodejs_new: (ctx: PHPContext, classNameArg?: PHPReference, ...args: PHPReference[]) => {
-        const className = String(classNameArg?.get() ?? "");
-        return NodeJSService.new(className, ...args);
-      },
+    const njs_import = (ctx: PHPContext, moduleNameArg?: PHPReference) => {
+      const moduleName = String(moduleNameArg?.get() ?? "");
+      try {
+        const mod = customRequire(moduleName);
+        return wrapJSValue(mod);
+      } catch {
+        return null;
+      }
     };
 
-    this.classes = {
-      nodejs: NodeJSService,
+    const njs_global = (ctx: PHPContext, nameArg?: PHPReference) => {
+      const name = String(nameArg?.get() ?? "");
+      const val = (globalThis as any)[name];
+      return wrapJSValue(val);
+    };
+
+    const njs_eval = async (ctx: PHPContext, codeArg?: PHPReference) => {
+      const code = String(codeArg?.get() ?? "");
+      const fn = new Function("process", "global", `return (async () => { return (${code}); })();`);
+      const res = await fn(process, globalThis);
+      return wrapJSValue(res);
+    };
+
+    const njs_new = (ctx: PHPContext, classNameArg?: PHPReference, ...args: PHPReference[]) => {
+      const className = String(classNameArg?.get() ?? "");
+      const unwrappedArgs = args.map(unwrapPHPValue);
+      let targetClass: any = (globalThis as any)[className];
+      if (!targetClass) {
+        try {
+          targetClass = customRequire(className);
+        } catch {
+          targetClass = null;
+        }
+      }
+      if (typeof targetClass === "function") {
+        const instance = new targetClass(...unwrappedArgs);
+        return wrapJSValue(instance);
+      }
+      return null;
+    };
+
+    this.functions = {
+      njs_import,
+      njs_global,
+      njs_eval,
+      njs_new,
+      nodejs_require: njs_import,
+      nodejs_global: njs_global,
+      nodejs_eval: njs_eval,
+      nodejs_new: njs_new,
     };
   }
 }

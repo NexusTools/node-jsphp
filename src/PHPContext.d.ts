@@ -37,6 +37,7 @@ export declare class PHPContext {
     constants: Record<string, any>;
     functions: Record<string, Function>;
     classes: Record<string, any>;
+    interfaces: Record<string, any>;
     internalVars: Record<string, any>;
     private scopes;
     private globalBindings;
@@ -146,20 +147,16 @@ export declare class PHPContext {
      * Expects method name in lowercase.
      * @param method Method name in lowercase.
      */
-    callMethod(obj: any, method: string, args?: any[]): Promise<any>;
+    functionMissing(name: string): Function;
+    methodMissing(obj: any, method: string): any;
     /** Gets a PHPReference wrapper for a variable name. */
     getVarRef(name: string): PHPReference;
-    /**
-     * Calls a global function.
-     * Expects function name in lowercase.
-     * @param name Function name in lowercase.
-     */
-    callFunction(name: any, args?: any[]): Promise<any>;
     /**
      * Resolves a class by lowercase name.
      * @param className Class name in lowercase.
      * @param originalName Class name in original casing.
      */
+    resolveMissingClass(className: string, originalName?: string): Promise<any>;
     resolveClass(className: string, originalName?: string): Promise<any>;
     /**
      * Gets a static class constant.
@@ -182,13 +179,6 @@ export declare class PHPContext {
     setStaticProperty(className: string, name: string, value: any): Promise<any>;
     /** Sets static property array offsets. */
     setStaticPropertyOffsets(className: string, name: string, keys: any[], value: any): Promise<any>;
-    /**
-     * Calls a static method on a class.
-     * @param className Class name in lowercase.
-     * @param method Method name in lowercase.
-     * @param originalClassName Class name in original casing.
-     */
-    callStaticMethod(className: string, method: string, args?: any[], targetObj?: any, originalClassName?: string): Promise<any>;
     /**
      * Creates an instance of a class.
      * @param className Class name in lowercase.

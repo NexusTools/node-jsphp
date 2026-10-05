@@ -2,7 +2,6 @@ import mysql from "mysql2/promise";
 import { PHPExtension } from "../PHPExtension.js";
 import { PHPEngine } from "../PHPEngine.js";
 import { PHPContext } from "../PHPContext.js";
-import { PHPObject, PHPClass } from "../runtime/PHPObject.js";
 import { PHPVariable, PHPReference } from "../runtime/PHPVariable.js";
 
 export class MySQLiResult {
@@ -41,20 +40,43 @@ export class MySQLiResult {
   }
 }
 
-export class MySQLiObject extends PHPObject {
+export class MySQLiObject {
   public connection?: mysql.Connection;
-  public connect_error: string | null = null;
-  public connect_errno: number = 0;
-  public insert_id: number = 0;
-  public affected_rows: number = 0;
-  public error: string = "";
-  public errno: number = 0;
+  public connect_error: PHPReference = new PHPVariable(null);
+  public connect_errno: PHPReference = new PHPVariable(0);
+  public insert_id: PHPReference = new PHPVariable(0);
+  public affected_rows: PHPReference = new PHPVariable(0);
+  public error: PHPReference = new PHPVariable("");
+  public errno: PHPReference = new PHPVariable(0);
 
-  constructor() {
-    super(new PHPClass("mysqli"));
+  public static async __$$__new(ctx: PHPContext, hostArg?: PHPReference, userArg?: PHPReference, passwordArg?: PHPReference, databaseArg?: PHPReference, portArg?: PHPReference, socketArg?: PHPReference): Promise<MySQLiObject> {
+    const obj = Object.create(this.prototype);
+    obj.connect_error = new PHPVariable(null);
+    obj.connect_errno = new PHPVariable(0);
+    obj.insert_id = new PHPVariable(0);
+    obj.affected_rows = new PHPVariable(0);
+    obj.error = new PHPVariable("");
+    obj.errno = new PHPVariable(0);
+    if (typeof obj.__construct === "function") await obj.__construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
+    return obj;
+  }
+
+  public async __construct(
+    ctx: PHPContext,
+    hostArg?: PHPReference,
+    userArg?: PHPReference,
+    passwordArg?: PHPReference,
+    databaseArg?: PHPReference,
+    portArg?: PHPReference,
+    socketArg?: PHPReference
+  ): Promise<void> {
+    if (hostArg || userArg || passwordArg || databaseArg) {
+      await this.real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
+    }
   }
 
   public async real_connect(
+    ctx: PHPContext,
     hostArg?: PHPReference,
     userArg?: PHPReference,
     passwordArg?: PHPReference,
@@ -91,22 +113,22 @@ export class MySQLiObject extends PHPObject {
         port: actualPort,
         connectTimeout: 1000,
       });
-      this.connect_error = null;
-      this.connect_errno = 0;
-      this.error = "";
-      this.errno = 0;
+      this.connect_error.set(null);
+      this.connect_errno.set(0);
+      this.error.set("");
+      this.errno.set(0);
       return true;
     } catch (err: any) {
       console.error("MYSQL CONNECT ERR:", err);
-      this.connect_error = err.message;
-      this.connect_errno = err.errno || 1045;
-      this.error = err.message;
-      this.errno = err.errno || 1045;
+      this.connect_error.set(err.message);
+      this.connect_errno.set(err.errno || 1045);
+      this.error.set(err.message);
+      this.errno.set(err.errno || 1045);
       return false;
     }
   }
 
-  public async query(sqlArg?: PHPReference): Promise<MySQLiResult | boolean> {
+  public async query(ctx: PHPContext, sqlArg?: PHPReference): Promise<MySQLiResult | boolean> {
     if (!this.connection) return false;
     const sql = String(sqlArg?.get() ?? "");
     try {
@@ -114,24 +136,24 @@ export class MySQLiObject extends PHPObject {
       if (Array.isArray(results)) {
         return new MySQLiResult(results);
       } else {
-        this.insert_id = (results as any).insertId || 0;
-        this.affected_rows = (results as any).affectedRows || 0;
+        this.insert_id.set((results as any).insertId || 0);
+        this.affected_rows.set((results as any).affectedRows || 0);
         return true;
       }
     } catch (err: any) {
-      this.error = err.message;
-      this.errno = err.errno || 1064;
+      this.error.set(err.message);
+      this.errno.set(err.errno || 1064);
       return false;
     }
   }
 
-  public escape_string(strArg?: PHPReference): string {
+  public escape_string(ctx: PHPContext, strArg?: PHPReference): string {
     const str = String(strArg?.get() ?? "");
     if (!this.connection) return str.replace(/'/g, "\\'");
     return this.connection.escape(str).slice(1, -1);
   }
 
-  public async close(): Promise<boolean> {
+  public async close(ctx: PHPContext): Promise<boolean> {
     if (this.connection) {
       await this.connection.end();
       this.connection = undefined;
@@ -161,11 +183,11 @@ export class MySQLiExtension extends PHPExtension {
     };
 
     this.functions = {
-      mysqli_init: (ctx: PHPContext) => new MySQLiObject(),
+      mysqli_init: async (ctx: PHPContext) => await MySQLiObject.__$$__new(ctx),
       mysqli_report: (ctx: PHPContext, flags?: PHPReference) => true,
       mysqli_connect: async (ctx: PHPContext, host?: PHPReference, user?: PHPReference, pass?: PHPReference, db?: PHPReference, port?: PHPReference) => {
-        const conn = new MySQLiObject();
-        await conn.real_connect(host, user, pass, db, port);
+        const conn = await MySQLiObject.__$$__new(ctx);
+        await conn.real_connect(ctx, host, user, pass, db, port);
         return conn;
       },
       mysqli_real_connect: async (
@@ -181,7 +203,7 @@ export class MySQLiExtension extends PHPExtension {
       ) => {
         const conn = connArg?.get();
         if (!conn) return false;
-        return await conn.real_connect(host, user, pass, db, port, socket, flags);
+        return await conn.real_connect(ctx, host, user, pass, db, port, socket, flags);
       },
       mysqli_options: (ctx: PHPContext, connArg?: PHPReference, option?: PHPReference, value?: PHPReference) => true,
       mysqli_select_db: async (ctx: PHPContext, connArg?: PHPReference, dbnameArg?: PHPReference) => {
@@ -208,7 +230,7 @@ export class MySQLiExtension extends PHPExtension {
       },
       mysqli_query: async (ctx: PHPContext, connArg?: PHPReference, sqlArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? await conn.query(sqlArg) : false;
+        return conn ? await conn.query(ctx, sqlArg) : false;
       },
       mysqli_fetch_assoc: (ctx: PHPContext, resultArg?: PHPReference) => {
         const result = resultArg?.get();
@@ -225,25 +247,25 @@ export class MySQLiExtension extends PHPExtension {
       },
       mysqli_real_escape_string: (ctx: PHPContext, connArg?: PHPReference, strArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? conn.escape_string(strArg) : String(strArg?.get() ?? "");
+        return conn ? conn.escape_string(ctx, strArg) : String(strArg?.get() ?? "");
       },
       mysqli_close: async (ctx: PHPContext, connArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? await conn.close() : true;
+        return conn ? await conn.close(ctx) : true;
       },
       mysqli_error: (ctx: PHPContext, connArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? conn.error : "";
+        return conn ? conn.error.get() : "";
       },
       mysqli_connect_errno: (ctx: PHPContext) => 0,
       mysqli_connect_error: (ctx: PHPContext) => "",
       mysqli_errno: (ctx: PHPContext, connArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? conn.connect_errno : 0;
+        return conn ? conn.connect_errno.get() : 0;
       },
       mysqli_sqlstate: (ctx: PHPContext, connArg?: PHPReference) => {
         const conn = connArg?.get();
-        return conn ? (conn.connect_errno ? "HY000" : "00000") : "00000";
+        return conn ? (conn.connect_errno.get() ? "HY000" : "00000") : "00000";
       },
       mysqli_free_result: (ctx: PHPContext, res?: PHPReference) => true,
       mysqli_more_results: (ctx: PHPContext, conn?: PHPReference) => false,

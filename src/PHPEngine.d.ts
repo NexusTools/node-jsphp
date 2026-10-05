@@ -22,6 +22,7 @@ export declare class PHPEngine {
     constants: Record<string, any>;
     functions: Record<string, PHPFunction>;
     classes: Record<string, any>;
+    interfaces: Record<string, any>;
     internalVars: Record<string, any>;
     private classResolvers;
     private resolvingClasses;

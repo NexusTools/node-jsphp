@@ -1,4 +1,5 @@
 import { PHPVariable } from "./PHPVariable.js";
+import { SYMBOL_PHP_NAME } from "./Reflection.js";
 export class PHPError extends Error {
     phpCode;
     phpFile;
@@ -6,10 +7,10 @@ export class PHPError extends Error {
     phpTrace;
     previous;
     rawJSStack = "";
-    constructor(messageArg = "", codeArg = 0, fileArg = "[INTERNAL]", lineArg = 0, traceArg = [], previousArg = null) {
+    constructor(messageArg = "", codeArg = 0, fileArg = "", lineArg = 0, traceArg = [], previousArg = null) {
         const message = String(messageArg?.get ? messageArg.get() : (messageArg ?? ""));
         const code = Number(codeArg?.get ? codeArg.get() : (codeArg || 0));
-        const file = String(fileArg?.get ? fileArg.get() : (fileArg || __filename));
+        const file = String(fileArg?.get ? fileArg.get() : (fileArg || ""));
         const line = Number(lineArg?.get ? lineArg.get() : (lineArg || 0));
         const trace = traceArg?.get ? traceArg.get() : (traceArg || []);
         const previous = previousArg?.get ? previousArg.get() : previousArg;
@@ -27,6 +28,24 @@ export class PHPError extends Error {
             this.stack = PHPError.virtualizeJSStack(this.rawJSStack, file, line, trace);
         }
     }
+    static wrapJSError(err) {
+        if (err instanceof PHPError) {
+            return err;
+        }
+        if (err && typeof err === "object" && typeof err.message === "string") {
+            if (err.name === "TypeError") {
+                return new PHPTypeError(err.message);
+            }
+            return new PHPFatalError(err.message);
+        }
+        return new PHPError(String(err ?? "Unknown error"));
+    }
+    async __construct(ctx, messageArg, codeArg, previousArg) {
+        const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
+        const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+        this.message = String(msg ?? "");
+        this.phpCode = Number(code || 0);
+    }
     getMessage() {
         return this.message || this.properties?.get("message") || "";
     }
@@ -42,14 +61,14 @@ export class PHPError extends Error {
     getPrevious() {
         return this.previous || this.properties?.get("previous") || null;
     }
-    static virtualizeJSStack(jsStack, phpFile = __filename, phpLine = 0, phpTrace = []) {
+    static virtualizeJSStack(jsStack, phpFile = "", phpLine = 0, phpTrace = []) {
         const rawLines = (jsStack || "").split("\n");
         let header = rawLines[0] || "PHP Error";
         header = header.replace(/^PHPFatalError:/, "PHP Fatal Error:");
         const formattedFrames = [];
         if (phpTrace && phpTrace.length > 0) {
             phpTrace.forEach((frame, idx) => {
-                const fileLoc = `${frame.file || "[INTERNAL]"}:${frame.line || 0}`;
+                const fileLoc = `${frame.file || ""}:${frame.line || 0}`;
                 const funcStr = frame.class
                     ? `${frame.class}${frame.type || "->"}${frame.function || "main"}`
                     : frame.function || "{main}";
@@ -74,7 +93,7 @@ export class PHPError extends Error {
             }
         }
         if (formattedFrames.length === 0) {
-            formattedFrames.push(`    #0 ${phpFile || "[INTERNAL]"}:${phpLine || 0}: {main}()`);
+            formattedFrames.push(`    #0 ${phpFile || ""}:${phpLine || 0}: {main}()`);
         }
         return `${header}\nPHP Stack Trace:\n${formattedFrames.join("\n")}`;
     }
@@ -84,8 +103,9 @@ export class PHPError extends Error {
 }
 export class PHPException extends PHPError {
     static phpName = "Exception";
+    static [SYMBOL_PHP_NAME] = "Exception";
     constructor(messageArg = "", codeArg = 0, previousArg = null) {
-        super(messageArg, codeArg, "[INTERNAL]", 0, [], previousArg);
+        super(messageArg, codeArg, "", 0, [], previousArg);
     }
 }
 export class PHPTypeError extends PHPError {
@@ -107,7 +127,7 @@ export class PHPExit extends PHPError {
 }
 export class ErrorException extends PHPError {
     severity;
-    constructor(message = "", code = 0, severity = 1, file = __filename, line = 0, previous = null) {
+    constructor(message = "", code = 0, severity = 1, file = "", line = 0, previous = null) {
         super(message, code, file, line, [], previous);
         this.severity = severity;
     }
@@ -120,7 +140,7 @@ export class ErrorRuntime {
         return ctx.getPHPBacktrace();
     }
     static async debug_print_backtrace(ctx) {
-        const trace = ctx.getPHPBacktrace().map((frame, index) => `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`).join("");
+        const trace = ctx.getPHPBacktrace().map((frame, index) => `#${index} ${frame.file || __filename}(${frame.line || 0}): ${frame.function || "{main}"}()\n`).join("");
         await ctx.echo(trace);
         return trace;
     }

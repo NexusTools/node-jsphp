@@ -1,4 +1,5 @@
 import { PHPEngine } from "../../index.js";
+import { PHPLiteral } from "../../src/runtime/PHPVariable.js";
 
 describe("Arrays Runtime Tests", () => {
   let engine: PHPEngine;
@@ -67,6 +68,7 @@ describe("Arrays Runtime Tests", () => {
     expect(ctx.getVar("offset")).toEqual({ 5: "item", 6: "item" });
     expect(ctx.getVar("negative")).toEqual({ "-2": "item", "-1": "item", 0: "item" });
     expect(ctx.getVar("empty")).toEqual([]);
-    await expect(ctx.callFunction("array_fill", [0, -1, "item"])).rejects.toThrow("must be greater than or equal to 0");
+    const fn = ctx.functions["array_fill"] || ctx.functionMissing("array_fill");
+    await expect(fn(ctx, new PHPLiteral(0), new PHPLiteral(-1), new PHPLiteral("item"))).rejects.toThrow("must be greater than or equal to 0");
   });
 });

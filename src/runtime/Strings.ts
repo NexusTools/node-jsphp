@@ -1,7 +1,7 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
-import { PHPObject } from "./PHPObject.js";
+
 import { defineFunction } from "./Reflection.js";
 
 export class StringRuntime {
@@ -266,10 +266,10 @@ export class StringRuntime {
     let glue = "";
     let pieces: any[] = [];
 
-    if (Array.isArray(val1) || (val1 && typeof val1 === "object" && !(val1 instanceof PHPObject))) {
+    if (Array.isArray(val1) || (val1 && typeof val1 === "object" && (val1.constructor === Object || val1.constructor === Array))) {
       pieces = Array.isArray(val1) ? val1 : Object.values(val1);
       glue = val2 !== undefined && val2 !== null ? String(val2) : "";
-    } else if (Array.isArray(val2) || (val2 && typeof val2 === "object" && !(val2 instanceof PHPObject))) {
+    } else if (Array.isArray(val2) || (val2 && typeof val2 === "object" && (val2.constructor === Object || val2.constructor === Array))) {
       pieces = Array.isArray(val2) ? val2 : Object.values(val2);
       glue = val1 !== undefined && val1 !== null ? String(val1) : "";
     }

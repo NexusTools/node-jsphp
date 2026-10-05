@@ -1,4 +1,5 @@
 import { PHPEngine } from "../../index.js";
+import { PHPLiteral } from "../../src/runtime/PHPVariable.js";
 describe("SPL Extension Tests", () => {
     let engine;
     beforeEach(() => {
@@ -39,9 +40,10 @@ describe("SPL Extension Tests", () => {
     });
     test.each(["spl_object_id", "spl_object_hash"])("%s rejects non-objects", async (functionName) => {
         const ctx = engine.createContext();
-        await expect(ctx.callFunction(functionName, [null])).rejects.toThrow("must be of type object");
-        await expect(ctx.callFunction(functionName, [42])).rejects.toThrow("must be of type object");
-        await expect(ctx.callFunction(functionName, [[]])).rejects.toThrow("must be of type object");
+        const fn = ctx.functions[functionName] || ctx.functionMissing(functionName);
+        await expect(fn(ctx, new PHPLiteral(null))).rejects.toThrow("must be of type object");
+        await expect(fn(ctx, new PHPLiteral(42))).rejects.toThrow("must be of type object");
+        await expect(fn(ctx, new PHPLiteral([]))).rejects.toThrow("must be of type object");
     });
     test("Concurrent contexts can autoload the same class independently", async () => {
         engine.registerClassResolver(async (ctx, className) => {
@@ -52,8 +54,8 @@ describe("SPL Extension Tests", () => {
         const firstContext = engine.createContext();
         const secondContext = engine.createContext();
         await expect(Promise.all([
-            firstContext.callStaticMethod("DeferredClass", "value"),
-            secondContext.callStaticMethod("DeferredClass", "value"),
+            (async () => (await firstContext.resolveClass("deferredclass")).value(firstContext))(),
+            (async () => (await secondContext.resolveClass("deferredclass")).value(secondContext))(),
         ])).resolves.toEqual([42, 42]);
     });
 });

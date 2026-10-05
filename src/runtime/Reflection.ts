@@ -1,6 +1,45 @@
-import { PHPClass, PHPObject, PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./PHPObject.js";
 import type { PHPContext } from "../PHPContext.js";
 import type { PHPEngine } from "../PHPEngine.js";
+import { PHPLiteral, PHPReference } from "./PHPVariable.js";
+
+export const SYMBOL_PHP_META = Symbol.for("php.meta");
+export const SYMBOL_PHP_NAME = Symbol.for("php.name");
+export const SYMBOL_PHP_CONSTANTS = Symbol.for("php.constants");
+export const SYMBOL_PHP_PROPERTIES = Symbol.for("php.properties");
+export const SYMBOL_PHP_METHODS = Symbol.for("php.methods");
+export const SYMBOL_PHP_CLASS = Symbol.for("php.class");
+export const SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS = Symbol.for("php.hasMagicMethods");
+export const SYMBOL_PHP_CLASS_INTERFACES = Symbol.for("php.interfaces");
+
+export interface PHPParameterMetadata {
+  name: string;
+  position: number;
+  isOptional: boolean;
+  hasDefault: boolean;
+  defaultValue?: any;
+  type?: string;
+  byref?: boolean;
+}
+
+export interface PHPPropertyMetadata {
+  name: string;
+  visibility: "public" | "protected" | "private";
+  isStatic: boolean;
+  isReadOnly: boolean;
+  defaultValue?: any;
+}
+
+export interface PHPMethodMetadata {
+  name: string;
+  visibility: "public" | "protected" | "private";
+  isStatic: boolean;
+  isAbstract: boolean;
+  isFinal: boolean;
+  numberOfParameters: number;
+  numberOfRequiredParameters: number;
+  parameters: PHPParameterMetadata[];
+  fn?: Function;
+}
 
 export interface FunctionMetaOptions {
   name: string;
@@ -31,13 +70,18 @@ export function defineFunction<T extends Function>(fn: T, meta: FunctionMetaOpti
 
   const requiredCount = params.filter((p) => !p.hasDefault).length;
 
-  (fn as any).phpMeta = {
-    name: meta.name.toLowerCase(),
-    visibility: meta.visibility || "public",
-    numberOfParameters: params.length,
-    numberOfRequiredParameters: requiredCount,
-    parameters: params,
-  };
+  Object.defineProperty(fn, SYMBOL_PHP_META, {
+    value: {
+      name: meta.name.toLowerCase(),
+      visibility: meta.visibility || "public",
+      numberOfParameters: params.length,
+      numberOfRequiredParameters: requiredCount,
+      parameters: params,
+    },
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
 
   return fn;
 }
@@ -53,8 +97,8 @@ export function parseJSFunctionMetadata(fn?: Function, name = ""): any {
     };
   }
 
-  if ((fn as any).phpMeta) {
-    return (fn as any).phpMeta;
+  if ((fn as any)[SYMBOL_PHP_META]) {
+    return (fn as any)[SYMBOL_PHP_META];
   }
 
   const str = fn.toString().trim();
@@ -153,7 +197,8 @@ function parseSimpleLiteral(valStr: string): any {
 }
 
 export class Reflection {
-  public static getModifierNames(modifiers: number): string[] {
+  public static getModifierNames(ctx: PHPContext, modifiersArg?: PHPReference): string[] {
+    const modifiers = Number(modifiersArg?.get()) || 0;
     const res: string[] = [];
     if (modifiers & 1) res.push("public");
     if (modifiers & 2) res.push("protected");
@@ -167,146 +212,241 @@ export class Reflection {
 }
 
 export class ReflectionType {
-  public readonly typeName: string;
-  public readonly allowsNullFlag: boolean;
+  public typeName!: string;
+  public allowsNullFlag!: boolean;
 
-  constructor(typeName = "mixed", allowsNullFlag = true) {
-    this.typeName = typeName;
-    this.allowsNullFlag = allowsNullFlag;
+  public static async __$$__new(ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<ReflectionType> {
+    const obj = Object.create(ReflectionType.prototype);
+    await ReflectionType.__construct.call(obj, ctx, typeNameArg, allowsNullFlagArg);
+    return obj;
   }
 
-  public allowsNull(): boolean { return this.allowsNullFlag; }
-  public getName(): string { return this.typeName; }
-  public __toString(): string { return this.typeName; }
+  public static async __construct(this: ReflectionType, ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<void> {
+    this.typeName = typeNameArg ? String(typeNameArg.get() ?? "") : "mixed";
+    this.allowsNullFlag = allowsNullFlagArg ? Boolean(allowsNullFlagArg.get()) : true;
+  }
+
+  public allowsNull(ctx: PHPContext): boolean { return this.allowsNullFlag; }
+  public getName(ctx: PHPContext): string { return this.typeName; }
+  public __toString(ctx: PHPContext): string { return this.typeName; }
 }
 
 export class ReflectionParameter {
-  public readonly paramName: string;
-  public readonly paramPosition: number;
-  public readonly defaultValue: any;
-  public readonly hasDefault: boolean;
+  public paramName!: string;
+  public paramPosition!: number;
+  public defaultValue: any;
+  public hasDefault!: boolean;
 
-  constructor(name: string, position: number, defaultValue?: any, hasDefault = false) {
-    this.paramName = name;
-    this.paramPosition = position;
-    this.defaultValue = defaultValue;
-    this.hasDefault = hasDefault;
+  public static async __$$__new(ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<ReflectionParameter> {
+    const obj = Object.create(ReflectionParameter.prototype);
+    await ReflectionParameter.__construct.call(obj, ctx, nameArg, positionArg, defaultValueArg, hasDefaultArg);
+    return obj;
   }
 
-  public getName(): string { return this.paramName; }
-  public getPosition(): number { return this.paramPosition; }
-  public isOptional(): boolean { return this.hasDefault; }
-  public isDefaultValueAvailable(): boolean { return this.hasDefault; }
-  public getDefaultValue(): any { return this.defaultValue; }
-  public isPassedByReference(): boolean { return false; }
-  public getType(): ReflectionType { return new ReflectionType(); }
+  public static async __construct(this: ReflectionParameter, ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<void> {
+    this.paramName = nameArg ? String(nameArg.get() ?? "") : "";
+    this.paramPosition = positionArg ? Number(positionArg.get()) || 0 : 0;
+    this.defaultValue = defaultValueArg ? defaultValueArg.get() : undefined;
+    this.hasDefault = hasDefaultArg ? Boolean(hasDefaultArg.get()) : false;
+  }
+
+  public getName(ctx: PHPContext): string { return this.paramName; }
+  public getPosition(ctx: PHPContext): number { return this.paramPosition; }
+  public isOptional(ctx: PHPContext): boolean { return this.hasDefault; }
+  public isDefaultValueAvailable(ctx: PHPContext): boolean { return this.hasDefault; }
+  public getDefaultValue(ctx: PHPContext): any { return this.defaultValue; }
+  public isPassedByReference(ctx: PHPContext): boolean { return false; }
+  public async getType(ctx: PHPContext): Promise<ReflectionType> {
+    return await ReflectionType.__$$__new(ctx);
+  }
 }
 
 export class ReflectionProperty {
-  public readonly name: string;
-  public readonly declaringClassName: string;
-  public readonly meta?: PHPPropertyMetadata;
+  public name!: string;
+  public declaringClassName!: string;
+  public meta?: PHPPropertyMetadata;
   public isAccessible = true;
 
-  constructor(declaringClassName: string, name: string, meta?: PHPPropertyMetadata) {
-    this.declaringClassName = declaringClassName;
-    this.name = name;
-    this.meta = meta;
+  public static async __$$__new(ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<ReflectionProperty> {
+    const obj = Object.create(ReflectionProperty.prototype);
+    await ReflectionProperty.__construct.call(obj, ctx, classArg, nameArg, metaArg);
+    return obj;
   }
 
-  public getName(): string { return this.name; }
-  public getDeclaringClass(): ReflectionClass { return new ReflectionClass(this.declaringClassName); }
-  public isPublic(): boolean { return !this.meta || this.meta.visibility === "public"; }
-  public isProtected(): boolean { return this.meta?.visibility === "protected"; }
-  public isPrivate(): boolean { return this.meta?.visibility === "private"; }
-  public isStatic(): boolean { return this.meta?.isStatic || false; }
-  public isReadOnly(): boolean { return this.meta?.isReadOnly || false; }
-  public setAccessible(accessible: boolean): void { this.isAccessible = accessible; }
-  public async getValue(ctx: PHPContext, obj: PHPObject): Promise<any> {
-    return await obj.getProperty(ctx, this.name);
+  public static async __construct(this: ReflectionProperty, ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<void> {
+    this.declaringClassName = classArg ? String(classArg.get() ?? "") : "";
+    this.name = nameArg ? String(nameArg.get() ?? "") : "";
+    this.meta = metaArg ? metaArg.get() : undefined;
   }
-  public async setValue(ctx: PHPContext, obj: PHPObject, val: any): Promise<void> {
-    await obj.setProperty(ctx, this.name, val);
+
+  public getName(ctx: PHPContext): string { return this.name; }
+  public async getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass> {
+    return await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.declaringClassName));
+  }
+  public isPublic(ctx: PHPContext): boolean { return !this.meta || this.meta.visibility === "public"; }
+  public isProtected(ctx: PHPContext): boolean { return this.meta?.visibility === "protected"; }
+  public isPrivate(ctx: PHPContext): boolean { return this.meta?.visibility === "private"; }
+  public isStatic(ctx: PHPContext): boolean { return this.meta?.isStatic || false; }
+  public isReadOnly(ctx: PHPContext): boolean { return this.meta?.isReadOnly || false; }
+  public setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): void {
+    this.isAccessible = accessibleArg ? Boolean(accessibleArg.get()) : true;
+  }
+  public async getValue(ctx: PHPContext, objArg?: PHPReference): Promise<any> {
+    const obj = objArg?.get();
+    if (obj && typeof obj === "object") {
+      return await ctx.getProperty(obj, this.name);
+    }
+    return undefined;
+  }
+  public async setValue(ctx: PHPContext, objArg?: PHPReference, valArg?: PHPReference): Promise<void> {
+    const obj = objArg?.get();
+    if (obj && typeof obj === "object") {
+      await ctx.setProperty(obj, this.name, valArg?.get());
+    }
   }
 }
 
 export class ReflectionMethod {
-  public readonly className: string;
-  public readonly methodName: string;
-  public readonly meta: PHPMethodMetadata;
+  public className!: string;
+  public methodName!: string;
+  public meta!: PHPMethodMetadata;
 
-  constructor(className: string, methodName: string, meta?: PHPMethodMetadata, fn?: Function) {
-    this.className = className;
-    this.methodName = methodName;
-    this.meta = meta || parseJSFunctionMetadata(fn || (meta as any)?.fn, methodName);
+  public static async __$$__new(ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<ReflectionMethod> {
+    const obj = Object.create(ReflectionMethod.prototype);
+    await ReflectionMethod.__construct.call(obj, ctx, classArg, methodArg, metaArg, fnArg);
+    return obj;
   }
 
-  public getName(): string { return this.methodName; }
-  public getDeclaringClass(): ReflectionClass { return new ReflectionClass(this.className); }
-  public isPublic(): boolean { return !this.meta || this.meta.visibility === "public"; }
-  public isProtected(): boolean { return this.meta?.visibility === "protected"; }
-  public isPrivate(): boolean { return this.meta?.visibility === "private"; }
-  public isStatic(): boolean { return this.meta?.isStatic || false; }
-  public isAbstract(): boolean { return this.meta?.isAbstract || false; }
-  public isFinal(): boolean { return this.meta?.isFinal || false; }
-  public isConstructor(): boolean { return this.methodName.toLowerCase() === "__construct"; }
-  public isDestructor(): boolean { return this.methodName.toLowerCase() === "__destruct"; }
-  public getNumberOfParameters(): number { return this.meta?.numberOfParameters ?? 0; }
-  public getNumberOfRequiredParameters(): number { return this.meta?.numberOfRequiredParameters ?? 0; }
-  public getParameters(): ReflectionParameter[] {
+  public static async __construct(this: ReflectionMethod, ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<void> {
+    const cls = classArg ? String(classArg.get() ?? "") : "";
+    const methodName = methodArg ? String(methodArg.get() ?? "") : "";
+    if (!methodName && cls.includes("::")) {
+      const parts = cls.split("::");
+      this.className = parts[0];
+      this.methodName = parts[1];
+    } else {
+      this.className = cls;
+      this.methodName = methodName;
+    }
+    const meta = metaArg ? metaArg.get() : undefined;
+    const fn = fnArg ? fnArg.get() : undefined;
+    this.meta = meta || parseJSFunctionMetadata(fn || meta?.fn, this.methodName);
+  }
+
+  public getName(ctx: PHPContext): string { return this.methodName; }
+  public async getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass> {
+    return await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.className));
+  }
+  public isPublic(ctx: PHPContext): boolean { return !this.meta || this.meta.visibility === "public"; }
+  public isProtected(ctx: PHPContext): boolean { return this.meta?.visibility === "protected"; }
+  public isPrivate(ctx: PHPContext): boolean { return this.meta?.visibility === "private"; }
+  public isStatic(ctx: PHPContext): boolean { return this.meta?.isStatic || false; }
+  public isAbstract(ctx: PHPContext): boolean { return this.meta?.isAbstract || false; }
+  public isFinal(ctx: PHPContext): boolean { return this.meta?.isFinal || false; }
+  public isConstructor(ctx: PHPContext): boolean { return this.methodName.toLowerCase() === "__construct"; }
+  public isDestructor(ctx: PHPContext): boolean { return this.methodName.toLowerCase() === "__destruct"; }
+  public getNumberOfParameters(ctx: PHPContext): number { return this.meta?.numberOfParameters ?? 0; }
+  public getNumberOfRequiredParameters(ctx: PHPContext): number { return this.meta?.numberOfRequiredParameters ?? 0; }
+  public async getParameters(ctx: PHPContext): Promise<ReflectionParameter[]> {
     if (!this.meta?.parameters) return [];
-    return this.meta.parameters.map((p, idx) => new ReflectionParameter(p.name, idx, p.defaultValue, p.hasDefault));
+    const params: ReflectionParameter[] = [];
+    for (let idx = 0; idx < this.meta.parameters.length; idx++) {
+      const p = this.meta.parameters[idx];
+      params.push(await ReflectionParameter.__$$__new(ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
+    }
+    return params;
   }
-  public setAccessible(accessible: boolean): void {}
-  public async invoke(ctx: PHPContext, object: PHPObject | null, ...args: any[]): Promise<any> {
-    if (object) {
-      return await object.callMethod(ctx, this.methodName, args);
+  public setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): void {}
+  public async invoke(ctx: PHPContext, objectArg?: PHPReference, ...args: PHPReference[]): Promise<any> {
+    const object = objectArg?.get();
+    const lower = this.methodName.toLowerCase();
+    if (object && typeof object === "object") {
+      if (typeof object[lower] === "function") return await object[lower](ctx, ...args);
+      if (typeof object.__call === "function") return await object.__call(ctx, new PHPLiteral(lower), new PHPLiteral(args));
+      return ctx.methodMissing(object, lower);
+    }
+    return undefined;
+  }
+  public async invokeArgs(ctx: PHPContext, objectArg?: PHPReference, argsArg?: PHPReference): Promise<any> {
+    const object = objectArg?.get();
+    const args = argsArg ? argsArg.get() : [];
+    const lower = this.methodName.toLowerCase();
+    if (object && typeof object === "object") {
+      const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
+      if (typeof object[lower] === "function") return await object[lower](ctx, ...callArgs);
+      if (typeof object.__call === "function") return await object.__call(ctx, new PHPLiteral(lower), new PHPLiteral(callArgs));
+      return ctx.methodMissing(object, lower);
     }
     return undefined;
   }
 }
 
 export class ReflectionFunction {
-  public readonly name: string;
-  public readonly meta: any;
+  public name!: string;
+  public meta!: any;
 
-  constructor(name: string, fnOrCtx?: Function | any) {
-    this.name = name;
+  public static async __$$__new(ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<ReflectionFunction> {
+    const obj = Object.create(ReflectionFunction.prototype);
+    await ReflectionFunction.__construct.call(obj, ctx, nameArg, fnOrCtxArg);
+    return obj;
+  }
+
+  public static async __construct(this: ReflectionFunction, ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<void> {
+    this.name = nameArg ? String(nameArg.get() ?? "") : "";
     let targetFn: Function | undefined;
+    const fnOrCtx = fnOrCtxArg ? fnOrCtxArg.get() : undefined;
 
     if (typeof fnOrCtx === "function") {
       targetFn = fnOrCtx;
-    } else if (fnOrCtx?.engine) {
-      targetFn = fnOrCtx.engine.functions[name.toLowerCase()];
+    } else if (ctx.engine) {
+      targetFn = ctx.engine.functions[this.name.toLowerCase()];
     }
 
-    this.meta = (targetFn as any)?.phpMeta || parseJSFunctionMetadata(targetFn, name);
+    this.meta = (targetFn as any)?.phpMeta || parseJSFunctionMetadata(targetFn, this.name);
   }
 
-  public getName(): string { return this.name; }
-  public getNamespaceName(): string { return ""; }
-  public inNamespace(): boolean { return false; }
-  public getNumberOfParameters(): number { return this.meta?.numberOfParameters ?? 0; }
-  public getNumberOfRequiredParameters(): number { return this.meta?.numberOfRequiredParameters ?? 0; }
-  public getParameters(): ReflectionParameter[] {
+  public getName(ctx: PHPContext): string { return this.name; }
+  public getNamespaceName(ctx: PHPContext): string { return ""; }
+  public inNamespace(ctx: PHPContext): boolean { return false; }
+  public getNumberOfParameters(ctx: PHPContext): number { return this.meta?.numberOfParameters ?? 0; }
+  public getNumberOfRequiredParameters(ctx: PHPContext): number { return this.meta?.numberOfRequiredParameters ?? 0; }
+  public async getParameters(ctx: PHPContext): Promise<ReflectionParameter[]> {
     if (!this.meta?.parameters) return [];
-    return this.meta.parameters.map((p: any, idx: number) => new ReflectionParameter(p.name, idx, p.defaultValue, p.hasDefault));
+    const params: ReflectionParameter[] = [];
+    for (let idx = 0; idx < this.meta.parameters.length; idx++) {
+      const p = this.meta.parameters[idx];
+      params.push(await ReflectionParameter.__$$__new(ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
+    }
+    return params;
   }
-  public async invoke(ctx: PHPContext, ...args: any[]): Promise<any> {
-    return await ctx.callFunction(this.name, args);
+  public async invoke(ctx: PHPContext, ...args: PHPReference[]): Promise<any> {
+    const fn = ctx.functions[this.name.toLowerCase()] || ctx.functionMissing(this.name);
+    return await fn(ctx, ...args);
   }
-  public async invokeArgs(ctx: PHPContext, args: any[]): Promise<any> {
-    return await ctx.callFunction(this.name, args);
+  public async invokeArgs(ctx: PHPContext, argsArg?: PHPReference): Promise<any> {
+    const args = argsArg ? argsArg.get() : [];
+    const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
+    const fn = ctx.functions[this.name.toLowerCase()] || ctx.functionMissing(this.name);
+    return await fn(ctx, ...callArgs);
   }
 }
 
 export class ReflectionClass {
-  public readonly name: string;
-  private phpClass?: PHPClass;
+  public name!: string;
+  private phpClass?: any;
 
-  constructor(nameOrInstance: any) {
+  public static async __$$__new(ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<ReflectionClass> {
+    const obj = Object.create(ReflectionClass.prototype);
+    await ReflectionClass.__construct.call(obj, ctx, nameOrInstanceArg);
+    return obj;
+  }
+
+  public static async __construct(this: ReflectionClass, ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<void> {
+    const nameOrInstance = nameOrInstanceArg?.get();
     if (typeof nameOrInstance === "string") {
       this.name = nameOrInstance;
+      const lower = this.name.toLowerCase();
+      this.phpClass = ctx.classes[this.name] || ctx.classes[lower] || ctx.engine.classes[this.name] || ctx.engine.classes[lower];
     } else if (nameOrInstance?.phpClass) {
       this.phpClass = nameOrInstance.phpClass;
       this.name = this.phpClass?.name || "Object";
@@ -315,71 +455,93 @@ export class ReflectionClass {
     }
   }
 
-  public getName(): string { return this.name; }
-  public getShortName(): string {
+  public getName(ctx: PHPContext): string { return this.name; }
+  public getShortName(ctx: PHPContext): string {
     const parts = this.name.split("\\");
     return parts[parts.length - 1];
   }
-  public getNamespaceName(): string {
+  public getNamespaceName(ctx: PHPContext): string {
     const parts = this.name.split("\\");
     return parts.length > 1 ? parts.slice(0, -1).join("\\") : "";
   }
-  public inNamespace(): boolean { return this.getNamespaceName().length > 0; }
-  public getParentClass(): ReflectionClass | false {
-    return this.phpClass?.parentClass ? new ReflectionClass(this.phpClass.parentClass.name) : false;
+  public inNamespace(ctx: PHPContext): boolean { return this.getNamespaceName(ctx).length > 0; }
+  public async getParentClass(ctx: PHPContext): Promise<ReflectionClass | false> {
+    return this.phpClass?.parentClass ? await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.phpClass.parentClass.name)) : false;
   }
-  public isInterface(): boolean { return false; }
-  public isAbstract(): boolean { return this.phpClass?.isAbstract || false; }
-  public isFinal(): boolean { return this.phpClass?.isFinal || false; }
-  public isInstantiable(): boolean { return !this.isAbstract() && !this.isInterface(); }
-  public isSubclassOf(className: string): boolean {
+  public isInterface(ctx: PHPContext): boolean { return false; }
+  public isAbstract(ctx: PHPContext): boolean { return this.phpClass?.isAbstract || false; }
+  public isFinal(ctx: PHPContext): boolean { return this.phpClass?.isFinal || false; }
+  public isInstantiable(ctx: PHPContext): boolean { return !this.isAbstract(ctx) && !this.isInterface(ctx); }
+  public isSubclassOf(ctx: PHPContext, classNameArg?: PHPReference): boolean {
+    const className = String(classNameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.isSubclassOf(className) : false;
   }
 
-  public hasMethod(name: string): boolean {
+  public hasMethod(ctx: PHPContext, nameArg?: PHPReference): boolean {
+    const name = String(nameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.methods.has(name.toLowerCase()) : true;
   }
-  public getMethod(name: string): ReflectionMethod {
+  public async getMethod(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionMethod> {
+    const name = String(nameArg?.get() ?? "");
     const meta = this.phpClass?.methods.get(name.toLowerCase());
-    return new ReflectionMethod(this.name, name, meta, meta?.fn);
+    return await ReflectionMethod.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(name), new PHPLiteral(meta), new PHPLiteral(meta?.fn));
   }
-  public getMethods(): ReflectionMethod[] {
+  public async getMethods(ctx: PHPContext): Promise<ReflectionMethod[]> {
     if (!this.phpClass) return [];
-    return Array.from(this.phpClass.methods.entries()).map(([m, meta]) => new ReflectionMethod(this.name, m, meta, meta?.fn));
+    const methods: ReflectionMethod[] = [];
+    for (const [m, meta] of this.phpClass.methods.entries()) {
+      methods.push(await ReflectionMethod.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(m), new PHPLiteral(meta), new PHPLiteral(meta?.fn)));
+    }
+    return methods;
   }
 
-  public hasProperty(name: string): boolean {
+  public hasProperty(ctx: PHPContext, nameArg?: PHPReference): boolean {
+    const name = String(nameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.properties.has(name) : true;
   }
-  public getProperty(name: string): ReflectionProperty {
+  public async getProperty(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionProperty> {
+    const name = String(nameArg?.get() ?? "");
     const meta = this.phpClass?.properties.get(name);
-    return new ReflectionProperty(this.name, name, meta);
+    return await ReflectionProperty.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(name), new PHPLiteral(meta));
   }
-  public getProperties(): ReflectionProperty[] {
+  public async getProperties(ctx: PHPContext): Promise<ReflectionProperty[]> {
     if (!this.phpClass) return [];
-    return Array.from(this.phpClass.properties.entries()).map(([p, meta]) => new ReflectionProperty(this.name, p, meta));
+    const props: ReflectionProperty[] = [];
+    for (const [p, meta] of this.phpClass.properties.entries()) {
+      props.push(await ReflectionProperty.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(p), new PHPLiteral(meta)));
+    }
+    return props;
   }
 
-  public hasConstant(name: string): boolean {
+  public hasConstant(ctx: PHPContext, nameArg?: PHPReference): boolean {
+    const name = String(nameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.constants.has(name) : false;
   }
-  public getConstant(name: string): any {
+  public getConstant(ctx: PHPContext, nameArg?: PHPReference): any {
+    const name = String(nameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.constants.get(name) : undefined;
   }
-  public getConstants(): Record<string, any> {
+  public getConstants(ctx: PHPContext): Record<string, any> {
     if (!this.phpClass) return {};
     return Object.fromEntries(this.phpClass.constants);
   }
 
-  public async newInstance(ctx: PHPContext, ...args: any[]): Promise<PHPObject> {
+  public async newInstance(ctx: PHPContext, ...args: PHPReference[]): Promise<any> {
     return await ctx.createObject(this.name, args);
   }
-  public async newInstanceArgs(ctx: PHPContext, args: any[] = []): Promise<PHPObject> {
-    return await ctx.createObject(this.name, args);
+  public async newInstanceArgs(ctx: PHPContext, argsArg?: PHPReference): Promise<any> {
+    const args = argsArg ? argsArg.get() : [];
+    const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
+    return await ctx.createObject(this.name, callArgs);
   }
-  public async newInstanceWithoutConstructor(ctx: PHPContext): Promise<PHPObject> {
-    const cls = this.phpClass || new PHPClass(this.name);
-    return new PHPObject(cls);
+  public async newInstanceWithoutConstructor(ctx: PHPContext): Promise<any> {
+    const cls = this.phpClass || ctx.classes[this.name] || ctx.classes[this.name.toLowerCase()] || ctx.engine.classes[this.name] || ctx.engine.classes[this.name.toLowerCase()];
+    if (cls && typeof cls.__$$__init === "function") {
+      const obj = Object.create(cls.prototype);
+      await cls.__$$__init(ctx, obj);
+      return obj;
+    }
+    return {};
   }
 }
 

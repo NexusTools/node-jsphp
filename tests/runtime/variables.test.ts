@@ -1,4 +1,5 @@
 import { PHPEngine } from "../../index.js";
+import { PHPLiteral } from "../../src/runtime/PHPVariable.js";
 
 describe("Variables & Types Runtime Tests", () => {
   let engine: PHPEngine;
@@ -50,7 +51,8 @@ describe("Variables & Types Runtime Tests", () => {
     expect(ctx.getVar("callback_is_object")).toBe(true);
     expect(ctx.getVar("callback_properties")).toEqual({});
     expect(ctx.getVar("exception_properties")).toEqual({});
-    await expect(ctx.callFunction("get_object_vars", [null])).rejects.toThrow("must be of type object");
+    const fnGov = ctx.functions["get_object_vars"] || ctx.functionMissing("get_object_vars");
+    await expect(fnGov(ctx, new PHPLiteral(null))).rejects.toThrow("must be of type object");
   });
 
   test("serialize produces PHP-compatible scalar, array, and object data", async () => {
@@ -64,8 +66,9 @@ describe("Variables & Types Runtime Tests", () => {
     expect(ctx.getVar("capabilities")).toBe('a:1:{s:3:"ssl";b:1;}');
     expect(ctx.getVar("list")).toBe('a:2:{i:0;i:1;i:1;s:3:"two";}');
     expect(ctx.getVar("object")).toBe('O:17:"SerializableValue":1:{s:5:"value";i:42;}');
-    expect(await ctx.callFunction("serialize", [null])).toBe("N;");
+    const fnSer = ctx.functions["serialize"] || ctx.functionMissing("serialize");
+    expect(await fnSer(ctx, new PHPLiteral(null))).toBe("N;");
     const text = String.fromCharCode(233);
-    expect(await ctx.callFunction("serialize", [text])).toBe(`s:2:"${text}";`);
+    expect(await fnSer(ctx, new PHPLiteral(text))).toBe(`s:2:"${text}";`);
   });
 });

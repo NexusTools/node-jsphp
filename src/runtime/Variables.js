@@ -1,8 +1,8 @@
 import * as crypto from "crypto";
 import { serialize as serializePHP } from "php-serialize";
-import { PHPObject } from "./PHPObject.js";
 import { PHPError, PHPTypeError } from "./PHPError.js";
-import { PHPLiteral } from "./PHPVariable.js";
+import { PHPVariable, PHPLiteral } from "./PHPVariable.js";
+import { SYMBOL_PHP_NAME } from "./Reflection.js";
 export class VariablesRuntime {
     /**
      * Serializes a value into a PHP-compatible serialized string representation.
@@ -24,15 +24,13 @@ export class VariablesRuntime {
                 throw new PHPTypeError("Recursive serialization is not supported");
             active.add(input);
             try {
-                if (input instanceof PHPObject) {
-                    const name = input.phpClass.name;
+                if (input && typeof input === "object" && input.constructor !== Object && input.constructor !== Array) {
+                    const name = input[SYMBOL_PHP_NAME] || input.constructor?.[SYMBOL_PHP_NAME] || input.constructor?.name || "stdClass";
                     scope[name] ||= class {
                     };
                     const result = new scope[name]();
-                    for (const [property, entry] of input.properties) {
-                        const visibility = input.phpClass.properties.get(property)?.visibility;
-                        const key = visibility === "private" ? `\0${name}\0${property}` : visibility === "protected" ? `\0*\0${property}` : property;
-                        result[key] = prepare(entry);
+                    for (const [property, entry] of Object.entries(input)) {
+                        result[property] = prepare(entry instanceof PHPVariable ? entry.get() : entry);
                     }
                     return result;
                 }
@@ -75,10 +73,10 @@ export class VariablesRuntime {
                 });
                 ctx.echo("}\n");
             }
-            else if (val instanceof PHPObject) {
-                ctx.echo(`object(${val.phpClass.name})#${Math.floor(Math.random() * 1000)} (${val.properties.size}) {\n`);
-                val.properties.forEach((v, k) => {
-                    ctx.echo(`  ["${k}"]=>\n  ${String(v)}\n`);
+            else if (val && typeof val === "object" && val.constructor !== Object && val.constructor !== Array) {
+                ctx.echo(`object(${val[SYMBOL_PHP_NAME] || val.constructor?.[SYMBOL_PHP_NAME] || val.constructor?.name || "stdClass"})#${Math.floor(Math.random() * 1000)} (${Object.keys(val).length}) {\n`);
+                Object.entries(val).forEach(([k, v]) => {
+                    ctx.echo(`  ["${k}"]=>\n  ${String(v instanceof PHPVariable ? v.get() : v)}\n`);
                 });
                 ctx.echo("}\n");
             }
@@ -140,16 +138,13 @@ export class VariablesRuntime {
     /** Finds whether a variable is an object. */
     static is_object(ctx, valArg) {
         const val = valArg?.get();
-        return typeof val === "function" || val instanceof PHPObject || (typeof val === "object" && val !== null && !Array.isArray(val));
+        return typeof val === "function" || (typeof val === "object" && val !== null && !Array.isArray(val) && val.constructor !== Object);
     }
     /** Gets the properties of the given object. */
     static get_object_vars(ctx, valueArg) {
         const value = valueArg?.get();
-        if (value instanceof PHPObject) {
-            return Object.fromEntries([...value.properties].filter(([name]) => {
-                const metadata = value.phpClass.properties.get(name);
-                return !metadata || metadata.visibility === "public";
-            }));
+        if (value && typeof value === "object" && value.constructor !== Object && value.constructor !== Array && !(value instanceof PHPError)) {
+            return Object.fromEntries(Object.entries(value).filter(([k, v]) => v instanceof PHPVariable).map(([k, v]) => [k, v.get()]));
         }
         if (value instanceof PHPError) {
             const properties = value.phpClass?.properties || new Map();
@@ -200,14 +195,22 @@ export class VariablesRuntime {
             return "string";
         if (Array.isArray(val))
             return "array";
-        if (val instanceof PHPObject)
+        if (val && typeof val === "object" && val.constructor !== Object && val.constructor !== Array)
             return "object";
         return "object";
     }
     /** Returns the name of the class of an object. */
     static get_class(ctx, valArg) {
         const val = valArg?.get();
-        return val?.phpClass?.name || val?.constructor?.name || false;
+        if (!val || typeof val !== "object")
+            return false;
+        if (val.__php_name)
+            return val.__php_name;
+        if (val.constructor && val.constructor.__php_name) {
+            return val.constructor.__php_name;
+        }
+        const name = val.constructor?.name || "";
+        return name.startsWith("__cls_") ? name.slice(6) : name || "stdClass";
     }
     /** Gets a prefixed unique identifier based on the current time in microseconds. */
     static uniqid(ctx, prefixArg, moreEntropyArg) {
@@ -297,7 +300,7 @@ export class VariablesRuntime {
                 str = "array (\n  " + items.join(",\n  ") + "\n)";
             }
         }
-        else if (val instanceof PHPObject) {
+        else if (val && typeof val === "object" && val.constructor !== Object && val.constructor !== Array) {
             const items = Array.from(val.properties.entries()).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
             str = `${val.phpClass.name}::__set_state(array(\n  ` + items.join(",\n  ") + "\n))";
         }

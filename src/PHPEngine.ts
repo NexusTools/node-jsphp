@@ -1,5 +1,4 @@
 import * as fs from "fs/promises";
-import * as syncFs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
@@ -7,7 +6,6 @@ import chokidar from "chokidar";
 import { PHPExtension } from "./PHPExtension.js";
 import { PHPContext, PHPContextOptions } from "./PHPContext.js";
 import { JSTranspiler } from "./parser/JSTranspiler.js";
-import { PHPClass, PHPObject } from "./runtime/PHPObject.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
 
 import vm from "vm";
@@ -24,7 +22,7 @@ import { ExecRuntime } from "./runtime/Exec.js";
 import { FiberRuntime } from "./runtime/Fiber.js";
 import { EnumRuntime } from "./runtime/Enum.js";
 import { ErrorRuntime, PHPFatalError, PHPExit } from "./runtime/PHPError.js";
-import { ReflectionRuntime } from "./runtime/Reflection.js";
+import { ReflectionRuntime, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES } from "./runtime/Reflection.js";
 import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
 
 import { MySQLiExtension } from "./extensions/mysqli.js";
@@ -66,6 +64,7 @@ export class PHPEngine {
   public constants: Record<string, any> = {};
   public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
+  public interfaces: Record<string, any> = {};
   public internalVars: Record<string, any> = {};
   private classResolvers: Array<(ctx: PHPContext, className: string) => any> = [];
   private resolvingClasses = new Map<PHPContext, Set<string>>();
@@ -312,8 +311,8 @@ export class PHPEngine {
 
     const moduleObj = { exports: {} as any };
     try {
-      const factory = new Function("module", "exports", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
-      factory(moduleObj, moduleObj.exports, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
+      const factory = new Function("module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", transpilation.code);
+      factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES);
       return moduleObj.exports;
     } catch (err: any) {
       if (err.name === "SyntaxError") {

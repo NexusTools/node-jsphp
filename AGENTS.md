@@ -14,11 +14,46 @@ This document provides operational context, architecture directives, and guidanc
    - **Engine Constants**: `PHPEngine` exposes static cached literal instances (`PHPEngine.TRUE`, `PHPEngine.FALSE`, `PHPEngine.NULL`) to reduce object allocations.
    - **Function Signatures**: All exposed PHP runtime functions and extension functions accept `PHPReference` arguments (`...args: PHPReference[]`).
 
-3. **Direct Method Execution & Magic Method Resolution**:
-   - Magic methods (`__call`, `__get`, `__set`) are resolved directly within `PHPObject.callMethod()`, `PHPObject.getProperty()`, `PHPObject.setProperty()`, and `PHPVariable.call()`.
+3. **PHP Class Layout in JS**:
+   - Classes exposed to PHP from JavaScript MUST follow a specific parameter layout for methods and constructors.
+   - **Method Signatures**: All exposed PHP class methods MUST conform to the signature `(ctx: PHPContext, ...args: PHPReference[]) => any;`.
+   - **Constructors**: Instead of using the native JavaScript `constructor`, exposed classes MUST use a `public async __construct(ctx: PHPContext, ...args: PHPReference[])` instance method.
+   - **Properties**: Static and instance properties MUST be initialized as `PHPVariable` instances so they can be passed by reference. (e.g. `public myProp: PHPReference = new PHPVariable("default");`). Access them via `.get()` and `.set()` within JavaScript.
+   - **Instantiation Factory**: To proxy object instantiation and properly set up the object without invoking native `constructor`, you MUST provide a `public static async __$$__new(ctx: PHPContext, ...args: PHPReference[]): Promise<YourClass>` factory method. This method should create the object via `Object.create(this.prototype)` and call its `__construct` method.
+   - Example:
+     ```typescript
+     export class MyClass {
+       public myProp!: PHPReference;
+       public static async __$$__new(ctx: PHPContext, propArg?: PHPReference): Promise<MyClass> {
+         const obj = Object.create(this.prototype);
+         obj.myProp = new PHPVariable();
+         if (typeof obj.__construct === "function") await obj.__construct(ctx, propArg);
+         return obj;
+       }
+       public async __construct(ctx: PHPContext, propArg?: PHPReference): Promise<void> {
+         this.myProp.set(propArg ? String(propArg.get() ?? "") : "default");
+       }
+       public async myMethod(ctx: PHPContext, arg1?: PHPReference): Promise<any> { /* ... */ }
+     }
+     ```
 
-4. **Stack Trace Virtualization**:
-   Never expose raw JavaScript execution stack frames to PHP. Standardize all stack traces in `PHPError` to reflect PHP source line numbers or `[INTERNAL]`.
+4. **Raw Metal Execution Directives**:
+   - All class names, function names, and constant names should be transpiled to lowercase for case-insensitivity.
+   - **Classes & Instantiation**:
+     - Class resolution in transpiled JS uses `ctx.classes[classname] ?? (await ctx.resolveMissingClass(classname, originalClassName))`.
+     - Instantiating a PHP class MUST be transpiled to calling the static `__$$__new` factory method (`await ClassName.__$$__new(ctx, ...args)` or `await (ctx.classes[classname] ?? await ctx.resolveMissingClass(classname)).__$$__new(ctx, ...args)`), and MUST NEVER be transpiled to `new ClassName(...)`.
+   - **Constants**: Global constant lookups in transpiled JS use `ctx.constants[constantname] ?? originalconstantname`.
+   - **Functions**: Function calls are resolved directly from `ctx.functions` in the transpiled JS. E.g., `(ctx.functions["foo"] ?? ctx.functionMissing("foo"))(ctx, ...args)`.
+   - **Properties & Methods**:
+     - Properties in transpiled JS are accessed with a `$` prefix (e.g. `$obj.$propName`), while method calls do not use a `$` prefix (e.g. `$obj.methodName(ctx, ...args)`).
+     - **Magic Methods Proxy**: When a class defines magic methods (`__get`, `__set`, `__call`), its `__$$__new` method wraps the instance in a JS `Proxy`:
+       - Property accesses (keys starting with `$`) check `prop in target` or call `target.__get(ctx, prop.slice(1))`.
+       - Method accesses (keys not starting with `$`) check `typeof target[prop] === "function"` or return a wrapper calling `target.__call(ctx, prop, args)`.
+       - Property assignments starting with `$` set the target property or call `target.__set(ctx, prop.slice(1), val)`.
+     - Non-magic classes return raw instance objects without Proxy overhead.
+   - **Error Handling & JS Error Wrapping**:
+     - Native JavaScript errors thrown during execution (like `TypeError` or `ReferenceError`) are caught by PHP `try/catch` blocks and converted into PHP `Error` instances via `PHPError.wrapJSError(err)`.
+     - Stack traces are standardized in `PHPError` to reflect PHP source line numbers or the original JavaScript/TypeScript source line numbers.
 
 5. **AST Optimization & Cache Revision**:
    - `ASTOptimizer` optimizes `extension_loaded(...)`, `defined(...)`, `constant(...)`, constant references (`name` / `constref`), and boolean expressions at compile time.
@@ -47,7 +82,7 @@ This document provides operational context, architecture directives, and guidanc
     Function/method metadata is tracked via `.phpMeta` attached by `defineFunction`. If `.phpMeta` is absent, `ReflectionFunction` and `ReflectionMethod` fall back to parsing the function's JavaScript `.toString()` source declaration.
 
 12. **Optional Node.js Interop (`nodejs` extension)**:
-    Provides Node.js module/package loading (`nodejs_require`), global variable access (`nodejs_global`), eval (`nodejs_eval`), and instantiation (`nodejs_new` / `NodeJS` class) wrapped via `NodeJSObject`.
+    Provides Node.js module loading (`njs_import` / `nodejs_require`), global variable access (`njs_global` / `nodejs_global`), eval (`njs_eval` / `nodejs_eval`), and instantiation (`njs_new` / `nodejs_new`). JavaScript objects are wrapped via a Proxy using `SYMBOL_PHP_NODEJS_PROXY` and `SYMBOL_PHP_NODEJS_VALUE` symbols (declared and exported in `src/extensions/nodejs.ts`), translating JS properties to `$php_variables` (`PHPVariable` instances) and exposing methods and `__invoke` functions transparently for full PHP interoperability.
 
 13. **WordPress & MySQL Compatibility**:
     Maintain full compatibility with WordPress database operations (`mysqli`), installation flows, and theme/admin dashboard rendering tested against a local MySQL database.

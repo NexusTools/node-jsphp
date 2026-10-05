@@ -14,17 +14,17 @@ export {
   PHPExit,
   ErrorException,
 } from "./src/runtime/PHPError.js";
-export { PHPObject, PHPClass } from "./src/runtime/PHPObject.js";
-export type { PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata } from "./src/runtime/PHPObject.js";
-export { Superglobals } from "./src/runtime/Superglobals.js";
-export { OutputBufferStack } from "./src/runtime/OutputBuffer.js";
-export { PHPParser } from "./src/parser/PHPParser.js";
-export { ASTOptimizer } from "./src/parser/ASTOptimizer.js";
-export { JSTranspiler } from "./src/parser/JSTranspiler.js";
-export { runHTTPServer, runHTTPServerCLI } from "./src/cli/php-http-server.js";
-export { runFPM } from "./src/cli/php-fpm.js";
+export { PHPInterface } from "./src/runtime/PHPInterface.js";
 export {
   defineFunction,
+  SYMBOL_PHP_META,
+  SYMBOL_PHP_NAME,
+  SYMBOL_PHP_CONSTANTS,
+  SYMBOL_PHP_PROPERTIES,
+  SYMBOL_PHP_METHODS,
+  SYMBOL_PHP_CLASS,
+  SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS,
+  SYMBOL_PHP_CLASS_INTERFACES,
   Reflection,
   ReflectionClass,
   ReflectionMethod,
@@ -33,11 +33,14 @@ export {
   ReflectionParameter,
   ReflectionType,
 } from "./src/runtime/Reflection.js";
-export type { FunctionMetaOptions } from "./src/runtime/Reflection.js";
+export type { PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata, FunctionMetaOptions } from "./src/runtime/Reflection.js";
+export { Superglobals } from "./src/runtime/Superglobals.js";
+export { OutputBufferStack } from "./src/runtime/OutputBuffer.js";
+export { PHPParser } from "./src/parser/PHPParser.js";
+export { ASTOptimizer } from "./src/parser/ASTOptimizer.js";
+export { JSTranspiler } from "./src/parser/JSTranspiler.js";
+export { runHTTPServer, runHTTPServerCLI } from "./src/cli/php-http-server.js";
+export { runFPM } from "./src/cli/php-fpm.js";
 export {
   NodeJSExtension,
-  NodeJSObject,
-  NodeJSService,
-  wrapJSValue,
-  unwrapPHPValue,
 } from "./src/extensions/nodejs.js";

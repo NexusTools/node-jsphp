@@ -1,4 +1,5 @@
 import { PHPEngine, ReflectionClass, ReflectionFunction } from "../../index.js";
+import { PHPLiteral, PHPReference } from "../../src/runtime/PHPVariable.js";
 
 describe("Reflection Runtime Tests", () => {
   let engine: PHPEngine;
@@ -18,42 +19,44 @@ describe("Reflection Runtime Tests", () => {
     const fn = ctx.functions["my_fn"] || engine.functions["my_fn"];
     expect(fn).toBeDefined();
 
-    const refFn = new ReflectionFunction("my_fn", fn);
-    expect(refFn.getName()).toBe("my_fn");
-    expect(refFn.getNumberOfParameters()).toBe(2);
-    expect(refFuncRequired(refFn)).toBe(1);
+    const refFn = await ReflectionFunction.__$$__new(ctx, new PHPLiteral("my_fn"), new PHPLiteral(fn));
+    expect(refFn.getName(ctx)).toBe("my_fn");
+    expect(refFn.getNumberOfParameters(ctx)).toBe(2);
+    expect(refFuncRequired(ctx, refFn)).toBe(1);
 
-    const refCls = new ReflectionClass("ReflectionClass");
-    expect(refCls.getName()).toBe("ReflectionClass");
-    expect(refCls.isInstantiable()).toBe(true);
+    const refCls = await ReflectionClass.__$$__new(ctx, new PHPLiteral("ReflectionClass"));
+    expect(refCls.getName(ctx)).toBe("ReflectionClass");
+    expect(refCls.isInstantiable(ctx)).toBe(true);
   });
 
-  test("ReflectionFunction fallback parsing for raw JavaScript function without .phpMeta", () => {
+  test("ReflectionFunction fallback parsing for raw JavaScript function without .phpMeta", async () => {
+    const ctx = engine.createContext();
+
     function rawJsFunction(ctx: any, paramOne: any, paramTwo = "hello", paramThree = 42) {
       return paramOne;
     }
 
-    const refFn = new ReflectionFunction("rawJsFunction", rawJsFunction);
-    expect(refFn.getName()).toBe("rawJsFunction");
-    expect(refFn.getNumberOfParameters()).toBe(3);
-    expect(refFn.getNumberOfRequiredParameters()).toBe(1);
+    const refFn = await ReflectionFunction.__$$__new(ctx, new PHPLiteral("rawJsFunction"), new PHPLiteral(rawJsFunction));
+    expect(refFn.getName(ctx)).toBe("rawJsFunction");
+    expect(refFn.getNumberOfParameters(ctx)).toBe(3);
+    expect(refFn.getNumberOfRequiredParameters(ctx)).toBe(1);
 
-    const params = refFn.getParameters();
+    const params = await refFn.getParameters(ctx);
     expect(params.length).toBe(3);
 
-    expect(params[0].getName()).toBe("paramOne");
-    expect(params[0].isOptional()).toBe(false);
+    expect(params[0].getName(ctx)).toBe("paramOne");
+    expect(params[0].isOptional(ctx)).toBe(false);
 
-    expect(params[1].getName()).toBe("paramTwo");
-    expect(params[1].isOptional()).toBe(true);
-    expect(params[1].getDefaultValue()).toBe("hello");
+    expect(params[1].getName(ctx)).toBe("paramTwo");
+    expect(params[1].isOptional(ctx)).toBe(true);
+    expect(params[1].getDefaultValue(ctx)).toBe("hello");
 
-    expect(params[2].getName()).toBe("paramThree");
-    expect(params[2].isOptional()).toBe(true);
-    expect(params[2].getDefaultValue()).toBe(42);
+    expect(params[2].getName(ctx)).toBe("paramThree");
+    expect(params[2].isOptional(ctx)).toBe(true);
+    expect(params[2].getDefaultValue(ctx)).toBe(42);
   });
 });
 
-function refFuncRequired(refFn: ReflectionFunction): number {
-  return refFn.getNumberOfRequiredParameters();
+function refFuncRequired(ctx: any, refFn: ReflectionFunction): number {
+  return refFn.getNumberOfRequiredParameters(ctx);
 }

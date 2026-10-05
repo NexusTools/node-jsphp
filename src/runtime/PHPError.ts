@@ -1,6 +1,7 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPVariable } from "./PHPVariable.js";
+import { SYMBOL_PHP_NAME } from "./Reflection.js";
 
 export interface PHPStackFrame {
   file: string;
@@ -22,14 +23,14 @@ export class PHPError extends Error {
   constructor(
     messageArg: any = "",
     codeArg: any = 0,
-    fileArg: any = "[INTERNAL]",
+    fileArg: any = "",
     lineArg: any = 0,
     traceArg: any = [],
     previousArg: any = null
   ) {
     const message = String(messageArg?.get ? messageArg.get() : (messageArg ?? ""));
     const code = Number(codeArg?.get ? codeArg.get() : (codeArg || 0));
-    const file = String(fileArg?.get ? fileArg.get() : (fileArg || __filename));
+    const file = String(fileArg?.get ? fileArg.get() : (fileArg || ""));
     const line = Number(lineArg?.get ? lineArg.get() : (lineArg || 0));
     const trace = traceArg?.get ? traceArg.get() : (traceArg || []);
     const previous = previousArg?.get ? previousArg.get() : previousArg;
@@ -47,6 +48,26 @@ export class PHPError extends Error {
     if (this.stack) {
       this.stack = PHPError.virtualizeJSStack(this.rawJSStack, file, line, trace);
     }
+  }
+
+  public static wrapJSError(err: any): PHPError {
+    if (err instanceof PHPError) {
+      return err;
+    }
+    if (err && typeof err === "object" && typeof err.message === "string") {
+      if (err.name === "TypeError") {
+        return new PHPTypeError(err.message);
+      }
+      return new PHPFatalError(err.message);
+    }
+    return new PHPError(String(err ?? "Unknown error"));
+  }
+
+  public async __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void> {
+    const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
+    const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+    this.message = String(msg ?? "");
+    this.phpCode = Number(code || 0);
   }
 
   public getMessage(): string {
@@ -71,7 +92,7 @@ export class PHPError extends Error {
 
   public static virtualizeJSStack(
     jsStack: string,
-    phpFile: string = __filename,
+    phpFile: string = "",
     phpLine: number = 0,
     phpTrace: PHPStackFrame[] = []
   ): string {
@@ -82,7 +103,7 @@ export class PHPError extends Error {
 
     if (phpTrace && phpTrace.length > 0) {
       phpTrace.forEach((frame, idx) => {
-        const fileLoc = `${frame.file || "[INTERNAL]"}:${frame.line || 0}`;
+        const fileLoc = `${frame.file || ""}:${frame.line || 0}`;
         const funcStr = frame.class
           ? `${frame.class}${frame.type || "->"}${frame.function || "main"}`
           : frame.function || "{main}";
@@ -108,7 +129,7 @@ export class PHPError extends Error {
     }
 
     if (formattedFrames.length === 0) {
-      formattedFrames.push(`    #0 ${phpFile || "[INTERNAL]"}:${phpLine || 0}: {main}()`);
+      formattedFrames.push(`    #0 ${phpFile || ""}:${phpLine || 0}: {main}()`);
     }
 
     return `${header}\nPHP Stack Trace:\n${formattedFrames.join("\n")}`;
@@ -121,9 +142,10 @@ export class PHPError extends Error {
 
 export class PHPException extends PHPError {
   public static phpName = "Exception";
+  public static [SYMBOL_PHP_NAME] = "Exception";
 
   constructor(messageArg: any = "", codeArg: any = 0, previousArg: any = null) {
-    super(messageArg, codeArg, "[INTERNAL]", 0, [], previousArg);
+    super(messageArg, codeArg, "", 0, [], previousArg);
   }
 }
 export class PHPTypeError extends PHPError {}
@@ -148,7 +170,7 @@ export class ErrorException extends PHPError {
     message: string = "",
     code: number = 0,
     severity: number = 1,
-    file: string = __filename,
+    file: string = "",
     line: number = 0,
     previous: PHPError | null = null
   ) {
@@ -168,7 +190,7 @@ export class ErrorRuntime {
 
   public static async debug_print_backtrace(ctx: PHPContext): Promise<string> {
     const trace = ctx.getPHPBacktrace().map((frame: any, index: number) =>
-      `#${index} ${frame.file || "[INTERNAL]"}(${frame.line || 0}): ${frame.function || "{main}"}()\n`
+      `#${index} ${frame.file || __filename}(${frame.line || 0}): ${frame.function || "{main}"}()\n`
     ).join("");
     await ctx.echo(trace);
     return trace;

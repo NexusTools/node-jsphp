@@ -2,7 +2,7 @@ import { PHPExtension } from "../PHPExtension.js";
 import { PHPEngine } from "../PHPEngine.js";
 import { PHPContext } from "../PHPContext.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
-import { PHPObject } from "../runtime/PHPObject.js";
+
 import { defineFunction } from "../runtime/Reflection.js";
 
 export class PCREExtension extends PHPExtension {
@@ -128,15 +128,16 @@ export class PCREExtension extends PHPExtension {
             let replacement = "";
             const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
             if (typeof cb === "string") {
-              replacement = ctx.str((await ctx.callFunction(cb, [new PHPLiteral(captures)])));
+              const fn = ctx.functions[cb.toLowerCase()] || ctx.functionMissing(cb);
+              replacement = ctx.str(await fn(ctx, new PHPLiteral(captures)));
             } else if (Array.isArray(cb) && cb.length === 2) {
               const obj = cb[0] && typeof cb[0] === "object" && typeof cb[0].get === "function" ? cb[0].get() : cb[0];
-              const m = cb[1] && typeof cb[1] === "object" && typeof cb[1].get === "function" ? cb[1].get() : cb[1];
-              replacement = ctx.str((await ctx.callMethod(obj, String(m), [new PHPLiteral(captures)])));
+              const m = String(cb[1] && typeof cb[1] === "object" && typeof cb[1].get === "function" ? cb[1].get() : cb[1]).toLowerCase();
+              replacement = ctx.str(await obj[m](ctx, new PHPLiteral(captures)));
             } else if (typeof cb === "function") {
-              replacement = ctx.str((await cb.apply(ctx, [ctx, new PHPLiteral(captures)])));
-            } else if (cb instanceof PHPObject) {
-              replacement = ctx.str((await ctx.callMethod(cb, "__invoke", [new PHPLiteral(captures)])));
+              replacement = ctx.str(await cb.apply(ctx, [ctx, new PHPLiteral(captures)]));
+            } else if (cb && typeof cb === "object" && typeof cb.__invoke === "function") {
+              replacement = ctx.str(await cb.__invoke(ctx, new PHPLiteral(captures)));
             }
             output += replacement;
             lastIndex = current.index + current[0].length;

@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import { fileURLToPath } from "url";
 import { PHPEngine } from "../../index.js";
+import { PHPLiteral } from "../../src/runtime/PHPVariable.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +37,8 @@ describe("FileSystem Runtime Tests", () => {
       expect(ctx.getVar("missing")).toEqual(["*.missing"]);
       expect(ctx.getVar("directories")).toEqual(["nested/"]);
       expect(ctx.getVar("permissions")).toBe((await fs.stat(path.join(directory, "alpha.mo"))).mode);
-      expect(await ctx.callFunction("fileperms", ["missing-file"])).toBe(false);
+      const fnPerms = ctx.functions["fileperms"] || ctx.functionMissing("fileperms");
+      expect(await fnPerms(ctx, new PHPLiteral("missing-file"))).toBe(false);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

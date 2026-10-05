@@ -1,5 +1,6 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
+import { SYMBOL_PHP_NAME } from "./Reflection.js";
 export interface PHPStackFrame {
     file: string;
     line: number;
@@ -16,6 +17,8 @@ export declare class PHPError extends Error {
     previous: PHPError | null;
     rawJSStack: string;
     constructor(messageArg?: any, codeArg?: any, fileArg?: any, lineArg?: any, traceArg?: any, previousArg?: any);
+    static wrapJSError(err: any): PHPError;
+    __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void>;
     getMessage(): string;
     getCode(): number;
     getFile(): string;
@@ -26,6 +29,7 @@ export declare class PHPError extends Error {
 }
 export declare class PHPException extends PHPError {
     static phpName: string;
+    static [SYMBOL_PHP_NAME]: string;
     constructor(messageArg?: any, codeArg?: any, previousArg?: any);
 }
 export declare class PHPTypeError extends PHPError {

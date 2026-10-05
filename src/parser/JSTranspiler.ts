@@ -497,10 +497,11 @@ export class JSTranspiler {
         lines.push(`${pad}try {`);
         this.transpileNodeList(node.body?.children || node.body, lines, lineMap, mapGen, filepath, indent + 2, "{main}");
         lines.push(`${pad}} catch (__err) {`);
+        lines.push(`${pad}  const __php_err = PHPError.wrapJSError(__err);`);
 
         for (const catchNode of node.catches || []) {
           const catchVar = this.getConstName(catchNode.variable) || "e";
-          lines.push(`${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __err);`);
+          lines.push(`${pad}  ctx.setVar(${JSON.stringify(catchVar)}, __php_err);`);
           this.transpileNodeList(catchNode.body?.children || catchNode.body, lines, lineMap, mapGen, filepath, indent + 4, "{main}");
         }
 
@@ -574,34 +575,32 @@ export class JSTranspiler {
         break;
       }
 
-      case "trait":
+      case "trait": {
+        const name = (node.name?.name || node.name || "").toString();
+        const safeId = name.replace(/[^a-zA-Z0-9_]/g, "_");
+        const originalName = this.currentNamespaceNameOriginal ? `${this.currentNamespaceNameOriginal}\\${name}` : (this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name);
+        const qualifiedName = originalName.toLowerCase();
+        lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare trait ${originalName}, because the name is already in use\`);`);
+        break;
+      }
+
       case "interface": {
         const name = (node.name?.name || node.name || "").toString();
         const safeId = name.replace(/[^a-zA-Z0-9_]/g, "_");
         const originalName = this.currentNamespaceNameOriginal ? `${this.currentNamespaceNameOriginal}\\${name}` : (this.currentNamespaceName ? `${this.currentNamespaceName}\\${name}` : name);
         const qualifiedName = originalName.toLowerCase();
-        lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare ${node.kind} ${originalName}, because the name is already in use\`);`);
-        lines.push(`${pad}var __cls_${safeId} = ctx.classes[${JSON.stringify(qualifiedName)}] || new PHPClass(${JSON.stringify(originalName)});`);
-        lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __cls_${safeId};`);
+        lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedName)}) || Object.hasOwn(ctx.interfaces, ${JSON.stringify(qualifiedName)})) throw new PHPFatalError(\`Cannot declare interface ${originalName}, because the name is already in use\`);`);
 
-        const previousClassName = this.currentClassName;
-        const previousClassNameOriginal = this.currentClassNameOriginal;
-        this.currentClassName = qualifiedName;
-        this.currentClassNameOriginal = originalName;
+        const extendsList = Array.isArray(node.extends) ? node.extends : (node.extends ? [node.extends] : []);
+        const parentIfaces = extendsList.map((ext: any) => {
+          const extName = this.transpileClassReferenceLower(ext, filepath);
+          const extOrig = this.transpileClassReferenceOriginal(ext, filepath);
+          return `(ctx.interfaces[${extName}] || ctx.classes[${extName}] || (await ctx.resolveMissingClass(${extName}, ${extOrig})))`;
+        });
 
-        try {
-          const bodyItems = (node.body?.children || node.body || []).filter(Boolean);
-          const constants = bodyItems.filter((item: any) => item.kind === "classconstant");
-          for (const cItem of constants) {
-            for (const constant of cItem.constants || []) {
-              const cName = this.getConstName(constant.name || constant);
-              lines.push(`${pad}__cls_${safeId}.constants.set(${JSON.stringify(cName)}, ${this.transpileExpr(constant.value, filepath)});`);
-            }
-          }
-        } finally {
-          this.currentClassName = previousClassName;
-          this.currentClassNameOriginal = previousClassNameOriginal;
-        }
+        lines.push(`${pad}var __iface_${safeId} = new PHPInterface(${JSON.stringify(originalName)}, [${parentIfaces.join(", ")}]);`);
+        lines.push(`${pad}ctx.interfaces[${JSON.stringify(qualifiedName)}] = __iface_${safeId};`);
+        lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedName)}] = __iface_${safeId};`);
         break;
       }
 
@@ -621,8 +620,6 @@ export class JSTranspiler {
 
         const parentClass = node.extends ? `(await ctx.resolveClass(${this.transpileClassReferenceLower(node.extends, filepath)}, ${this.transpileClassReferenceOriginal(node.extends, filepath)}))` : "undefined";
         lines.push(`${pad}if (Object.hasOwn(ctx.classes, ${JSON.stringify(qualifiedClassName)})) throw new PHPFatalError(\`Cannot declare class ${originalClassName}, because the name is already in use\`);`);
-        lines.push(`${pad}var __cls_${safeClassId} = new PHPClass(${JSON.stringify(originalClassName)}, ${parentClass});`);
-        lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
 
         const bodyItems = Array.isArray(node.body)
           ? node.body
@@ -634,23 +631,43 @@ export class JSTranspiler {
           ? node.children
           : (node.body ? [node.body] : []);
 
-        for (const constant of this.orderClassConstants(bodyItems, qualifiedClassName, filepath)) {
-          const name = this.getConstName(constant.name).toLowerCase();
-          lines.push(`${pad}__cls_${safeClassId}.constants.set(${JSON.stringify(name)}, ${this.transpileExpr(constant.value, filepath)});`);
+        const isChildClass = node.extends;
+        if (isChildClass) {
+          lines.push(`${pad}const __parent_${safeClassId} = ${parentClass};`);
+          lines.push(`${pad}class __cls_${safeClassId} extends __parent_${safeClassId} {`);
+        } else {
+          lines.push(`${pad}class __cls_${safeClassId} {`);
         }
+
+        let hasConstruct = false;
+
         for (const item of bodyItems) {
           if (item?.kind === "classconstant") continue;
           if (item?.kind === "propertystatement") {
-            const visibility = (item.visibility || "public").toString();
             for (const property of item.properties || []) {
               const name = property.name?.name || property.name;
-              const value = property.value ? this.transpileExpr(property.value, filepath) : "null";
-              lines.push(`${pad}__cls_${safeClassId}.properties.set(${JSON.stringify(String(name).toLowerCase())}, { name: ${JSON.stringify(name)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isReadOnly: ${Boolean(item.isReadOnly)}, defaultValue: ${value} });`);
+              if (item.isStatic) {
+                 lines.push(`${pad}  static ${name};`);
+              } else {
+                 lines.push(`${pad}  ${name};`);
+              }
             }
           } else if (item?.kind === "method") {
             const mName = (item.name?.name || item.name || "").toString();
             const safeMId = mName.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
-            const visibility = (item.visibility || "public").toString();
+            const isStatic = Boolean(item.isStatic);
+            const isGen = this.containsYield(item.body?.children || item.body);
+
+            if (mName.toLowerCase() === "__construct" || mName.toLowerCase() === className.toLowerCase()) {
+              hasConstruct = true;
+              lines.push(`${pad}  ${isStatic ? "static " : ""}async __construct(ctx, ...args) {`);
+            } else {
+              lines.push(`${pad}  ${isStatic ? "static " : ""}async ${safeMId}(ctx, ...args) {`);
+            }
+
+            lines.push(`${pad}    ctx.pushScope(args);`);
+            lines.push(`${pad}    try {`);
+
             const params = (item.arguments || []).map((a: any, idx: number) => {
               const pName = this.getConstName(a.name || a);
               const hasDefault = Boolean(a.value);
@@ -658,29 +675,22 @@ export class JSTranspiler {
               return { name: pName, position: idx, byref: Boolean(a.byref || a.byRef), variadic: Boolean(a.variadic || a.isVariadic), isOptional: hasDefault, hasDefault, defaultValue: defaultVal };
             });
 
-            const requiredCount = params.filter((p: any) => !p.hasDefault).length;
-            const isGen = this.containsYield(item.body?.children || item.body);
-
-            lines.push(`${pad}var __method_${safeMId} = async function${isGen ? "*" : ""}(ctx, ...args) {`);
-            lines.push(`${pad}  ctx.pushScope(args);`);
-            lines.push(`${pad}  try {`);
-
             const scopeVars = this.collectVariablesInScope(item.body?.children || item.body);
             for (const p of params) scopeVars.add(p.name);
             for (const vName of scopeVars) {
               if (vName === "this" || this.isSuperglobal(vName)) continue;
               const safeId = vName.replace(/[^a-zA-Z0-9_]/g, "_");
-              lines.push(`${pad}    const $v_${safeId} = ctx.getPHPVar(${JSON.stringify(vName)});`);
+              lines.push(`${pad}      const $v_${safeId} = ctx.getPHPVar(${JSON.stringify(vName)});`);
             }
 
             params.forEach((p: any, idx: number) => {
               const safeId = p.name.replace(/[^a-zA-Z0-9_]/g, "_");
               if (p.variadic) {
-                lines.push(`${pad}    $v_${safeId}.set(args.slice(${idx}).map(a => a && typeof a.get === "function" ? a.get() : a));`);
+                lines.push(`${pad}      $v_${safeId}.set(args.slice(${idx}).map(a => a && typeof a.get === "function" ? a.get() : a));`);
               } else if (p.byref) {
-                lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].bindRef === "function") $v_${safeId}.bindRef(args[${idx}]); else $v_${safeId}.set(args[${idx}]);`);
+                lines.push(`${pad}      if (args[${idx}] && typeof args[${idx}].bindRef === "function") $v_${safeId}.bindRef(args[${idx}]); else $v_${safeId}.set(args[${idx}]);`);
               } else {
-                lines.push(`${pad}    if (args[${idx}] && typeof args[${idx}].get === "function") $v_${safeId}.set(args[${idx}].get() !== undefined ? args[${idx}].get() : ${p.defaultValue}); else $v_${safeId}.set(args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
+                lines.push(`${pad}      if (args[${idx}] && typeof args[${idx}].get === "function") $v_${safeId}.set(args[${idx}].get() !== undefined ? args[${idx}].get() : ${p.defaultValue}); else $v_${safeId}.set(args[${idx}] !== undefined ? args[${idx}] : ${p.defaultValue});`);
               }
             });
 
@@ -689,22 +699,108 @@ export class JSTranspiler {
             this.currentFuncName = `${this.currentClassName}::${mName}`;
             this.switchLabelStack = [];
             try {
-              this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen!, filepath, indent + 4, mName);
+              this.transpileNodeList(item.body?.children || item.body, lines, lineMap, mapGen!, filepath, indent + 6, mName);
             } finally {
               this.switchLabelStack = savedSwitchStack;
               this.currentFuncName = savedFuncName;
             }
 
-            lines.push(`${pad}  } finally {`);
-            lines.push(`${pad}    ctx.popScope();`);
+            lines.push(`${pad}    } finally {`);
+            lines.push(`${pad}      ctx.popScope();`);
+            lines.push(`${pad}    }`);
             lines.push(`${pad}  }`);
-            lines.push(`${pad}};`);
-
-            lines.push(`${pad}__cls_${safeClassId}.methods.set(${JSON.stringify(mName.toLowerCase())}, { name: ${JSON.stringify(mName)}, visibility: ${JSON.stringify(visibility)}, isStatic: ${Boolean(item.isStatic)}, isAbstract: ${Boolean(item.isAbstract)}, isFinal: ${Boolean(item.isFinal)}, numberOfParameters: ${params.length}, numberOfRequiredParameters: ${requiredCount}, parameters: ${JSON.stringify(params)}, fn: __method_${safeMId} });`);
           }
         }
 
+        const selfHasMagic = bodyItems.some((item: any) => {
+          if (item?.kind !== "method") return false;
+          const m = (item.name?.name || item.name || "").toString().toLowerCase();
+          return m === "__get" || m === "__set" || m === "__call";
+        });
+
+        lines.push(`${pad}  static async __$$__new(ctx, ...args) {`);
+        lines.push(`${pad}    const instance = Object.create(this.prototype);`);
+        lines.push(`${pad}    await this.__$$__init(ctx, instance);`);
+        lines.push(`${pad}    if (this.prototype[SYMBOL_PHP_HAS_MAGIC_METHODS]) {`);
+        lines.push(`${pad}      const proxy = new Proxy(instance, {`);
+        lines.push(`${pad}        get(target, prop, receiver) {`);
+        lines.push(`${pad}          if (prop === "get" || prop === "set" || prop === "then" || prop === "catch" || prop === "finally" || typeof prop === "symbol") return target[prop];`);
+        lines.push(`${pad}          if (typeof prop === "string" && prop.startsWith("$")) {`);
+        lines.push(`${pad}            const realProp = prop.slice(1);`);
+        lines.push(`${pad}            if (realProp in target) return target[realProp];`);
+        lines.push(`${pad}            if (typeof target.__get === "function") return target.__get(ctx, new PHPLiteral(realProp));`);
+        lines.push(`${pad}            return undefined;`);
+        lines.push(`${pad}          }`);
+        lines.push(`${pad}          if (prop in target) return typeof target[prop] === "function" ? target[prop].bind(target) : target[prop];`);
+        lines.push(`${pad}          if (typeof target.__call === "function") return async (ctx, ...args) => target.__call(ctx, new PHPLiteral(prop), new PHPLiteral(args));`);
+        lines.push(`${pad}          return target[prop];`);
+        lines.push(`${pad}        },`);
+        lines.push(`${pad}        set(target, prop, value, receiver) {`);
+        lines.push(`${pad}          const realProp = typeof prop === "string" && prop.startsWith("$") ? prop.slice(1) : prop;`);
+        lines.push(`${pad}          if (realProp in target) { target[realProp] = value; return true; }`);
+        lines.push(`${pad}          if (typeof target.__set === "function") { target.__set(ctx, new PHPLiteral(realProp), new PHPLiteral(value)); return true; }`);
+        lines.push(`${pad}          target[realProp] = value; return true;`);
+        lines.push(`${pad}        }`);
+        lines.push(`${pad}      });`);
+        lines.push(`${pad}      if (typeof instance.__construct === "function") await instance.__construct(ctx, ...args);`);
+        lines.push(`${pad}      return proxy;`);
+        lines.push(`${pad}    }`);
+        lines.push(`${pad}    if (typeof instance.__construct === "function") await instance.__construct(ctx, ...args);`);
+        lines.push(`${pad}    return instance;`);
+        lines.push(`${pad}  }`);
+
+        lines.push(`${pad}  static async __$$__init(ctx, obj) {`);
+        if (isChildClass) {
+          lines.push(`${pad}    if (typeof __parent_${safeClassId}.__$$__init === "function") await __parent_${safeClassId}.__$$__init(ctx, obj);`);
+        }
+        for (const item of bodyItems) {
+          if (item?.kind === "propertystatement" && !item.isStatic) {
+            for (const property of item.properties || []) {
+              const name = property.name?.name || property.name;
+              const value = property.value ? this.transpileExpr(property.value, filepath) : "undefined";
+              lines.push(`${pad}    obj.${name} = new PHPVariable(${value});`);
+            }
+          }
+        }
+        lines.push(`${pad}  }`);
+        lines.push(`${pad}}`);
+
+        lines.push(`${pad}__cls_${safeClassId}[SYMBOL_PHP_NAME] = ${JSON.stringify(originalClassName)};`);
+        lines.push(`${pad}__cls_${safeClassId}.prototype[SYMBOL_PHP_NAME] = ${JSON.stringify(originalClassName)};`);
+        lines.push(`${pad}__cls_${safeClassId}.__php_parent = ${isChildClass ? `__parent_${safeClassId}` : "null"};`);
+        if (selfHasMagic) {
+          lines.push(`${pad}__cls_${safeClassId}.prototype[SYMBOL_PHP_HAS_MAGIC_METHODS] = true;`);
+        }
         lines.push(`${pad}ctx.classes[${JSON.stringify(qualifiedClassName)}] = __cls_${safeClassId};`);
+
+        const implList = Array.isArray(node.implements) ? node.implements : (node.implements ? [node.implements] : []);
+        if (implList.length > 0) {
+          const implIfaces = implList.map((impl: any) => {
+            const implName = this.transpileClassReferenceLower(impl, filepath);
+            const implOrig = this.transpileClassReferenceOriginal(impl, filepath);
+            return `(ctx.interfaces[${implName}] || ctx.classes[${implName}] || (await ctx.resolveMissingClass(${implName}, ${implOrig})))`;
+          });
+          lines.push(`${pad}__cls_${safeClassId}[SYMBOL_PHP_CLASS_INTERFACES] = [${implIfaces.join(", ")}];`);
+          lines.push(`${pad}__cls_${safeClassId}.prototype[SYMBOL_PHP_CLASS_INTERFACES] = __cls_${safeClassId}[SYMBOL_PHP_CLASS_INTERFACES];`);
+        }
+
+        // Initialize constants
+        lines.push(`${pad}__cls_${safeClassId}.__php_constants = new Map();`);
+        for (const constant of this.orderClassConstants(bodyItems, qualifiedClassName, filepath)) {
+          const name = this.getConstName(constant.name).toLowerCase();
+          lines.push(`${pad}__cls_${safeClassId}.__php_constants.set(${JSON.stringify(name)}, ${this.transpileExpr(constant.value, filepath)});`);
+        }
+
+        // Initialize static properties
+        for (const item of bodyItems) {
+          if (item?.kind === "propertystatement" && item.isStatic) {
+            for (const property of item.properties || []) {
+              const name = property.name?.name || property.name;
+              const value = property.value ? this.transpileExpr(property.value, filepath) : "undefined";
+              lines.push(`${pad}__cls_${safeClassId}.${name} = new PHPVariable(${value});`);
+            }
+          }
+        }
         this.currentClassName = previousClassName;
         break;
       }
@@ -763,6 +859,21 @@ export class JSTranspiler {
     };
     for (const name of constants.keys()) visit(name);
     return ordered;
+  }
+
+  private transpileCallArgs(args: any[], filepath: string): string[] {
+    return (args || []).map((a: any) => {
+      let inner = a;
+      while (inner?.kind === "parenthesis" || inner?.kind === "parentheses") inner = inner.inner || inner.expr;
+      if (inner?.kind === "variable") {
+        const vName = this.getConstName(inner.name || inner);
+        if (!this.isSuperglobal(vName) && vName !== "this") {
+          const safeId = vName.replace(/[^a-zA-Z0-9_]/g, "_");
+          return `$v_${safeId}`;
+        }
+      }
+      return `new PHPLiteral(${this.transpileExpr(a, filepath)})`;
+    });
   }
 
   private collectVariablesInScope(nodes: any): Set<string> {
@@ -885,10 +996,10 @@ export class JSTranspiler {
     const name = this.getConstName(node);
     if (node?.kind === "selfreference" || name.toLowerCase() === "self") return JSON.stringify(this.currentClassName.toLowerCase());
     if (node?.kind === "staticreference" || name.toLowerCase() === "static") {
-      return `(ctx.currentClass?.name?.toLowerCase() || ${JSON.stringify(this.currentClassName.toLowerCase())})`;
+      return `(this?.[SYMBOL_PHP_NAME] || this?.constructor?.[SYMBOL_PHP_NAME] || ${JSON.stringify(this.currentClassName.toLowerCase())}).toLowerCase()`;
     }
     if (node?.kind === "parentreference" || name.toLowerCase() === "parent") {
-      return `(await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).parentClass.name.toLowerCase()`;
+      return `((await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).__php_parent?.[SYMBOL_PHP_NAME] || (await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).__php_parent?.name || "Object").toLowerCase()`;
     }
     if (name.startsWith("\\") || node?.resolution === "fqn") return JSON.stringify(name.replace(/^\\/, "").toLowerCase());
     const parts = name.split("\\");
@@ -902,10 +1013,10 @@ export class JSTranspiler {
     const name = this.getConstName(node);
     if (node?.kind === "selfreference" || name.toLowerCase() === "self") return JSON.stringify(this.currentClassNameOriginal || this.currentClassName);
     if (node?.kind === "staticreference" || name.toLowerCase() === "static") {
-      return `(ctx.currentClass?.name || ${JSON.stringify(this.currentClassNameOriginal || this.currentClassName)})`;
+      return `(this?.[SYMBOL_PHP_NAME] || this?.constructor?.[SYMBOL_PHP_NAME] || ${JSON.stringify(this.currentClassNameOriginal || this.currentClassName)})`;
     }
     if (node?.kind === "parentreference" || name.toLowerCase() === "parent") {
-      return `(await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).parentClass.name`;
+      return `((await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).__php_parent?.[SYMBOL_PHP_NAME] || (await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).__php_parent?.name || "Object")`;
     }
     if (name.startsWith("\\") || node?.resolution === "fqn") return JSON.stringify(name.replace(/^\\/, ""));
     const parts = name.split("\\");
@@ -963,7 +1074,7 @@ export class JSTranspiler {
         if (upper === "__FUNCTION__") return JSON.stringify(this.currentFuncName);
         if (upper === "__NAMESPACE__") return JSON.stringify(this.currentNamespaceNameOriginal);
         const constName = rawName.toLowerCase();
-        return `(ctx.getConstant(${JSON.stringify(constName)}) ?? ${JSON.stringify(rawName)})`;
+        return `(ctx.constants[${JSON.stringify(constName)}] ?? ${JSON.stringify(rawName)})`;
       }
       case "closure":
       case "arrowfunc": {
@@ -1250,8 +1361,8 @@ ${dummyLines.join("\n")}
       case "new": {
         const className = this.transpileClassReferenceLower(node.what, filepath);
         const origClassName = this.transpileClassReferenceOriginal(node.what, filepath);
-        const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
-        return `(await ctx.createObject(${className}, [${args.join(", ")}], ${origClassName}))`;
+        const rawArgs = this.transpileCallArgs(node.arguments, filepath);
+        return `(await (ctx.classes[${className}] ?? (await ctx.resolveMissingClass(${className}, ${origClassName}))).__$$__new(ctx, ${rawArgs.join(", ")}))`;
       }
 
       case "bin":
@@ -1297,28 +1408,6 @@ ${dummyLines.join("\n")}
       }
 
       case "call": {
-        if (node.what?.kind === "staticlookup") {
-          const className = this.transpileClassReferenceLower(node.what.what, filepath);
-          const origClassName = this.transpileClassReferenceOriginal(node.what.what, filepath);
-          const method = JSON.stringify(this.getConstName(node.what.offset).toLowerCase());
-          const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
-          return `(await ctx.callStaticMethod(${className}, ${method}, [${args.join(", ")}], this, ${origClassName}))`;
-        }
-
-        if (node.what?.kind === "propertylookup") {
-          const obj = this.transpileExpr(node.what.what, filepath);
-          const method = this.transpileMethodOffset(node.what.offset, filepath);
-          const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
-          return `(await ctx.callMethod(${obj}, ${method}, [${args.join(", ")}]))`;
-        }
-
-        if (node.what?.kind === "nullsafepropertylookup") {
-          const obj = this.transpileExpr(node.what.what, filepath);
-          const method = this.transpileMethodOffset(node.what.offset, filepath);
-          const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
-          return `(await (async () => { const __o = ${obj}; return (__o !== null && __o !== undefined) ? await ctx.callMethod(__o, ${method}, [${args.join(", ")}]) : null; })())`;
-        }
-
         const rawArgs = (node.arguments || []).map((a: any) => {
           let inner = a;
           while (inner?.kind === "parenthesis" || inner?.kind === "parentheses") inner = inner.inner || inner.expr;
@@ -1332,28 +1421,43 @@ ${dummyLines.join("\n")}
           return `new PHPLiteral(${this.transpileExpr(a, filepath)})`;
         });
 
+        if (node.what?.kind === "staticlookup") {
+          const isParent = node.what.what?.kind === "parentreference" || this.getConstName(node.what.what).toLowerCase() === "parent";
+          const method = JSON.stringify(this.getConstName(node.what.offset).toLowerCase());
+          if (isParent) {
+            return `(await (async () => { const __parentCls = (await ctx.resolveClass(${JSON.stringify(this.currentClassName.toLowerCase())})).__php_parent; if (!__parentCls) throw new PHPFatalError("Cannot access parent:: when current class has no parent"); return typeof __parentCls.prototype?.[${method}] === "function" ? await __parentCls.prototype[${method}].call(this, ctx, ${rawArgs.join(", ")}) : typeof __parentCls[${method}] === "function" ? await __parentCls[${method}](ctx, ${rawArgs.join(", ")}) : ctx.methodMissing(__parentCls, ${method}); })())`;
+          }
+          const className = this.transpileClassReferenceLower(node.what.what, filepath);
+          const origClassName = this.transpileClassReferenceOriginal(node.what.what, filepath);
+          return `(await (async () => { const __cls = await ctx.resolveClass(${className}, ${origClassName}); if (!__cls) throw new PHPFatalError("Class " + ${origClassName} + " not found"); return typeof __cls.prototype?.[${method}] === "function" ? await __cls.prototype[${method}].call(this, ctx, ${rawArgs.join(", ")}) : typeof __cls[${method}] === "function" ? await __cls[${method}](ctx, ${rawArgs.join(", ")}) : typeof __cls.__callStatic === "function" ? await __cls.__callStatic(ctx, new PHPLiteral(${method}), new PHPLiteral([${rawArgs.join(", ")}])) : ctx.methodMissing(__cls, ${method}); })())`;
+        }
+
+        if (node.what?.kind === "propertylookup") {
+          const obj = this.transpileExpr(node.what.what, filepath);
+          const method = this.transpileMethodOffset(node.what.offset, filepath);
+          return `(await (async () => { const __o = ${obj}; const __m = String(${method}).toLowerCase(); return typeof __o[__m] === "function" ? await __o[__m](ctx, ${rawArgs.join(", ")}) : typeof __o.__call === "function" ? await __o.__call(ctx, new PHPLiteral(__m), new PHPLiteral([${rawArgs.join(", ")}])) : ctx.methodMissing(__o, __m); })())`;
+        }
+
+        if (node.what?.kind === "nullsafepropertylookup") {
+          const obj = this.transpileExpr(node.what.what, filepath);
+          const method = this.transpileMethodOffset(node.what.offset, filepath);
+          return `(await (async () => { const __o = ${obj}; if (__o === null || __o === undefined) return null; const __m = String(${method}).toLowerCase(); return typeof __o[__m] === "function" ? await __o[__m](ctx, ${rawArgs.join(", ")}) : typeof __o.__call === "function" ? await __o.__call(ctx, new PHPLiteral(__m), new PHPLiteral([${rawArgs.join(", ")}])) : ctx.methodMissing(__o, __m); })())`;
+        }
+
         if (node.what?.kind === "variable") {
           const fnExpr = this.transpileExpr(node.what, filepath);
-          return `(await ctx.callFunction(${fnExpr}, [${rawArgs.join(", ")}]))`;
+          return `(await (ctx.functions[${JSON.stringify(fnExpr.toLowerCase())}] || (typeof ${fnExpr} === "function" ? ${fnExpr} : ctx.functionMissing(${fnExpr})))(ctx, ${rawArgs.join(", ")}))`;
         }
 
         const name = this.getConstName(node.what).toLowerCase() || "func";
         const args = (node.arguments || []).map((a: any) => this.transpileExpr(a, filepath));
 
-        if (name === "include") {
-          return `(await ctx.include(${args.join(", ")}))`;
-        }
-        if (name === "include_once") {
-          return `(await ctx.includeOnce(${args.join(", ")}))`;
-        }
-        if (name === "require") {
-          return `(await ctx.require(${args.join(", ")}))`;
-        }
-        if (name === "require_once") {
-          return `(await ctx.requireOnce(${args.join(", ")}))`;
-        }
+        if (name === "include") return `(await ctx.include(${args[0]}))`;
+        if (name === "include_once") return `(await ctx.includeOnce(${args[0]}))`;
+        if (name === "require") return `(await ctx.require(${args[0]}))`;
+        if (name === "require_once") return `(await ctx.requireOnce(${args[0]}))`;
 
-        return `(await ctx.callFunction(${JSON.stringify(name)}, [${rawArgs.join(", ")}]))`;
+        return `(await (ctx.functions[${JSON.stringify(name)}] || ctx.functionMissing(${JSON.stringify(name)}))(ctx, ${rawArgs.join(", ")}))`;
       }
       case "staticlookup": {
         const className = this.transpileClassReferenceLower(node.what, filepath);
@@ -1379,7 +1483,7 @@ ${dummyLines.join("\n")}
       case "die": {
         const statusNode = node.expression || node.status || node.expr || node.value;
         const status = statusNode ? this.transpileExpr(statusNode, filepath) : "0";
-        return `(await ctx.callFunction("exit", [${status}]))`;
+        return `(await (ctx.functions["exit"] || ctx.functionMissing("exit"))(ctx, new PHPLiteral(${status})))`;
       }
 
       case "retif":
@@ -1397,7 +1501,7 @@ ${dummyLines.join("\n")}
         if (type === "int" || type === "integer") return `(Number(parseInt(String(${val}), 10)) || 0)`;
         if (type === "float" || type === "double" || type === "real") return `(Number(parseFloat(String(${val}))) || 0)`;
         if (type === "string") return `ctx.str(${val})`;
-        if (type === "array") return `(Array.isArray(${val}) ? ${val} : (${val} === null || ${val} === undefined) ? [] : (${val} instanceof PHPObject) ? Object.fromEntries(${val}.properties) : (typeof ${val} === "object") ? ${val} : [${val}])`;
+        if (type === "array") return `(Array.isArray(${val}) ? ${val} : (${val} === null || ${val} === undefined) ? [] : (typeof ${val} === "object") ? ${val} : [${val}])`;
         if (type === "object") return `(typeof ${val} === "object" && ${val} !== null ? ${val} : { scalar: ${val} })`;
         return val;
       }

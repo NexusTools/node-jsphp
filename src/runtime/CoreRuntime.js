@@ -1,6 +1,5 @@
 import { PHPVariable } from "./PHPVariable.js";
 import { PHPExit, PHPFatalError } from "./PHPError.js";
-import { PHPObject } from "./PHPObject.js";
 export class CoreRuntime {
     static functions = {
         "exit": (ctx, statusArg = 0) => {
@@ -27,27 +26,34 @@ export class CoreRuntime {
             if (typeof callback === "string") {
                 const lower = callback.toLowerCase();
                 if (lower.includes("::")) {
-                    const [cls, m] = lower.split("::");
-                    return await ctx.callStaticMethod(cls, m, callArgs);
+                    const [clsName, m] = lower.split("::");
+                    const cls = ctx.classes[clsName] ?? (await ctx.resolveMissingClass(clsName));
+                    if (cls && typeof cls[m] === "function")
+                        return await cls[m](ctx, ...callArgs);
+                    return ctx.methodMissing(cls, m);
                 }
-                if (Object.hasOwn(ctx.functions, lower) || Object.hasOwn(ctx.engine.functions, lower)) {
-                    return await ctx.callFunction(lower, callArgs);
-                }
-                return undefined;
+                const fn = ctx.functions[lower] || ctx.functionMissing(lower);
+                return await fn(ctx, ...callArgs);
             }
             if (Array.isArray(callback) && callback.length === 2) {
                 const obj = callback[0] instanceof PHPVariable ? callback[0].get() : callback[0];
-                const m = callback[1] instanceof PHPVariable ? callback[1].get() : callback[1];
+                const m = String(callback[1] instanceof PHPVariable ? callback[1].get() : callback[1]).toLowerCase();
                 if (obj && m) {
                     if (typeof obj === "string") {
-                        return await ctx.callStaticMethod(obj.toLowerCase(), String(m).toLowerCase(), callArgs);
+                        const cls = ctx.classes[obj.toLowerCase()] ?? (await ctx.resolveMissingClass(obj.toLowerCase()));
+                        if (cls && typeof cls[m] === "function")
+                            return await cls[m](ctx, ...callArgs);
+                        return ctx.methodMissing(cls, m);
                     }
-                    return await ctx.callMethod(obj, String(m).toLowerCase(), callArgs);
+                    if (typeof obj[m] === "function") {
+                        return await obj[m](ctx, ...callArgs);
+                    }
+                    return ctx.methodMissing(obj, m);
                 }
                 return undefined;
             }
-            if (callback instanceof PHPObject)
-                return await ctx.callMethod(callback, "__invoke", callArgs);
+            if (callback && typeof callback === "object" && typeof callback.__invoke === "function")
+                return await callback.__invoke(ctx, ...callArgs);
             return undefined;
         },
         "call_user_func_array": async (ctx, callbackArg, argsArg = []) => {
@@ -62,27 +68,34 @@ export class CoreRuntime {
             if (typeof callback === "string") {
                 const lower = callback.toLowerCase();
                 if (lower.includes("::")) {
-                    const [cls, m] = lower.split("::");
-                    return await ctx.callStaticMethod(cls, m, callArgs);
+                    const [clsName, m] = lower.split("::");
+                    const cls = ctx.classes[clsName] ?? (await ctx.resolveMissingClass(clsName));
+                    if (cls && typeof cls[m] === "function")
+                        return await cls[m](ctx, ...callArgs);
+                    return ctx.methodMissing(cls, m);
                 }
-                if (Object.hasOwn(ctx.functions, lower) || Object.hasOwn(ctx.engine.functions, lower)) {
-                    return await ctx.callFunction(lower, callArgs);
-                }
-                return undefined;
+                const fn = ctx.functions[lower] || ctx.functionMissing(lower);
+                return await fn(ctx, ...callArgs);
             }
             if (Array.isArray(callback) && callback.length === 2) {
                 const obj = callback[0] instanceof PHPVariable ? callback[0].get() : callback[0];
-                const m = callback[1] instanceof PHPVariable ? callback[1].get() : callback[1];
+                const m = String(callback[1] instanceof PHPVariable ? callback[1].get() : callback[1]).toLowerCase();
                 if (obj && m) {
                     if (typeof obj === "string") {
-                        return await ctx.callStaticMethod(obj.toLowerCase(), String(m).toLowerCase(), callArgs);
+                        const cls = ctx.classes[obj.toLowerCase()] ?? (await ctx.resolveMissingClass(obj.toLowerCase()));
+                        if (cls && typeof cls[m] === "function")
+                            return await cls[m](ctx, ...callArgs);
+                        return ctx.methodMissing(cls, m);
                     }
-                    return await ctx.callMethod(obj, String(m).toLowerCase(), callArgs);
+                    if (typeof obj[m] === "function") {
+                        return await obj[m](ctx, ...callArgs);
+                    }
+                    return ctx.methodMissing(obj, m);
                 }
                 return undefined;
             }
-            if (callback instanceof PHPObject)
-                return await ctx.callMethod(callback, "__invoke", callArgs);
+            if (callback && typeof callback === "object" && typeof callback.__invoke === "function")
+                return await callback.__invoke(ctx, ...callArgs);
             return undefined;
         },
         "func_get_args": (ctx) => {
@@ -232,13 +245,13 @@ export class CoreRuntime {
                         const cls = ctx.classes[obj.toLowerCase()] || ctx.engine.classes[obj.toLowerCase()];
                         return Boolean(cls && cls.methods && cls.methods.has(m.toLowerCase()));
                     }
-                    if (obj instanceof PHPObject) {
-                        return Boolean(obj.phpClass && obj.phpClass.methods && obj.phpClass.methods.has(m.toLowerCase()));
+                    if (obj && typeof obj === "object" && obj.constructor !== Object && obj.constructor !== Array) {
+                        return typeof obj[m] === "function" || typeof obj[m.toLowerCase()] === "function" || typeof obj.__call === "function";
                     }
                 }
             }
-            if (v instanceof PHPObject) {
-                return Boolean(v.phpClass && v.phpClass.methods && v.phpClass.methods.has("__invoke"));
+            if (v && typeof v === "object" && typeof v.__invoke === "function") {
+                return true;
             }
             return false;
         },

@@ -5,7 +5,6 @@ import * as crypto from "crypto";
 import chokidar from "chokidar";
 import { PHPContext } from "./PHPContext.js";
 import { JSTranspiler } from "./parser/JSTranspiler.js";
-import { PHPClass, PHPObject } from "./runtime/PHPObject.js";
 import { PHPVariable, PHPLiteral } from "./runtime/PHPVariable.js";
 import vm from "vm";
 import { StringRuntime } from "./runtime/Strings.js";
@@ -20,7 +19,7 @@ import { ExecRuntime } from "./runtime/Exec.js";
 import { FiberRuntime } from "./runtime/Fiber.js";
 import { EnumRuntime } from "./runtime/Enum.js";
 import { ErrorRuntime, PHPFatalError } from "./runtime/PHPError.js";
-import { ReflectionRuntime } from "./runtime/Reflection.js";
+import { ReflectionRuntime, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES } from "./runtime/Reflection.js";
 import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
 import { MySQLiExtension } from "./extensions/mysqli.js";
 import { PDOExtension } from "./extensions/pdo.js";
@@ -46,6 +45,7 @@ export class PHPEngine {
     constants = {};
     functions = {};
     classes = {};
+    interfaces = {};
     internalVars = {};
     classResolvers = [];
     resolvingClasses = new Map();
@@ -265,8 +265,8 @@ export class PHPEngine {
         });
         const moduleObj = { exports: {} };
         try {
-            const factory = new Function("module", "exports", "PHPClass", "PHPObject", "PHPVariable", "PHPLiteral", "PHPFatalError", transpilation.code);
-            factory(moduleObj, moduleObj.exports, PHPClass, PHPObject, PHPVariable, PHPLiteral, PHPFatalError);
+            const factory = new Function("module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", transpilation.code);
+            factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES);
             return moduleObj.exports;
         }
         catch (err) {

@@ -8,27 +8,36 @@ export class EnumRuntime {
   }
 }
 
-export class PHPEnum extends PHPObject {
-  public readonly name: string;
-  public readonly value?: any;
+export class PHPEnum {
+  public name!: string;
+  public value?: any;
 
-  constructor(enumClass: PHPClass, name: string, value?: any) {
-    super(enumClass);
-    this.name = name;
-    this.value = value;
+  public static async __$$__new(ctx: any, nameArg?: any, valueArg?: any): Promise<PHPEnum> {
+    const obj = Object.create(this.prototype);
+    if (typeof obj.__construct === "function") await obj.__construct(ctx, nameArg, valueArg);
+    return obj;
   }
 
-  public static from(enumClass: PHPClass, value: any): PHPEnum {
-    const cases = Array.from(enumClass.constants.entries());
+  public async __construct(ctx: any, nameArg?: any, valueArg?: any): Promise<void> {
+    this.name = nameArg ? String(nameArg.get() ?? "") : "";
+    this.value = valueArg ? valueArg.get() : undefined;
+  }
+
+  public static from(enumClass: any, value: any): PHPEnum {
+    const map = (enumClass as any).__php_constants || enumClass.constants || new Map();
+    const cases = Array.from((map instanceof Map ? map : new Map(Object.entries(map))).entries());
     for (const [caseName, caseVal] of cases) {
       if (caseVal === value) {
-        return new PHPEnum(enumClass, caseName, caseVal);
+        const obj = Object.create(PHPEnum.prototype);
+        obj.name = caseName;
+        obj.value = caseVal;
+        return obj;
       }
     }
     throw new PHPFatalError(`ValueError: ${value} is not a valid backing value for enum ${enumClass.name}`);
   }
 
-  public static tryFrom(enumClass: PHPClass, value: any): PHPEnum | null {
+  public static tryFrom(enumClass: any, value: any): PHPEnum | null {
     try {
       return PHPEnum.from(enumClass, value);
     } catch {

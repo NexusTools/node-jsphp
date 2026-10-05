@@ -21,10 +21,18 @@ export class SPLExtension extends PHPExtension {
     onInit(engine) {
         engine.registerClassResolver(async (ctx, requestedName) => {
             for (const callback of this.autoloaders) {
-                if (typeof callback === "string")
-                    await ctx.callFunction(callback.toLowerCase(), [new PHPLiteral(requestedName)]);
-                else if (Array.isArray(callback) && callback.length === 2)
-                    await ctx.callStaticMethod(String(callback[0]).toLowerCase(), String(callback[1]).toLowerCase(), [new PHPLiteral(requestedName)], undefined, String(callback[0]));
+                if (typeof callback === "string") {
+                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    await fn(ctx, new PHPLiteral(requestedName));
+                }
+                else if (Array.isArray(callback) && callback.length === 2) {
+                    const clsName = String(callback[0]).toLowerCase();
+                    const mName = String(callback[1]).toLowerCase();
+                    const cls = ctx.classes[clsName] ?? (await ctx.resolveMissingClass(clsName));
+                    if (cls && typeof cls[mName] === "function") {
+                        await cls[mName](ctx, new PHPLiteral(requestedName));
+                    }
+                }
                 else if (typeof callback === "function")
                     await callback.apply(ctx, [ctx, new PHPLiteral(requestedName)]);
                 if (String(requestedName).toLowerCase() in engine.classes || String(requestedName).toLowerCase() in ctx.classes)

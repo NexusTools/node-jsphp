@@ -261,10 +261,13 @@ export class ArrayRuntime {
                     cmp = Number(await callback(ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 else if (typeof callback === "string") {
-                    cmp = Number(await ctx.callFunction(callback, [entries[i].val, entries[j].val])) || 0;
+                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    cmp = Number(await fn(ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 else if (Array.isArray(callback) && callback.length === 2) {
-                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].val, entries[j].val])) || 0;
+                    const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                    const m = String(callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1]).toLowerCase();
+                    cmp = Number(await obj[m](ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 if (cmp > 0) {
                     const temp = entries[i];
@@ -300,10 +303,13 @@ export class ArrayRuntime {
                     cmp = Number(await callback(ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 else if (typeof callback === "string") {
-                    cmp = Number(await ctx.callFunction(callback, [entries[i].val, entries[j].val])) || 0;
+                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    cmp = Number(await fn(ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 else if (Array.isArray(callback) && callback.length === 2) {
-                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].val, entries[j].val])) || 0;
+                    const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                    const m = String(callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1]).toLowerCase();
+                    cmp = Number(await obj[m](ctx, entries[i].val, entries[j].val)) || 0;
                 }
                 if (cmp > 0) {
                     const temp = entries[i];
@@ -339,10 +345,13 @@ export class ArrayRuntime {
                     cmp = Number(await callback(ctx, entries[i].key, entries[j].key)) || 0;
                 }
                 else if (typeof callback === "string") {
-                    cmp = Number(await ctx.callFunction(callback, [entries[i].key, entries[j].key])) || 0;
+                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    cmp = Number(await fn(ctx, entries[i].key, entries[j].key)) || 0;
                 }
                 else if (Array.isArray(callback) && callback.length === 2) {
-                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].key, entries[j].key])) || 0;
+                    const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                    const m = String(callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1]).toLowerCase();
+                    cmp = Number(await obj[m](ctx, entries[i].key, entries[j].key)) || 0;
                 }
                 if (cmp > 0) {
                     const temp = entries[i];
@@ -470,10 +479,13 @@ export class ArrayRuntime {
                 mapped = await callback.apply(ctx, [ctx, ...wrapArgs]);
             }
             else if (typeof callback === "string") {
-                mapped = await ctx.callFunction(callback, wrapArgs);
+                const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                mapped = await fn(ctx, ...wrapArgs);
             }
             else if (Array.isArray(callback) && callback.length === 2) {
-                mapped = await ctx.callMethod(callback[0], callback[1], wrapArgs);
+                const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                const m = String(callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1]).toLowerCase();
+                mapped = await obj[m](ctx, ...wrapArgs);
             }
             else {
                 mapped = args[0];
@@ -507,10 +519,13 @@ export class ArrayRuntime {
                     keep = Boolean(await callback.apply(ctx, [ctx, ...args]));
                 }
                 else if (typeof callback === "string") {
-                    keep = Boolean(await ctx.callFunction(callback, args));
+                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    keep = Boolean(await fn(ctx, ...args));
                 }
                 else if (Array.isArray(callback) && callback.length === 2) {
-                    keep = Boolean(await ctx.callMethod(callback[0], callback[1], args));
+                    const obj = callback[0] && typeof callback[0] === "object" && typeof callback[0].get === "function" ? callback[0].get() : callback[0];
+                    const m = String(callback[1] && typeof callback[1] === "object" && typeof callback[1].get === "function" ? callback[1].get() : callback[1]).toLowerCase();
+                    keep = Boolean(await obj[m](ctx, ...args));
                 }
             }
             if (keep) {
