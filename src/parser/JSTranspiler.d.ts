@@ -33,6 +33,8 @@ export declare class JSTranspiler {
     private isSuperglobal;
     private getConstName;
     private transpilePropertyOffset;
+    private transpileListAssignItem;
+    private transpileListAssign;
     private transpileMethodOffset;
     private transpileClassReferenceLower;
     private transpileClassReferenceOriginal;

@@ -391,4 +391,25 @@ describe("PHPEngine & AST Unit Tests", () => {
     `);
     expect(ctx.outputText).toBe(expected);
   });
+
+  test("Destructures array with list() into properties and variables", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      class Dep {
+        public $handle;
+        public $src;
+        public function __construct(...$args) {
+          list($this->handle, $this->src) = $args;
+        }
+      }
+      $d = new Dep('install', 'install.css');
+      $h = $d->handle;
+      $s = $d->src;
+      list($x, $y) = ['foo', 'bar'];
+    `);
+    expect(ctx.getVar("h")).toBe("install");
+    expect(ctx.getVar("s")).toBe("install.css");
+    expect(ctx.getVar("x")).toBe("foo");
+    expect(ctx.getVar("y")).toBe("bar");
+  });
 });

@@ -100,6 +100,10 @@ export declare class StringRuntime {
      * @param result Output variable passed by reference to receive parsed key-value pairs.
      */
     static parse_str(ctx: PHPContext, queryArg?: PHPReference, result?: PHPReference): void;
+    static strspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
+    static strcspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
+    static vsprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): string;
+    static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number;
     static functions: {
         parse_str: typeof StringRuntime.parse_str;
         version_compare: typeof StringRuntime.version_compare;
@@ -119,6 +123,10 @@ export declare class StringRuntime {
         str_ireplace: typeof StringRuntime.str_ireplace;
         sprintf: typeof StringRuntime.sprintf;
         printf: typeof StringRuntime.printf;
+        vsprintf: typeof StringRuntime.vsprintf;
+        vprintf: typeof StringRuntime.vprintf;
+        strspn: typeof StringRuntime.strspn;
+        strcspn: typeof StringRuntime.strcspn;
         explode: typeof StringRuntime.explode;
         implode: typeof StringRuntime.implode;
         trim: typeof StringRuntime.trim;

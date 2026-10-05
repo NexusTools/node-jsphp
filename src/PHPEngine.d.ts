@@ -4,6 +4,7 @@ import { PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
 export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
+    disabledExtensions?: string[];
     constants?: Record<string, any>;
     functions?: Record<string, PHPFunction>;
     classes?: Record<string, any>;
@@ -17,6 +18,7 @@ export declare class PHPEngine {
     static readonly FALSE: PHPLiteral;
     static readonly NULL: PHPLiteral;
     extensions: Map<string, PHPExtension>;
+    disabledExtensions: Set<string>;
     constants: Record<string, any>;
     functions: Record<string, PHPFunction>;
     classes: Record<string, any>;
@@ -64,5 +66,5 @@ export declare class PHPEngine {
     compileCode(code: string, filepath?: string): Promise<Function>;
     createContext(options?: PHPContextOptions): PHPContext;
     private initWatcher;
-    close(): void;
+    close(): Promise<void>;
 }

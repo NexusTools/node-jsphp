@@ -31,9 +31,10 @@ const MIME_TYPES: Record<string, string> = {
 export interface HTTPServerOptions {
   cacheDir?: string;
   enableNodeJS?: boolean;
+  disabledExtensions?: string[];
 }
 
-export async function runHTTPServerCLI(rawArgs: string[]): Promise<void> {
+export async function runHTTPServerCLI(rawArgs: string[]): Promise<http.Server | void> {
   const program = new Command();
   program
     .name("php-http-server")
@@ -42,7 +43,15 @@ export async function runHTTPServerCLI(rawArgs: string[]): Promise<void> {
     .option("-d, --docroot <path>", "Document root directory", process.cwd())
     .option("-w, --workers <number>", "Number of cluster worker processes", String(os.cpus().length))
     .option("--no-cluster", "Disable Node.js cluster multiprocess mode")
-    .option("--no-nodejs", "Disable the Node.js interop extension")
+    .option(
+      "--disable-extension <extension>",
+      "Disable a specific PHP extension",
+      (val: string, memo: string[]) => {
+        memo.push(...val.split(",").map((s) => s.trim()));
+        return memo;
+      },
+      []
+    )
     .option("-c, --cache-dir <path>", "Transpilation cache directory");
 
   program.parse(rawArgs, { from: "user" });
@@ -51,7 +60,7 @@ export async function runHTTPServerCLI(rawArgs: string[]): Promise<void> {
   const port = parseInt(options.port, 10) || 8080;
   const docRoot = path.resolve(options.docroot || process.cwd());
   const numWorkers = parseInt(options.workers, 10) || os.cpus().length;
-  const enableNodeJS = options.nodejs !== false;
+  const disabledExtensions: string[] = options.disableExtension || [];
   const useCluster = options.cluster !== false;
 
   if (useCluster && cluster.isPrimary) {
@@ -65,7 +74,7 @@ export async function runHTTPServerCLI(rawArgs: string[]): Promise<void> {
       cluster.fork();
     });
   } else {
-    await runHTTPServer(port, docRoot, { cacheDir: options.cacheDir, enableNodeJS });
+    return await runHTTPServer(port, docRoot, { cacheDir: options.cacheDir, disabledExtensions });
   }
 }
 
@@ -75,12 +84,17 @@ export async function runHTTPServer(
   optionsArg?: string | HTTPServerOptions
 ): Promise<http.Server> {
   const options: HTTPServerOptions = typeof optionsArg === "string" ? { cacheDir: optionsArg } : (optionsArg || {});
+  const disabledExts = (options.disabledExtensions || []).map((e) => e.toLowerCase());
+  if (options.enableNodeJS === false && !disabledExts.includes("nodejs")) {
+    disabledExts.push("nodejs");
+  }
+
   const exts: any[] = [];
-  if (options.enableNodeJS !== false) {
+  if (!disabledExts.includes("nodejs")) {
     exts.push(new NodeJSExtension());
   }
 
-  const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts });
+  const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts, disabledExtensions: disabledExts });
   const absoluteCwd = path.resolve(docRoot);
 
   const server = http.createServer(async (req, res) => {

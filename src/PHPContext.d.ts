@@ -82,6 +82,8 @@ export declare class PHPContext {
     get statusCode(): number;
     /** Flushes response headers to the client. */
     flushHeaders(): void;
+    /** Converts a value to a PHP string according to PHP type casting rules (false/null -> "", true -> "1"). */
+    str(v: any): string;
     /** Writes output text to stdout or active output buffer. */
     echo(data: any): Promise<void>;
     writeStdout(str: string): void;

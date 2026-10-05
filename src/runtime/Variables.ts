@@ -258,8 +258,18 @@ export class VariablesRuntime {
     else if (typeof val === "number") str = String(val);
     else if (typeof val === "string") str = "'" + val.replace(/'/g, "\\'") + "'";
     else if (Array.isArray(val)) {
-      const items = val.map((v, i) => `${i} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
-      str = "array (\n  " + items.join(",\n  ") + ",\n)";
+      const keys = Object.keys(val);
+      const isPureIndexed = keys.length === val.length && keys.every((k, i) => k === String(i));
+      if (isPureIndexed) {
+        const items = val.map((v, i) => `${i} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
+        str = "array (\n  " + items.join(",\n  ") + ",\n)";
+      } else {
+        const items = keys.map((k) => {
+          const formattedKey = /^(0|[1-9]\d*)$/.test(k) ? k : `'${k}'`;
+          return `${formattedKey} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(val[k]), new PHPLiteral(true))}`;
+        });
+        str = "array (\n  " + items.join(",\n  ") + "\n)";
+      }
     } else if (val instanceof PHPObject) {
       const items = Array.from(val.properties.entries()).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
       str = `${val.phpClass.name}::__set_state(array(\n  ` + items.join(",\n  ") + "\n))";

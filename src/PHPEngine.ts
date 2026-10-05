@@ -45,6 +45,7 @@ export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 
 export interface PHPEngineOptions {
   extensions?: PHPExtension[];
+  disabledExtensions?: string[];
   constants?: Record<string, any>;
   functions?: Record<string, PHPFunction>;
   classes?: Record<string, any>;
@@ -61,6 +62,7 @@ export class PHPEngine {
   public static readonly NULL = new PHPLiteral(null);
 
   public extensions: Map<string, PHPExtension> = new Map();
+  public disabledExtensions: Set<string> = new Set();
   public constants: Record<string, any> = {};
   public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
@@ -104,6 +106,10 @@ export class PHPEngine {
       ? null
       : (options.cacheDir || process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache"));
 
+    if (options.disabledExtensions) {
+      options.disabledExtensions.forEach((ext) => this.disabledExtensions.add(ext.toLowerCase()));
+    }
+
     // Set core PHP constants
     Object.assign(this.constants, PHPEngine.coreConstants);
 
@@ -142,7 +148,7 @@ export class PHPEngine {
 
     defaultExtensions.forEach((ext) => this.registerExtension(ext));
 
-    if (options.watch !== false) {
+    if (options.watch === true) {
       this.initWatcher();
     }
   }
@@ -249,6 +255,9 @@ export class PHPEngine {
   }
 
   public registerExtension(extension: PHPExtension): void {
+    if (this.disabledExtensions.has(extension.name.toLowerCase())) {
+      return;
+    }
     this.extensions.set(extension.name.toLowerCase(), extension);
     extension.onInit(this);
 
@@ -336,9 +345,11 @@ export class PHPEngine {
     });
   }
 
-  public close(): void {
+  public async close(): Promise<void> {
     if (this.watcher) {
-      this.watcher.close();
+      const w = this.watcher;
+      this.watcher = undefined;
+      await w.close();
     }
   }
 }

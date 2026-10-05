@@ -8,7 +8,7 @@ export { OutputBufferStack } from "./src/runtime/OutputBuffer.js";
 export { PHPParser } from "./src/parser/PHPParser.js";
 export { ASTOptimizer } from "./src/parser/ASTOptimizer.js";
 export { JSTranspiler } from "./src/parser/JSTranspiler.js";
-export { runHTTPServer } from "./src/cli/php-http-server.js";
+export { runHTTPServer, runHTTPServerCLI } from "./src/cli/php-http-server.js";
 export { runFPM } from "./src/cli/php-fpm.js";
 export { defineFunction, Reflection, ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionFunction, ReflectionParameter, ReflectionType, } from "./src/runtime/Reflection.js";
 export { NodeJSExtension, NodeJSObject, NodeJSService, wrapJSValue, unwrapPHPValue, } from "./src/extensions/nodejs.js";

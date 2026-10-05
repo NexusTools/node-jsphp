@@ -279,7 +279,7 @@ export class StringRuntime {
 
   /** Strip whitespace (or other characters) from the beginning and end of a string. */
   public static trim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = String(strArg?.get() ?? "");
+    let s = ctx.str(strArg?.get());
     const charlist = charlistArg?.get();
     if (!charlist) return s.trim();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -288,7 +288,7 @@ export class StringRuntime {
 
   /** Strip whitespace (or other characters) from the beginning of a string. */
   public static ltrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = String(strArg?.get() ?? "");
+    let s = ctx.str(strArg?.get());
     const charlist = charlistArg?.get();
     if (!charlist) return s.trimStart();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -297,7 +297,7 @@ export class StringRuntime {
 
   /** Strip whitespace (or other characters) from the end of a string. */
   public static rtrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = String(strArg?.get() ?? "");
+    let s = ctx.str(strArg?.get());
     const charlist = charlistArg?.get();
     if (!charlist) return s.trimEnd();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -695,6 +695,56 @@ export class StringRuntime {
     }
   }
 
+  public static strspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number {
+    const str = String(stringArg?.get() ?? "");
+    const mask = String(charactersArg?.get() ?? "");
+    let offset = Number(offsetArg?.get()) || 0;
+    if (offset < 0) offset += str.length;
+    if (offset < 0) offset = 0;
+    let len = lengthArg?.get() !== undefined && lengthArg?.get() !== null ? Number(lengthArg.get()) : str.length - offset;
+    if (len < 0) len += str.length - offset;
+    const sub = str.substring(offset, offset + Math.max(0, len));
+    const maskSet = new Set(mask);
+    let count = 0;
+    for (const char of sub) {
+      if (maskSet.has(char)) count++;
+      else break;
+    }
+    return count;
+  }
+
+  public static strcspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number {
+    const str = String(stringArg?.get() ?? "");
+    const mask = String(charactersArg?.get() ?? "");
+    let offset = Number(offsetArg?.get()) || 0;
+    if (offset < 0) offset += str.length;
+    if (offset < 0) offset = 0;
+    let len = lengthArg?.get() !== undefined && lengthArg?.get() !== null ? Number(lengthArg.get()) : str.length - offset;
+    if (len < 0) len += str.length - offset;
+    const sub = str.substring(offset, offset + Math.max(0, len));
+    const maskSet = new Set(mask);
+    let count = 0;
+    for (const char of sub) {
+      if (!maskSet.has(char)) count++;
+      else break;
+    }
+    return count;
+  }
+
+  public static vsprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): string {
+    const format = String(formatArg?.get() ?? "");
+    const values = valuesArg?.get();
+    const arr = Array.isArray(values) ? values : (typeof values === "object" && values !== null ? Object.values(values) : []);
+    const argsRefs = arr.map((v) => new PHPLiteral(v));
+    return StringRuntime.sprintf(ctx, new PHPLiteral(format), ...argsRefs);
+  }
+
+  public static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number {
+    const res = StringRuntime.vsprintf(ctx, formatArg, valuesArg);
+    ctx.echo(res);
+    return res.length;
+  }
+
   static functions = {
     "parse_str": StringRuntime.parse_str,
     "version_compare": StringRuntime.version_compare,
@@ -714,6 +764,10 @@ export class StringRuntime {
     "str_ireplace": StringRuntime.str_ireplace,
     "sprintf": StringRuntime.sprintf,
     "printf": StringRuntime.printf,
+    "vsprintf": StringRuntime.vsprintf,
+    "vprintf": StringRuntime.vprintf,
+    "strspn": StringRuntime.strspn,
+    "strcspn": StringRuntime.strcspn,
     "explode": StringRuntime.explode,
     "implode": StringRuntime.implode,
     "trim": StringRuntime.trim,

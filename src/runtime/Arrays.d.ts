@@ -20,6 +20,9 @@ export declare class ArrayRuntime {
     static array_diff_key(ctx: PHPContext, arrayArg?: PHPReference, ...othersArgs: PHPReference[]): any;
     static array_slice(ctx: PHPContext, arrayArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): any[];
     static array_change_key_case(ctx: PHPContext, arrayArg?: PHPReference, caseArg?: PHPReference): Record<string, any> | null;
+    static usort(ctx: PHPContext, arrayArg?: PHPReference, callbackArg?: PHPReference): Promise<boolean>;
+    static uasort(ctx: PHPContext, arrayArg?: PHPReference, callbackArg?: PHPReference): Promise<boolean>;
+    static uksort(ctx: PHPContext, arrayArg?: PHPReference, callbackArg?: PHPReference): Promise<boolean>;
     static array_push(ctx: PHPContext, arrayArg?: PHPReference, ...varargsArgs: PHPReference[]): number;
     static array_pop(ctx: PHPContext, arrayArg?: PHPReference): any;
     static array_shift(ctx: PHPContext, arrayArg?: PHPReference): any;
@@ -60,6 +63,9 @@ export declare class ArrayRuntime {
         array_diff: typeof ArrayRuntime.array_diff;
         array_intersect_key: typeof ArrayRuntime.array_intersect_key;
         array_diff_key: typeof ArrayRuntime.array_diff_key;
+        usort: typeof ArrayRuntime.usort;
+        uasort: typeof ArrayRuntime.uasort;
+        uksort: typeof ArrayRuntime.uksort;
         array_slice: typeof ArrayRuntime.array_slice;
         array_push: typeof ArrayRuntime.array_push;
         array_pop: typeof ArrayRuntime.array_pop;

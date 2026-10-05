@@ -42,6 +42,7 @@ export class PHPEngine {
     static FALSE = new PHPLiteral(false);
     static NULL = new PHPLiteral(null);
     extensions = new Map();
+    disabledExtensions = new Set();
     constants = {};
     functions = {};
     classes = {};
@@ -82,6 +83,9 @@ export class PHPEngine {
         this.cacheDir = options.cacheDir === null
             ? null
             : (options.cacheDir || process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache"));
+        if (options.disabledExtensions) {
+            options.disabledExtensions.forEach((ext) => this.disabledExtensions.add(ext.toLowerCase()));
+        }
         // Set core PHP constants
         Object.assign(this.constants, PHPEngine.coreConstants);
         if (options.constants) {
@@ -113,7 +117,7 @@ export class PHPEngine {
             ...(options.extensions || []),
         ];
         defaultExtensions.forEach((ext) => this.registerExtension(ext));
-        if (options.watch !== false) {
+        if (options.watch === true) {
             this.initWatcher();
         }
     }
@@ -209,6 +213,9 @@ export class PHPEngine {
         EnumRuntime.register(this);
     }
     registerExtension(extension) {
+        if (this.disabledExtensions.has(extension.name.toLowerCase())) {
+            return;
+        }
         this.extensions.set(extension.name.toLowerCase(), extension);
         extension.onInit(this);
         if (extension.constants)
@@ -290,9 +297,11 @@ export class PHPEngine {
             this.compiledCache.delete(resolved);
         });
     }
-    close() {
+    async close() {
         if (this.watcher) {
-            this.watcher.close();
+            const w = this.watcher;
+            this.watcher = undefined;
+            await w.close();
         }
     }
 }

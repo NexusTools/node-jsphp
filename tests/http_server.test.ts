@@ -2,7 +2,7 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
 import { fileURLToPath } from "url";
-import { runHTTPServer } from "../index.js";
+import { runHTTPServer, runHTTPServerCLI } from "../index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +63,15 @@ cause_error();
     fs.writeFileSync(
       path.join(docRoot, "unexpected_error.php"),
       "<?php $value = 1; $value['invalid'] = 2;"
+    );
+
+    fs.writeFileSync(
+      path.join(docRoot, "ext_test.php"),
+      `<?php
+echo "NODEJS: " . (function_exists('nodejs_require') ? 'YES' : 'NO') . "\\n";
+echo "MYSQLI: " . (function_exists('mysqli_connect') ? 'YES' : 'NO') . "\\n";
+echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
+`
     );
 
     server = await runHTTPServer(testPort, docRoot);
@@ -146,6 +155,54 @@ cause_error();
     expect(res.body).not.toContain("node:internal");
   });
 
+  test("Default server includes nodejs and mysqli extensions", async () => {
+    const res = await makeRequest("/ext_test.php");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("NODEJS: YES");
+    expect(res.body).toContain("MYSQLI: YES");
+    expect(res.body).toContain("PCRE: YES");
+  });
+
+  test("Disables specified extensions using disabledExtensions option", async () => {
+    const customServer = await runHTTPServer(8890, docRoot, { disabledExtensions: ["nodejs", "mysqli"] });
+    try {
+      const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        http.get("http://127.0.0.1:8890/ext_test.php", (r) => {
+          let b = "";
+          r.on("data", (chunk) => { b += chunk; });
+          r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+        }).on("error", reject);
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("NODEJS: NO");
+      expect(res.body).toContain("MYSQLI: NO");
+      expect(res.body).toContain("PCRE: YES");
+    } finally {
+      customServer.close();
+    }
+  });
+
+  test("CLI --disable-extension flag disables specified extensions", async () => {
+    const cliServer = await runHTTPServerCLI(["-p", "8891", "-d", docRoot, "--disable-extension", "nodejs", "--disable-extension", "mysqli", "--no-cluster"]);
+    try {
+      const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        http.get("http://127.0.0.1:8891/ext_test.php", (r) => {
+          let b = "";
+          r.on("data", (chunk) => { b += chunk; });
+          r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
+        }).on("error", reject);
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("NODEJS: NO");
+      expect(res.body).toContain("MYSQLI: NO");
+      expect(res.body).toContain("PCRE: YES");
+    } finally {
+      if (cliServer && "close" in cliServer) {
+        await new Promise<void>((resolve) => (cliServer as http.Server).close(() => resolve()));
+      }
+    }
+  });
+
   test("Serves WordPress setup-config.php with rendered text and stylesheet", async () => {
     const wpDir = path.join(__dirname, "../wordpress-test");
     const wpServer = await runHTTPServer(8889, wpDir);
@@ -158,8 +215,10 @@ cause_error();
         }).on("error", reject);
       });
 
+      console.log("STEP -1 HEAD:\n", res.body.slice(0, res.body.indexOf("</head>") + 7));
       expect(res.status).toBe(200);
       expect(res.body).toContain("wp-core-ui");
+      expect(res.body).toMatch(/<link\s+rel=['"]stylesheet['"].*?install/i);
 
       const resStep1 = await new Promise<{ status: number; body: string }>((resolve, reject) => {
         http.get("http://127.0.0.1:8889/wp-admin/setup-config.php?step=1", (r) => {
@@ -169,11 +228,13 @@ cause_error();
         }).on("error", reject);
       });
 
+      console.log("STEP 1 HEAD:\n", resStep1.body.slice(0, resStep1.body.indexOf("</head>") + 7));
       expect(resStep1.status).toBe(200);
       expect(resStep1.body).toContain("Database Name");
       expect(resStep1.body).toContain("Username");
       expect(resStep1.body).toContain("Password");
       expect(resStep1.body).toContain("wp-core-ui");
+      expect(resStep1.body).toMatch(/<link\s+rel=['"]stylesheet['"].*?install/i);
     } finally {
       wpServer.close();
     }

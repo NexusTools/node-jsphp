@@ -290,9 +290,18 @@ export class PHPContext {
     }
   }
 
+  /** Converts a value to a PHP string according to PHP type casting rules (false/null -> "", true -> "1"). */
+  public str(v: any): string {
+    const val = v instanceof PHPVariable ? v.get() : v;
+    if (val === false || val === null || val === undefined) return "";
+    if (val === true) return "1";
+    return String(val);
+  }
+
   /** Writes output text to stdout or active output buffer. */
   public async echo(data: any): Promise<void> {
     const str = String(data ?? "");
+    console.log("ECHO:", JSON.stringify(str));
     if (this.outputBuffer.getLevel() > 0) {
       this.outputBuffer.write(str);
     } else {

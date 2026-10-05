@@ -5,8 +5,13 @@ export class ArrayRuntime {
         const arrayOrCountable = arrayOrCountableArg?.get();
         if (!arrayOrCountable)
             return 0;
-        if (Array.isArray(arrayOrCountable))
-            return arrayOrCountable.length;
+        if (Array.isArray(arrayOrCountable)) {
+            const keys = Object.keys(arrayOrCountable);
+            if (keys.length === arrayOrCountable.length && keys.every((k, i) => k === String(i))) {
+                return arrayOrCountable.length;
+            }
+            return keys.length;
+        }
         if (typeof arrayOrCountable === "object")
             return Object.keys(arrayOrCountable).length;
         return 1;
@@ -15,16 +20,26 @@ export class ArrayRuntime {
         const input = inputArg?.get();
         if (!input || typeof input !== "object")
             return [];
-        if (Array.isArray(input))
-            return input.map((_, i) => i);
-        return Object.keys(input);
+        if (Array.isArray(input)) {
+            const keys = Object.keys(input);
+            if (keys.length === input.length && keys.every((k, i) => k === String(i))) {
+                return input.map((_, i) => i);
+            }
+            return keys.map((k) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : k));
+        }
+        return Object.keys(input).map((k) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : k));
     }
     static array_values(ctx, inputArg) {
         const input = inputArg?.get();
         if (!input || typeof input !== "object")
             return [];
-        if (Array.isArray(input))
-            return [...input];
+        if (Array.isArray(input)) {
+            const keys = Object.keys(input);
+            if (keys.length === input.length && keys.every((k, i) => k === String(i))) {
+                return [...input];
+            }
+            return keys.map((k) => input[k]);
+        }
         return Object.values(input);
     }
     static array_flip(ctx, inputArg) {
@@ -229,6 +244,126 @@ export class ArrayRuntime {
             res[newKey] = v;
         }
         return res;
+    }
+    static async usort(ctx, arrayArg, callbackArg) {
+        const array = arrayArg?.get();
+        const callback = callbackArg?.get();
+        if (!array || typeof array !== "object")
+            return false;
+        const isArr = Array.isArray(array);
+        const entries = isArr
+            ? array.map((v, i) => ({ key: i, val: v }))
+            : Object.entries(array).map(([k, v]) => ({ key: k, val: v }));
+        for (let i = 0; i < entries.length; i++) {
+            for (let j = i + 1; j < entries.length; j++) {
+                let cmp = 0;
+                if (typeof callback === "function") {
+                    cmp = Number(await callback(ctx, entries[i].val, entries[j].val)) || 0;
+                }
+                else if (typeof callback === "string") {
+                    cmp = Number(await ctx.callFunction(callback, [entries[i].val, entries[j].val])) || 0;
+                }
+                else if (Array.isArray(callback) && callback.length === 2) {
+                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].val, entries[j].val])) || 0;
+                }
+                if (cmp > 0) {
+                    const temp = entries[i];
+                    entries[i] = entries[j];
+                    entries[j] = temp;
+                }
+            }
+        }
+        if (isArr) {
+            array.length = 0;
+            entries.forEach((e) => array.push(e.val));
+        }
+        else {
+            for (const k of Object.keys(array))
+                delete array[k];
+            entries.forEach((e, idx) => { array[idx] = e.val; });
+        }
+        if (arrayArg && typeof arrayArg.set === "function") {
+            arrayArg.set(array);
+        }
+        return true;
+    }
+    static async uasort(ctx, arrayArg, callbackArg) {
+        const array = arrayArg?.get();
+        const callback = callbackArg?.get();
+        if (!array || typeof array !== "object")
+            return false;
+        const entries = Object.entries(array).map(([k, v]) => ({ key: k, val: v }));
+        for (let i = 0; i < entries.length; i++) {
+            for (let j = i + 1; j < entries.length; j++) {
+                let cmp = 0;
+                if (typeof callback === "function") {
+                    cmp = Number(await callback(ctx, entries[i].val, entries[j].val)) || 0;
+                }
+                else if (typeof callback === "string") {
+                    cmp = Number(await ctx.callFunction(callback, [entries[i].val, entries[j].val])) || 0;
+                }
+                else if (Array.isArray(callback) && callback.length === 2) {
+                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].val, entries[j].val])) || 0;
+                }
+                if (cmp > 0) {
+                    const temp = entries[i];
+                    entries[i] = entries[j];
+                    entries[j] = temp;
+                }
+            }
+        }
+        if (Array.isArray(array)) {
+            array.length = 0;
+            entries.forEach((e) => { array[e.key] = e.val; });
+        }
+        else {
+            for (const k of Object.keys(array))
+                delete array[k];
+            entries.forEach((e) => { array[e.key] = e.val; });
+        }
+        if (arrayArg && typeof arrayArg.set === "function") {
+            arrayArg.set(array);
+        }
+        return true;
+    }
+    static async uksort(ctx, arrayArg, callbackArg) {
+        const array = arrayArg?.get();
+        const callback = callbackArg?.get();
+        if (!array || typeof array !== "object")
+            return false;
+        const entries = Object.entries(array).map(([k, v]) => ({ key: k, val: v }));
+        for (let i = 0; i < entries.length; i++) {
+            for (let j = i + 1; j < entries.length; j++) {
+                let cmp = 0;
+                if (typeof callback === "function") {
+                    cmp = Number(await callback(ctx, entries[i].key, entries[j].key)) || 0;
+                }
+                else if (typeof callback === "string") {
+                    cmp = Number(await ctx.callFunction(callback, [entries[i].key, entries[j].key])) || 0;
+                }
+                else if (Array.isArray(callback) && callback.length === 2) {
+                    cmp = Number(await ctx.callMethod(callback[0], String(callback[1]), [entries[i].key, entries[j].key])) || 0;
+                }
+                if (cmp > 0) {
+                    const temp = entries[i];
+                    entries[i] = entries[j];
+                    entries[j] = temp;
+                }
+            }
+        }
+        if (Array.isArray(array)) {
+            array.length = 0;
+            entries.forEach((e) => { array[e.key] = e.val; });
+        }
+        else {
+            for (const k of Object.keys(array))
+                delete array[k];
+            entries.forEach((e) => { array[e.key] = e.val; });
+        }
+        if (arrayArg && typeof arrayArg.set === "function") {
+            arrayArg.set(array);
+        }
+        return true;
     }
     static array_push(ctx, arrayArg, ...varargsArgs) {
         const array = arrayArg?.get();
@@ -507,6 +642,9 @@ export class ArrayRuntime {
         "array_diff": ArrayRuntime.array_diff,
         "array_intersect_key": ArrayRuntime.array_intersect_key,
         "array_diff_key": ArrayRuntime.array_diff_key,
+        "usort": ArrayRuntime.usort,
+        "uasort": ArrayRuntime.uasort,
+        "uksort": ArrayRuntime.uksort,
         "array_slice": ArrayRuntime.array_slice,
         "array_push": ArrayRuntime.array_push,
         "array_pop": ArrayRuntime.array_pop,

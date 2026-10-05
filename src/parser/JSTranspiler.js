@@ -740,6 +740,58 @@ export class JSTranspiler {
         }
         return JSON.stringify(this.getConstName(offset));
     }
+    transpileListAssignItem(targetNode, valExpr, filepath) {
+        if (!targetNode || targetNode.kind === "noop")
+            return "";
+        let node = targetNode;
+        while (node?.kind === "parenthesis" || node?.kind === "parentheses") {
+            node = node.inner || node.expr || node.value || node.what;
+        }
+        if (!node || node.kind === "noop")
+            return "";
+        if (node.kind === "variable") {
+            const varName = this.getConstName(node.name || node);
+            if (this.isSuperglobal(varName)) {
+                return `await ctx.setVar(${JSON.stringify(varName)}, ${valExpr})`;
+            }
+            const safeId = varName.replace(/[^a-zA-Z0-9_]/g, "_");
+            return `$v_${safeId}.set(${valExpr})`;
+        }
+        if (node.kind === "propertylookup") {
+            const obj = this.transpileExpr(node.what, filepath);
+            const prop = this.transpilePropertyOffset(node.offset, filepath);
+            return `await ctx.setProperty(${obj}, ${prop}, ${valExpr})`;
+        }
+        if (node.kind === "offsetlookup") {
+            const arr = this.transpileExpr(node.what, filepath);
+            const offset = node.offset ? this.transpileExpr(node.offset, filepath) : "null";
+            return `await ctx.setArrayElement(${arr}, ${offset}, ${valExpr})`;
+        }
+        if (node.kind === "list" || node.kind === "array") {
+            return this.transpileListAssign(node, valExpr, filepath);
+        }
+        return "";
+    }
+    transpileListAssign(listNode, rightValExpr, filepath) {
+        const items = listNode.items || listNode.arguments || listNode.value || [];
+        const assigns = items.map((item, idx) => {
+            if (!item || item.kind === "noop")
+                return "";
+            let keyExpr = String(idx);
+            let targetNode = item;
+            if (item.kind === "entry") {
+                targetNode = item.value;
+                if (item.key) {
+                    keyExpr = this.transpileExpr(item.key, filepath);
+                }
+            }
+            if (!targetNode || targetNode.kind === "noop")
+                return "";
+            const itemValExpr = `(__list !== null && __list !== undefined ? (Array.isArray(__list) ? __list[${keyExpr}] : (typeof __list === "object" ? __list[${keyExpr}] : undefined)) : undefined) ?? null`;
+            return this.transpileListAssignItem(targetNode, itemValExpr, filepath);
+        }).filter(Boolean);
+        return `(await (async () => { const __list = ${rightValExpr}; ${assigns.join("; ")}; return __list; })())`;
+    }
     transpileMethodOffset(offset, filepath) {
         if (!offset)
             return '"method"';
@@ -924,20 +976,9 @@ ${dummyLines.join("\n")}
                 while (leftNode?.kind === "parenthesis" || leftNode?.kind === "parentheses") {
                     leftNode = leftNode.inner || leftNode.expr || leftNode.value || leftNode.what;
                 }
-                if (leftNode?.kind === "list") {
-                    const items = (leftNode.items || leftNode.arguments || leftNode.value || []);
+                if (leftNode?.kind === "list" || (leftNode?.kind === "array" && node.operator === "=")) {
                     const rightVal = this.transpileExpr(node.right, filepath);
-                    const assigns = items.map((item, idx) => {
-                        if (!item)
-                            return "";
-                        if (item.kind === "variable") {
-                            const varName = this.getConstName(item);
-                            const safeId = varName.replace(/[^a-zA-Z0-9_]/g, "_");
-                            return `$v_${safeId}.set(__list[${idx}])`;
-                        }
-                        return "";
-                    }).filter(Boolean);
-                    return `(await (async () => { const __list = Array.isArray(${rightVal}) ? ${rightVal} : Object.values(${rightVal} || {}); ${assigns.join("; ")}; return __list; })())`;
+                    return this.transpileListAssign(leftNode, rightVal, filepath);
                 }
                 const val = this.transpileExpr(node.right, filepath);
                 const op = node.operator || "=";
@@ -962,7 +1003,7 @@ ${dummyLines.join("\n")}
                     if (op === "-=")
                         return `$v_${safeId}.set((Number($v_${safeId}.get()) || 0) - Number(${val}))`;
                     if (op === ".=")
-                        return `$v_${safeId}.set(String($v_${safeId}.get() ?? "") + String(${val}))`;
+                        return `$v_${safeId}.set(ctx.str($v_${safeId}.get()) + ctx.str(${val}))`;
                     return `$v_${safeId}.set(${val})`;
                 }
                 if (leftNode?.kind === "propertylookup") {
@@ -973,7 +1014,7 @@ ${dummyLines.join("\n")}
                     if (op === "-=")
                         return `(await (async () => { const __old = Number(await ctx.getProperty(${obj}, ${prop})) || 0; return await ctx.setProperty(${obj}, ${prop}, __old - Number(${val})); })())`;
                     if (op === ".=")
-                        return `(await (async () => { const __old = String(await ctx.getProperty(${obj}, ${prop}) ?? ""); return await ctx.setProperty(${obj}, ${prop}, __old + String(${val})); })())`;
+                        return `(await (async () => { const __old = ctx.str(await ctx.getProperty(${obj}, ${prop})); return await ctx.setProperty(${obj}, ${prop}, __old + ctx.str(${val})); })())`;
                     return `(await ctx.setProperty(${obj}, ${prop}, ${val}))`;
                 }
                 if (leftNode?.kind === "staticlookup") {
@@ -984,7 +1025,7 @@ ${dummyLines.join("\n")}
                     if (op === "-=")
                         return `(await (async () => { const __old = Number(await ctx.getStaticProperty(${className}, ${JSON.stringify(propName)})) || 0; return await ctx.setStaticProperty(${className}, ${JSON.stringify(propName)}, __old - Number(${val})); })())`;
                     if (op === ".=")
-                        return `(await (async () => { const __old = String(await ctx.getStaticProperty(${className}, ${JSON.stringify(propName)}) ?? ""); return await ctx.setStaticProperty(${className}, ${JSON.stringify(propName)}, __old + String(${val})); })())`;
+                        return `(await (async () => { const __old = ctx.str(await ctx.getStaticProperty(${className}, ${JSON.stringify(propName)})); return await ctx.setStaticProperty(${className}, ${JSON.stringify(propName)}, __old + ctx.str(${val})); })())`;
                     return `(await ctx.setStaticProperty(${className}, ${JSON.stringify(propName)}, ${val}))`;
                 }
                 if (leftNode?.kind === "offsetlookup") {
@@ -1172,8 +1213,9 @@ ${dummyLines.join("\n")}
                     return `(ctx.isTruthy(${left}) && ctx.isTruthy(${right}))`;
                 if (op === "or")
                     return `(ctx.isTruthy(${left}) || ctx.isTruthy(${right}))`;
-                const jsOp = op === "." ? "+" : op;
-                return `(${left} ${jsOp} ${right})`;
+                if (op === ".")
+                    return `(ctx.str(${left}) + ctx.str(${right}))`;
+                return `(${left} ${op} ${right})`;
             }
             case "include": {
                 const target = this.transpileExpr(node.target || node.expr || node.what, filepath);
@@ -1286,7 +1328,7 @@ ${dummyLines.join("\n")}
                 if (type === "float" || type === "double" || type === "real")
                     return `(Number(parseFloat(String(${val}))) || 0)`;
                 if (type === "string")
-                    return `String(${val} ?? "")`;
+                    return `ctx.str(${val})`;
                 if (type === "array")
                     return `(Array.isArray(${val}) ? ${val} : (${val} === null || ${val} === undefined) ? [] : (${val} instanceof PHPObject) ? Object.fromEntries(${val}.properties) : (typeof ${val} === "object") ? ${val} : [${val}])`;
                 if (type === "object")
@@ -1307,7 +1349,12 @@ ${dummyLines.join("\n")}
                 return `(await (async () => { const __oldLevel = ctx.errorReportingLevel; ctx.errorReportingLevel = 0; try { return await (${expr}); } finally { ctx.errorReportingLevel = __oldLevel; } })())`;
             }
             case "list": {
-                const items = (node.items || node.arguments || node.value || []).map((item) => item ? this.transpileExpr(item, filepath) : "null");
+                const items = (node.items || node.arguments || node.value || []).map((item) => {
+                    if (!item || item.kind === "noop")
+                        return "null";
+                    const target = item.kind === "entry" ? item.value : item;
+                    return target ? this.transpileExpr(target, filepath) : "null";
+                });
                 return `[${items.join(", ")}]`;
             }
             case "empty": {

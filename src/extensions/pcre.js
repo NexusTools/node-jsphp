@@ -58,8 +58,8 @@ export class PCREExtension extends PHPExtension {
         };
         this.functions = {
             preg_match: (ctx, patternArg, subjectArg, matchesObj, flagsArg, offsetArg) => {
-                const pattern = String(patternArg?.get() ?? "");
-                const subject = String(subjectArg?.get() ?? "");
+                const pattern = ctx.str(patternArg?.get());
+                const subject = ctx.str(subjectArg?.get());
                 const flags = Number(flagsArg?.get()) || 0;
                 const offset = Number(offsetArg?.get()) || 0;
                 try {
@@ -77,8 +77,8 @@ export class PCREExtension extends PHPExtension {
                 }
             },
             preg_match_all: (ctx, patternArg, subjectArg, matchesObj, flagsArg, offsetArg) => {
-                const pattern = String(patternArg?.get() ?? "");
-                const subject = String(subjectArg?.get() ?? "");
+                const pattern = ctx.str(patternArg?.get());
+                const subject = ctx.str(subjectArg?.get());
                 const flags = flagsArg?.get() !== undefined ? Number(flagsArg.get()) : 1;
                 const offset = Number(offsetArg?.get()) || 0;
                 try {
@@ -109,9 +109,9 @@ export class PCREExtension extends PHPExtension {
                 }
             },
             preg_replace: (ctx, patternArg, replacementArg, subjectArg) => {
-                const pattern = String(patternArg?.get() ?? "");
-                const replacement = String(replacementArg?.get() ?? "");
-                const subject = String(subjectArg?.get() ?? "");
+                const pattern = ctx.str(patternArg?.get());
+                const replacement = ctx.str(replacementArg?.get());
+                const subject = ctx.str(subjectArg?.get());
                 try {
                     const regex = this.compilePattern(pattern, true);
                     return subject.replace(regex, replacement);
@@ -121,9 +121,9 @@ export class PCREExtension extends PHPExtension {
                 }
             },
             preg_replace_callback: async (ctx, patternArg, callbackArg, subjectArg) => {
-                const pattern = String(patternArg?.get() ?? "");
+                const pattern = ctx.str(patternArg?.get());
                 const callback = callbackArg?.get();
-                const subject = String(subjectArg?.get() ?? "");
+                const subject = ctx.str(subjectArg?.get());
                 try {
                     const regex = this.compilePattern(pattern, true);
                     let output = "";
@@ -135,18 +135,18 @@ export class PCREExtension extends PHPExtension {
                         let replacement = "";
                         const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
                         if (typeof cb === "string") {
-                            replacement = String((await ctx.callFunction(cb, [new PHPLiteral(captures)])) ?? "");
+                            replacement = ctx.str((await ctx.callFunction(cb, [new PHPLiteral(captures)])));
                         }
                         else if (Array.isArray(cb) && cb.length === 2) {
                             const obj = cb[0] && typeof cb[0] === "object" && typeof cb[0].get === "function" ? cb[0].get() : cb[0];
                             const m = cb[1] && typeof cb[1] === "object" && typeof cb[1].get === "function" ? cb[1].get() : cb[1];
-                            replacement = String((await ctx.callMethod(obj, String(m), [new PHPLiteral(captures)])) ?? "");
+                            replacement = ctx.str((await ctx.callMethod(obj, String(m), [new PHPLiteral(captures)])));
                         }
                         else if (typeof cb === "function") {
-                            replacement = String((await cb.apply(ctx, [ctx, new PHPLiteral(captures)])) ?? "");
+                            replacement = ctx.str((await cb.apply(ctx, [ctx, new PHPLiteral(captures)])));
                         }
                         else if (cb instanceof PHPObject) {
-                            replacement = String((await ctx.callMethod(cb, "__invoke", [new PHPLiteral(captures)])) ?? "");
+                            replacement = ctx.str((await ctx.callMethod(cb, "__invoke", [new PHPLiteral(captures)])));
                         }
                         output += replacement;
                         lastIndex = current.index + current[0].length;
@@ -162,8 +162,8 @@ export class PCREExtension extends PHPExtension {
             preg_last_error: (ctx) => ctx.getInternalVar("lastPregError") || 0,
             preg_last_error_msg: (ctx) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
             preg_split: (ctx, patternArg, subjectArg, limitArg, flagsArg) => {
-                const pattern = String(patternArg?.get() ?? "");
-                const subject = String(subjectArg?.get() ?? "");
+                const pattern = ctx.str(patternArg?.get());
+                const subject = ctx.str(subjectArg?.get());
                 const limit = limitArg?.get() !== undefined ? Number(limitArg.get()) : -1;
                 try {
                     const reg = this.compilePattern(pattern);
