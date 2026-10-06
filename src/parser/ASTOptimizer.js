@@ -18,11 +18,30 @@ export class ASTOptimizer {
             return optimizedArray;
         }
         // Process child nodes first
-        for (const key of Object.keys(ast)) {
-            if (key !== "kind" && key !== "loc" && typeof ast[key] === "object") {
-                ast[key] = ASTOptimizer.optimize(ast[key], engine);
-            }
-        }
+        if (ast.children)
+            ast.children = ASTOptimizer.optimize(ast.children, engine);
+        if (ast.body)
+            ast.body = ASTOptimizer.optimize(ast.body, engine);
+        if (ast.alternate)
+            ast.alternate = ASTOptimizer.optimize(ast.alternate, engine);
+        if (ast.test)
+            ast.test = ASTOptimizer.optimize(ast.test, engine);
+        if (ast.expr)
+            ast.expr = ASTOptimizer.optimize(ast.expr, engine);
+        if (ast.left)
+            ast.left = ASTOptimizer.optimize(ast.left, engine);
+        if (ast.right)
+            ast.right = ASTOptimizer.optimize(ast.right, engine);
+        if (ast.what)
+            ast.what = ASTOptimizer.optimize(ast.what, engine);
+        if (ast.arguments)
+            ast.arguments = ASTOptimizer.optimize(ast.arguments, engine);
+        if (ast.items)
+            ast.items = ASTOptimizer.optimize(ast.items, engine);
+        if (ast.value && typeof ast.value === "object")
+            ast.value = ASTOptimizer.optimize(ast.value, engine);
+        if (ast.key && typeof ast.key === "object")
+            ast.key = ASTOptimizer.optimize(ast.key, engine);
         // 1. Optimize Call expressions on compile-time immutable values
         if (ast.kind === "call" && ast.what) {
             const funcName = (ast.what.name || ast.what.value || "").toString().toLowerCase();

@@ -225,6 +225,7 @@ async function executeFCGIRequest(
   endBuf.writeUInt32BE(0, 0); // AppStatus 0
   endBuf.writeUInt8(0, 4); // ProtocolStatus COMPLETE
   writeRecord(socket, FCGI_END_REQUEST, req.requestId, endBuf);
+  ctx.close();
 }
 
 function parseCookieHeader(cookieHeader: string): Record<string, string> {

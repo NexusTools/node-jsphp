@@ -1,9 +1,9 @@
 import { PHPExtension } from "../PHPExtension.js";
-import { PHPVariable } from "../runtime/PHPVariable.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 export class MbstringExtension extends PHPExtension {
     name = "mbstring";
     unwrap(val) {
-        return val instanceof PHPVariable ? val.get() : val;
+        return val instanceof PHPReference ? val.get() : val;
     }
     onInit(engine) {
         const unwrap = this.unwrap;

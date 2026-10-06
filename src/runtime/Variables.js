@@ -1,7 +1,7 @@
 import * as crypto from "crypto";
 import { serialize as serializePHP } from "php-serialize";
 import { PHPError, PHPTypeError } from "./PHPError.js";
-import { PHPVariable, PHPLiteral } from "./PHPVariable.js";
+import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
 import { SYMBOL_PHP_NAME } from "./Reflection.js";
 export class VariablesRuntime {
     /**
@@ -108,27 +108,33 @@ export class VariablesRuntime {
         return true;
     }
     /** Finds whether a variable is an array. */
-    static is_array(ctx, valArg) { return Array.isArray(valArg?.get()); }
+    static is_array(ctx, valArg) {
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        return Array.isArray(val) || (typeof val === "object" && val !== null && val.constructor === Object);
+    }
     /** Finds whether a variable is a boolean. */
-    static is_bool(ctx, valArg) { return typeof valArg?.get() === "boolean"; }
+    static is_bool(ctx, valArg) {
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        return typeof val === "boolean";
+    }
     /** Finds whether a variable is a float. */
     static is_float(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return typeof val === "number" && !Number.isInteger(val);
     }
     /** Finds whether a variable is an integer. */
     static is_int(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return typeof val === "number" && Number.isInteger(val);
     }
     /** Finds whether a variable is NULL. */
     static is_null(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return val === null || val === undefined;
     }
     /** Finds whether a variable is a number or a numeric string. */
     static is_numeric(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         if (typeof val === "number")
             return !Number.isNaN(val);
         if (typeof val !== "string")
@@ -137,12 +143,12 @@ export class VariablesRuntime {
     }
     /** Finds whether a variable is an object. */
     static is_object(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return typeof val === "function" || (typeof val === "object" && val !== null && !Array.isArray(val) && val.constructor !== Object);
     }
     /** Gets the properties of the given object. */
     static get_object_vars(ctx, valueArg) {
-        const value = valueArg?.get();
+        const value = valueArg instanceof PHPReference ? valueArg.get() : valueArg;
         if (value && typeof value === "object" && value.constructor !== Object && value.constructor !== Array && !(value instanceof PHPError)) {
             return Object.fromEntries(Object.entries(value).filter(([k, v]) => v instanceof PHPVariable).map(([k, v]) => [k, v.get()]));
         }
@@ -161,30 +167,33 @@ export class VariablesRuntime {
     }
     /** Finds whether a variable is a scalar. */
     static is_scalar(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         const t = typeof val;
         return t === "string" || t === "number" || t === "boolean";
     }
     /** Finds whether a variable is a string. */
-    static is_string(ctx, valArg) { return typeof valArg?.get() === "string"; }
+    static is_string(ctx, valArg) {
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        return typeof val === "string";
+    }
     /** Verify that the contents of a variable is an iterable value. */
     static is_iterable(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return Array.isArray(val) || (val && typeof val === "object");
     }
     /** Verify that the contents of a variable is a countable value. */
     static is_countable(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return Array.isArray(val) || typeof val === "string";
     }
     /** Finds whether a variable is a resource. */
     static is_resource(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         return val && typeof val === "object" && Boolean(val.isResource);
     }
     /** Get the type of a variable. */
     static gettype(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         if (val === null || val === undefined)
             return "NULL";
         if (typeof val === "boolean")
@@ -201,7 +210,7 @@ export class VariablesRuntime {
     }
     /** Returns the name of the class of an object. */
     static get_class(ctx, valArg) {
-        const val = valArg?.get();
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
         if (!val || typeof val !== "object")
             return false;
         if (val.__php_name)
@@ -214,31 +223,43 @@ export class VariablesRuntime {
     }
     /** Gets a prefixed unique identifier based on the current time in microseconds. */
     static uniqid(ctx, prefixArg, moreEntropyArg) {
-        const prefix = String(prefixArg?.get() ?? "");
-        const moreEntropy = Boolean(moreEntropyArg?.get());
+        const prefix = String((prefixArg instanceof PHPReference ? prefixArg.get() : prefixArg) ?? "");
+        const moreEntropy = Boolean(moreEntropyArg instanceof PHPReference ? moreEntropyArg.get() : moreEntropyArg);
         const timestamp = Date.now().toString(16);
         const entropy = crypto.randomBytes(moreEntropy ? 8 : 4).toString("hex");
         return `${prefix}${timestamp}${entropy}`;
     }
     /** Get the integer value of a variable. */
     static intval(ctx, valArg, baseArg) {
-        const val = valArg?.get();
-        const base = Number(baseArg?.get()) || 10;
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        const base = Number(baseArg instanceof PHPReference ? baseArg.get() : baseArg) || 10;
         const p = parseInt(String(val ?? 0), base);
         return Number.isNaN(p) ? 0 : p;
     }
     /** Get float value of a variable. */
     static floatval(ctx, valArg) {
-        const f = parseFloat(String(valArg?.get() ?? 0));
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        const f = parseFloat(String(val ?? 0));
         return Number.isNaN(f) ? 0 : f;
     }
     /** Get string value of a variable. */
     static strval(ctx, valArg) {
-        return String(valArg?.get() ?? "");
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        return String(val ?? "");
     }
     /** Get the boolean value of a variable. */
     static boolval(ctx, valArg) {
-        return Boolean(valArg?.get());
+        const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+        return Boolean(val);
+    }
+    static getenv(ctx, varnameArg) {
+        const varname = varnameArg instanceof PHPReference ? varnameArg.get() : varnameArg;
+        if (varname === undefined || varname === null) {
+            return ctx.env || process.env;
+        }
+        const name = String(varname);
+        const val = (ctx.env && ctx.env[name]) ?? (ctx.env && ctx.env[name.toUpperCase()]) ?? process.env[name] ?? process.env[name.toUpperCase()];
+        return val !== undefined ? val : false;
     }
     static compact(ctx, ...args) {
         const result = {};
@@ -273,7 +294,10 @@ export class VariablesRuntime {
         }
         return count;
     }
-    static var_export(ctx, valArg, returnArg) {
+    static var_export(ctx, valArg, returnArg, ...args) {
+        const depth = typeof args[0] === "number" ? args[0] : 0;
+        if (depth > 5)
+            return "'...'";
         const val = valArg?.get();
         const returnVal = Boolean(returnArg?.get());
         let str = "";
@@ -289,24 +313,21 @@ export class VariablesRuntime {
             const keys = Object.keys(val);
             const isPureIndexed = keys.length === val.length && keys.every((k, i) => k === String(i));
             if (isPureIndexed) {
-                const items = val.map((v, i) => `${i} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
+                const items = val.map((v, i) => `${i} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true), depth + 1)}`);
                 str = "array (\n  " + items.join(",\n  ") + ",\n)";
             }
             else {
                 const items = keys.map((k) => {
                     const formattedKey = /^(0|[1-9]\d*)$/.test(k) ? k : `'${k}'`;
-                    return `${formattedKey} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(val[k]), new PHPLiteral(true))}`;
+                    return `${formattedKey} => ${VariablesRuntime.var_export(ctx, new PHPLiteral(val[k]), new PHPLiteral(true), depth + 1)}`;
                 });
                 str = "array (\n  " + items.join(",\n  ") + "\n)";
             }
         }
-        else if (val && typeof val === "object" && val.constructor !== Object && val.constructor !== Array) {
-            const items = Array.from(val.properties.entries()).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
-            str = `${val.phpClass.name}::__set_state(array(\n  ` + items.join(",\n  ") + "\n))";
-        }
-        else if (typeof val === "object") {
-            const items = Object.entries(val).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v), new PHPLiteral(true))}`);
-            str = "array (\n  " + items.join(",\n  ") + ",\n)";
+        else if (val && typeof val === "object") {
+            const className = val[SYMBOL_PHP_NAME] || val.constructor?.[SYMBOL_PHP_NAME] || val.constructor?.name || "stdClass";
+            const items = Object.entries(val).filter(([k]) => !k.startsWith("__")).map(([k, v]) => `'${k}' => ${VariablesRuntime.var_export(ctx, new PHPLiteral(v instanceof PHPVariable ? v.get() : v), new PHPLiteral(true), depth + 1)}`);
+            str = `${className}::__set_state(array(\n  ` + items.join(",\n  ") + "\n))";
         }
         else {
             str = String(val);
@@ -341,6 +362,7 @@ export class VariablesRuntime {
         "floatval": VariablesRuntime.floatval,
         "strval": VariablesRuntime.strval,
         "boolval": VariablesRuntime.boolval,
+        "getenv": VariablesRuntime.getenv,
         "compact": VariablesRuntime.compact,
         "extract": VariablesRuntime.extract,
     };

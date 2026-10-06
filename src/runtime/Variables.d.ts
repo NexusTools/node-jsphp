@@ -15,48 +15,49 @@ export declare class VariablesRuntime {
      */
     static print_r(ctx: any, valArg?: PHPReference, returnValArg?: PHPReference): string | true;
     /** Finds whether a variable is an array. */
-    static is_array(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_array(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a boolean. */
-    static is_bool(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_bool(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a float. */
-    static is_float(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_float(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is an integer. */
-    static is_int(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_int(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is NULL. */
-    static is_null(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_null(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a number or a numeric string. */
-    static is_numeric(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_numeric(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is an object. */
-    static is_object(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_object(ctx: PHPContext | null, valArg?: any): boolean;
     /** Gets the properties of the given object. */
-    static get_object_vars(ctx: PHPContext | null, valueArg?: PHPReference): Record<string, any>;
+    static get_object_vars(ctx: PHPContext | null, valueArg?: any): Record<string, any>;
     /** Finds whether a variable is a scalar. */
-    static is_scalar(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_scalar(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a string. */
-    static is_string(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_string(ctx: PHPContext | null, valArg?: any): boolean;
     /** Verify that the contents of a variable is an iterable value. */
-    static is_iterable(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_iterable(ctx: PHPContext | null, valArg?: any): boolean;
     /** Verify that the contents of a variable is a countable value. */
-    static is_countable(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_countable(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a resource. */
-    static is_resource(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static is_resource(ctx: PHPContext | null, valArg?: any): boolean;
     /** Get the type of a variable. */
-    static gettype(ctx: PHPContext | null, valArg?: PHPReference): string;
+    static gettype(ctx: PHPContext | null, valArg?: any): string;
     /** Returns the name of the class of an object. */
-    static get_class(ctx: PHPContext | null, valArg?: PHPReference): string | false;
+    static get_class(ctx: PHPContext | null, valArg?: any): string | false;
     /** Gets a prefixed unique identifier based on the current time in microseconds. */
-    static uniqid(ctx: PHPContext | null, prefixArg?: PHPReference, moreEntropyArg?: PHPReference): string;
+    static uniqid(ctx: PHPContext | null, prefixArg?: any, moreEntropyArg?: any): string;
     /** Get the integer value of a variable. */
-    static intval(ctx: PHPContext | null, valArg?: PHPReference, baseArg?: PHPReference): number;
+    static intval(ctx: PHPContext | null, valArg?: any, baseArg?: any): number;
     /** Get float value of a variable. */
-    static floatval(ctx: PHPContext | null, valArg?: PHPReference): number;
+    static floatval(ctx: PHPContext | null, valArg?: any): number;
     /** Get string value of a variable. */
-    static strval(ctx: PHPContext | null, valArg?: PHPReference): string;
+    static strval(ctx: PHPContext | null, valArg?: any): string;
     /** Get the boolean value of a variable. */
-    static boolval(ctx: PHPContext | null, valArg?: PHPReference): boolean;
+    static boolval(ctx: PHPContext | null, valArg?: any): boolean;
+    static getenv(ctx: PHPContext, varnameArg?: any): string | false | Record<string, string>;
     static compact(ctx: PHPContext, ...args: PHPReference[]): Record<string, any>;
     static extract(ctx: PHPContext, arrayArg?: PHPReference): number;
-    static var_export(ctx: PHPContext, valArg?: PHPReference, returnArg?: PHPReference): string | true;
+    static var_export(ctx: PHPContext, valArg?: PHPReference, returnArg?: PHPReference, ...args: any[]): string | true;
     static functions: {
         var_dump: typeof VariablesRuntime.var_dump;
         print_r: typeof VariablesRuntime.print_r;
@@ -82,6 +83,7 @@ export declare class VariablesRuntime {
         floatval: typeof VariablesRuntime.floatval;
         strval: typeof VariablesRuntime.strval;
         boolval: typeof VariablesRuntime.boolval;
+        getenv: typeof VariablesRuntime.getenv;
         compact: typeof VariablesRuntime.compact;
         extract: typeof VariablesRuntime.extract;
     };

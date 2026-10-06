@@ -131,7 +131,7 @@ export function wrapJSValue(val: any): any {
 
 export function unwrapPHPValue(val: any): any {
   if (val === null || val === undefined) return val;
-  const actual = val && typeof val === "object" && typeof val.get === "function" ? val.get() : val;
+  const actual = val instanceof PHPReference ? val.get() : val;
   if (actual && (typeof actual === "object" || typeof actual === "function") && actual[SYMBOL_PHP_NODEJS_PROXY]) {
     return actual[SYMBOL_PHP_NODEJS_PROXY];
   }

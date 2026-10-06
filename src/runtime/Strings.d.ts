@@ -3,7 +3,7 @@ import type { PHPContext } from "../PHPContext.js";
 import { PHPReference } from "./PHPVariable.js";
 export declare class StringRuntime {
     /** Gets string length. */
-    static strlen(ctx: PHPContext, strArg?: PHPReference): number;
+    static strlen(ctx: PHPContext, strArg?: any): number;
     /** Count the number of substring occurrences. */
     static substr_count(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
     /** Return part of a string. */
@@ -103,8 +103,14 @@ export declare class StringRuntime {
     static strspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
     static strcspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
     static vsprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): string;
+    static str_starts_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
+    static str_ends_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
+    static str_contains(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
     static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number;
     static functions: {
+        str_starts_with: typeof StringRuntime.str_starts_with;
+        str_ends_with: typeof StringRuntime.str_ends_with;
+        str_contains: typeof StringRuntime.str_contains;
         parse_str: typeof StringRuntime.parse_str;
         version_compare: typeof StringRuntime.version_compare;
         unpack: typeof StringRuntime.unpack;

@@ -24,6 +24,7 @@ export declare class CoreRuntime {
         register_shutdown_function: (ctx: PHPContext, callback: any, ...args: any[]) => boolean;
         register_tick_function: (ctx: PHPContext, callback: any, ...args: any[]) => boolean;
         unregister_tick_function: (ctx: PHPContext, callback: any) => boolean;
+        error_log: (ctx: PHPContext, messageArg: any) => boolean;
     };
     static register(engine: any): void;
 }

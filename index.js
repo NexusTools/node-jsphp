@@ -1,4 +1,4 @@
-export { PHPEngine } from "./src/PHPEngine.js";
+export { PHPEngine, getDefaultExtensions } from "./src/PHPEngine.js";
 export { PHPContext } from "./src/PHPContext.js";
 export { PHPExtension } from "./src/PHPExtension.js";
 export { PHPError, PHPException, PHPTypeError, PHPParseError, PHPFatalError, PHPNotice, PHPWarning, PHPExit, ErrorException, } from "./src/runtime/PHPError.js";

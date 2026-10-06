@@ -1,6 +1,22 @@
-import { PHPVariable } from "./PHPVariable.js";
+import { PHPReference } from "./PHPVariable.js";
 import { SYMBOL_PHP_NAME } from "./Reflection.js";
 export class PHPError extends Error {
+    static E_ERROR = 1;
+    static E_WARNING = 2;
+    static E_PARSE = 4;
+    static E_NOTICE = 8;
+    static E_CORE_ERROR = 16;
+    static E_CORE_WARNING = 32;
+    static E_COMPILE_ERROR = 64;
+    static E_COMPILE_WARNING = 128;
+    static E_USER_ERROR = 256;
+    static E_USER_WARNING = 512;
+    static E_USER_NOTICE = 1024;
+    static E_STRICT = 2048;
+    static E_RECOVERABLE_ERROR = 4096;
+    static E_DEPRECATED = 8192;
+    static E_USER_DEPRECATED = 16384;
+    static E_ALL = 32767;
     phpCode;
     phpFile;
     phpLine;
@@ -49,18 +65,25 @@ export class PHPError extends Error {
     getMessage() {
         return this.message || this.properties?.get("message") || "";
     }
+    getmessage() { return this.getMessage(); }
     getCode() {
         return this.phpCode || this.properties?.get("code") || 0;
     }
+    getcode() { return this.getCode(); }
     getFile() {
         return this.phpFile || this.properties?.get("file") || "";
     }
+    getfile() { return this.getFile(); }
     getLine() {
         return this.phpLine || this.properties?.get("line") || 0;
     }
+    getline() { return this.getLine(); }
     getPrevious() {
         return this.previous || this.properties?.get("previous") || null;
     }
+    getprevious() { return this.getPrevious(); }
+    gettrace() { return this.phpTrace || []; }
+    gettraceasstring() { return this.getPHPStackTraceString(); }
     static virtualizeJSStack(jsStack, phpFile = "", phpLine = 0, phpTrace = []) {
         const rawLines = (jsStack || "").split("\n");
         let header = rawLines[0] || "PHP Error";
@@ -102,37 +125,72 @@ export class PHPError extends Error {
     }
 }
 export class PHPException extends PHPError {
-    static phpName = "Exception";
     static [SYMBOL_PHP_NAME] = "Exception";
     constructor(messageArg = "", codeArg = 0, previousArg = null) {
         super(messageArg, codeArg, "", 0, [], previousArg);
     }
 }
+export class InvalidArgumentException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "InvalidArgumentException";
+}
+export class BadMethodCallException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "BadMethodCallException";
+}
+export class DomainException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "DomainException";
+}
+export class LengthException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "LengthException";
+}
+export class LogicException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "LogicException";
+}
+export class OutOfRangeException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "OutOfRangeException";
+}
+export class OverflowException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "OverflowException";
+}
+export class RangeException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "RangeException";
+}
+export class RuntimeException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "RuntimeException";
+}
+export class UnderflowException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "UnderflowException";
+}
+export class UnexpectedValueException extends PHPException {
+    static [SYMBOL_PHP_NAME] = "UnexpectedValueException";
+}
+export class ErrorException extends PHPError {
+    static [SYMBOL_PHP_NAME] = "ErrorException";
+    severity;
+    constructor(message = "", code = 0, severity = 1, file = "", line = 0, previous = null) {
+        super(message, code, file, line, [], previous);
+        this.severity = severity;
+    }
+}
 export class PHPTypeError extends PHPError {
+    static [SYMBOL_PHP_NAME] = "TypeError";
 }
 export class PHPParseError extends PHPError {
+    static [SYMBOL_PHP_NAME] = "ParseError";
 }
 export class PHPFatalError extends PHPError {
+    static [SYMBOL_PHP_NAME] = "Error";
 }
 export class PHPNotice extends PHPError {
+    static [SYMBOL_PHP_NAME] = "Notice";
 }
 export class PHPWarning extends PHPError {
+    static [SYMBOL_PHP_NAME] = "Warning";
 }
 export class PHPExit extends PHPError {
     status;
     constructor(status = 0) {
         super(`PHP Exit with status ${status}`);
         this.status = status;
-    }
-}
-export class ErrorException extends PHPError {
-    severity;
-    constructor(message = "", code = 0, severity = 1, file = "", line = 0, previous = null) {
-        super(message, code, file, line, [], previous);
-        this.severity = severity;
-    }
-    getSeverity() {
-        return this.severity;
     }
 }
 export class ErrorRuntime {
@@ -144,21 +202,21 @@ export class ErrorRuntime {
         await ctx.echo(trace);
         return trace;
     }
-    static set_error_handler(ctx, handlerArg, levelsArg = 32767) {
-        const handler = handlerArg instanceof PHPVariable ? handlerArg.get() : handlerArg;
-        const levels = levelsArg instanceof PHPVariable ? levelsArg.get() : levelsArg;
-        return ctx.setErrorHandler(handler, levels !== undefined ? Number(levels) : 32767);
+    static set_error_handler(ctx, handlerArg, levelsArg = PHPError.E_ALL) {
+        const handler = handlerArg instanceof PHPReference ? handlerArg.get() : handlerArg;
+        const levels = levelsArg instanceof PHPReference ? levelsArg.get() : levelsArg;
+        return ctx.setErrorHandler(handler, levels !== undefined ? Number(levels) : PHPError.E_ALL);
     }
     static restore_error_handler(ctx) {
         return ctx.restoreErrorHandler();
     }
-    static async trigger_error(ctx, messageArg, levelArg = 1024) {
-        const message = messageArg instanceof PHPVariable ? messageArg.get() : messageArg;
-        const level = levelArg instanceof PHPVariable ? levelArg.get() : levelArg;
-        return await ctx.triggerError(String(message ?? ""), level !== undefined ? Number(level) : 1024);
+    static async trigger_error(ctx, messageArg, levelArg = PHPError.E_USER_NOTICE) {
+        const message = messageArg instanceof PHPReference ? messageArg.get() : messageArg;
+        const level = levelArg instanceof PHPReference ? levelArg.get() : levelArg;
+        return await ctx.triggerError(String(message ?? ""), level !== undefined ? Number(level) : PHPError.E_USER_NOTICE);
     }
     static error_reporting(ctx, levelArg) {
-        const level = levelArg instanceof PHPVariable ? levelArg.get() : levelArg;
+        const level = levelArg instanceof PHPReference ? levelArg.get() : levelArg;
         const previous = ctx.errorReportingLevel;
         if (level !== undefined && level !== null)
             ctx.errorReportingLevel = Number(level);

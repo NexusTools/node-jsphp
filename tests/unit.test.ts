@@ -9,6 +9,7 @@ describe("PHPEngine & AST Unit Tests", () => {
   let engine: PHPEngine;
 
   beforeEach(() => {
+    delete process.env.JSPHP_DEBUG;
     engine = new PHPEngine({ watch: false });
   });
 

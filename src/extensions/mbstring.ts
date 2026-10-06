@@ -1,13 +1,13 @@
 import { PHPExtension } from "../PHPExtension.js";
 import { PHPEngine } from "../PHPEngine.js";
 import { PHPContext } from "../PHPContext.js";
-import { PHPVariable } from "../runtime/PHPVariable.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 
 export class MbstringExtension extends PHPExtension {
   public readonly name = "mbstring";
 
   private unwrap(val: any): any {
-    return val instanceof PHPVariable ? val.get() : val;
+    return val instanceof PHPReference ? val.get() : val;
   }
 
   public onInit(engine: PHPEngine): void {

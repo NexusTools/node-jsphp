@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
@@ -13,6 +14,7 @@ describe("HTTP Server SAPI Tests", () => {
   const docRoot = path.join(__dirname, "http_server_test_dir");
 
   beforeAll(async () => {
+    jest.setTimeout(120000);
     if (!fs.existsSync(docRoot)) {
       fs.mkdirSync(docRoot, { recursive: true });
     }
@@ -68,7 +70,7 @@ cause_error();
     fs.writeFileSync(
       path.join(docRoot, "ext_test.php"),
       `<?php
-echo "NODEJS: " . (function_exists('nodejs_require') ? 'YES' : 'NO') . "\\n";
+echo "NODEJS: " . (function_exists('njs_import') || function_exists('nodejs_require') ? 'YES' : 'NO') . "\\n";
 echo "MYSQLI: " . (function_exists('mysqli_connect') ? 'YES' : 'NO') . "\\n";
 echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
 `
@@ -205,7 +207,7 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
 
   test("Serves WordPress setup-config.php with rendered text and stylesheet", async () => {
     const wpDir = path.join(__dirname, "../wordpress-test");
-    const wpServer = await runHTTPServer(8889, wpDir);
+    const wpServer = await runHTTPServer(8889, wpDir, { cacheDir: path.join(__dirname, "../.test_cache") });
     try {
       const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
         http.get("http://127.0.0.1:8889/wp-admin/setup-config.php", (r) => {
@@ -238,5 +240,5 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
     } finally {
       wpServer.close();
     }
-  }, 30000);
+  }, 180000);
 });

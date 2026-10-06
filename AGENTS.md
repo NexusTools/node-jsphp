@@ -14,28 +14,29 @@ This document provides operational context, architecture directives, and guidanc
    - **Engine Constants**: `PHPEngine` exposes static cached literal instances (`PHPEngine.TRUE`, `PHPEngine.FALSE`, `PHPEngine.NULL`) to reduce object allocations.
    - **Function Signatures**: All exposed PHP runtime functions and extension functions accept `PHPReference` arguments (`...args: PHPReference[]`).
 
-3. **PHP Class Layout in JS**:
-   - Classes exposed to PHP from JavaScript MUST follow a specific parameter layout for methods and constructors.
-   - **Method Signatures**: All exposed PHP class methods MUST conform to the signature `(ctx: PHPContext, ...args: PHPReference[]) => any;`.
-   - **Constructors**: Instead of using the native JavaScript `constructor`, exposed classes MUST use a `public async __construct(ctx: PHPContext, ...args: PHPReference[])` instance method.
-   - **Properties**: Static and instance properties MUST be initialized as `PHPVariable` instances so they can be passed by reference. (e.g. `public myProp: PHPReference = new PHPVariable("default");`). Access them via `.get()` and `.set()` within JavaScript.
-   - **Instantiation Factory**: To proxy object instantiation and properly set up the object without invoking native `constructor`, you MUST provide a `public static async __$$__new(ctx: PHPContext, ...args: PHPReference[]): Promise<YourClass>` factory method. This method should create the object via `Object.create(this.prototype)` and call its `__construct` method.
-   - Example:
-     ```typescript
-     export class MyClass {
-       public myProp!: PHPReference;
-       public static async __$$__new(ctx: PHPContext, propArg?: PHPReference): Promise<MyClass> {
-         const obj = Object.create(this.prototype);
-         obj.myProp = new PHPVariable();
-         if (typeof obj.__construct === "function") await obj.__construct(ctx, propArg);
-         return obj;
-       }
-       public async __construct(ctx: PHPContext, propArg?: PHPReference): Promise<void> {
-         this.myProp.set(propArg ? String(propArg.get() ?? "") : "default");
-       }
-       public async myMethod(ctx: PHPContext, arg1?: PHPReference): Promise<any> { /* ... */ }
-     }
-     ```
+     3. **PHP Class Layout in JS**:
+        - Classes exposed to PHP from JavaScript MUST follow a specific parameter layout for methods and constructors.
+        - **Method Signatures**: All exposed PHP class methods MUST conform to the signature `(ctx: PHPContext, ...args: PHPReference[]) => any;`.
+        - **Constructors**: Instead of using the native JavaScript `constructor`, exposed classes MUST use a `public async __construct(ctx: PHPContext, ...args: PHPReference[])` instance method.
+        - **Properties**: Static and instance properties MUST be initialized as `PHPVariable` instances so they can be passed by reference. (e.g. `public $myProp: PHPReference = new PHPVariable("default");`). Access them via `.get()` and `.set()` within JavaScript.
+        - **Instantiation Factory**: To proxy object instantiation and properly set up the object without invoking native `constructor`, you MUST provide a `public static async __$$__new(ctx: PHPContext, ...args: PHPReference[]): Promise<YourClass>` factory method. This method should create the object via `Object.create(this.prototype)` and call its `__construct` method.
+        - Example:
+          ```typescript
+          export class MyClass {
+            public static [SYMBOL_PHP_NAME] = "MyClass";
+            public $myProp!: PHPReference;
+            public static async __$$__new(ctx: PHPContext, propArg?: PHPReference): Promise<MyClass> {
+              const obj = Object.create(this.prototype);
+              obj.$myProp = new PHPVariable();
+              await obj.__construct(ctx, propArg);
+              return obj;
+            }
+            public async __construct(ctx: PHPContext, propArg?: PHPReference): Promise<void> {
+              this.$myProp.set(propArg ? String(propArg.get() ?? "") : "default");
+            }
+            public async myMethod(ctx: PHPContext, arg1?: PHPReference): Promise<any> { /* ... */ }
+          }
+          ```
 
 4. **Raw Metal Execution Directives**:
    - All class names, function names, and constant names should be transpiled to lowercase for case-insensitivity.

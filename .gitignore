@@ -1,5 +1,7 @@
+.artifacts/
 node_modules/
 tests/cache/
+.test_cache/
 *.zip
 wordpress-test/
 wordpress/

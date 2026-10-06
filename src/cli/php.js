@@ -2,9 +2,17 @@ import { Command } from "commander";
 import * as readline from "readline";
 import * as path from "path";
 import * as fs from "fs";
-import { PHPEngine } from "../PHPEngine.js";
+import { PHPEngine, getDefaultExtensions } from "../PHPEngine.js";
+import { NodeJSExtension } from "../extensions/nodejs.js";
 export async function runCLI(rawArgs) {
-    const engine = new PHPEngine({ watch: false });
+    const disabledExts = new Set();
+    for (let i = 0; i < rawArgs.length; i++) {
+        if (rawArgs[i] === "--disable-extension" && rawArgs[i + 1]) {
+            disabledExts.add(rawArgs[i + 1].toLowerCase());
+        }
+    }
+    const allExtensions = [...getDefaultExtensions(), new NodeJSExtension()].filter((ext) => !disabledExts.has(ext.name.toLowerCase()));
+    const engine = new PHPEngine({ watch: false, extensions: allExtensions });
     const program = new Command();
     program
         .name("php")

@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import * as fsSync from "fs";
 import * as path from "path";
 import * as os from "os";
 import { glob as matchGlob } from "glob";
@@ -190,8 +191,9 @@ export class FileSystemRuntime {
         }
     }
     static basename(ctx, filepathArg, suffixArg) {
-        const filepath = String(filepathArg?.get() ?? "");
-        const suffix = suffixArg ? String(suffixArg.get() ?? "") : undefined;
+        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
+        const suffixVal = suffixArg && typeof suffixArg === "object" && typeof suffixArg.get === "function" ? suffixArg.get() : suffixArg;
+        const suffix = suffixVal ? String(suffixVal) : undefined;
         const normalized = filepath.replace(/\\/g, "/");
         let base = path.basename(normalized);
         if (suffix && base.endsWith(suffix)) {
@@ -200,11 +202,11 @@ export class FileSystemRuntime {
         return base;
     }
     static dirname(ctx, filepathArg) {
-        const filepath = String(filepathArg?.get() ?? "");
+        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
         return path.dirname(filepath);
     }
     static pathinfo(ctx, filepathArg, flagsArg) {
-        const filepath = String(filepathArg?.get() ?? "");
+        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
         const parsed = path.parse(filepath);
         return {
             dirname: parsed.dir,
@@ -302,6 +304,38 @@ export class FileSystemRuntime {
             return false;
         }
     }
+    static opendir(ctx, pathArg) {
+        const rawPath = String((pathArg && typeof pathArg === "object" && typeof pathArg.get === "function" ? pathArg.get() : pathArg) ?? "");
+        const resolved = resolvePath(ctx, rawPath);
+        try {
+            if (!fsSync.existsSync(resolved) || !fsSync.statSync(resolved).isDirectory())
+                return false;
+            const entries = fsSync.readdirSync(resolved);
+            return { isResource: true, resourceType: "dir", path: resolved, entries, ptr: 0 };
+        }
+        catch {
+            return false;
+        }
+    }
+    static readdir(ctx, handleArg) {
+        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+        if (!handle || typeof handle !== "object" || !Array.isArray(handle.entries))
+            return false;
+        if (handle.ptr >= handle.entries.length)
+            return false;
+        return handle.entries[handle.ptr++];
+    }
+    static closedir(ctx, handleArg) {
+        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+        if (handle && typeof handle === "object")
+            handle.entries = [];
+        return true;
+    }
+    static rewinddir(ctx, handleArg) {
+        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+        if (handle && typeof handle === "object")
+            handle.ptr = 0;
+    }
     static constants = {
         glob_err: 1,
         glob_mark: 2,
@@ -334,6 +368,10 @@ export class FileSystemRuntime {
         "dirname": FileSystemRuntime.dirname,
         "pathinfo": FileSystemRuntime.pathinfo,
         "mkdir": FileSystemRuntime.mkdir,
+        "opendir": FileSystemRuntime.opendir,
+        "readdir": FileSystemRuntime.readdir,
+        "closedir": FileSystemRuntime.closedir,
+        "rewinddir": FileSystemRuntime.rewinddir,
         "chmod": FileSystemRuntime.chmod,
         "rmdir": FileSystemRuntime.rmdir,
         "unlink": FileSystemRuntime.unlink,

@@ -7,8 +7,8 @@ import { defineFunction } from "./Reflection.js";
 export class StringRuntime {
 
   /** Gets string length. */
-  public static strlen(ctx: PHPContext, strArg?: PHPReference): number {
-    const str = strArg?.get();
+  public static strlen(ctx: PHPContext, strArg?: any): number {
+    const str = strArg instanceof PHPReference ? strArg.get() : strArg;
     if (Buffer.isBuffer(str)) return str.length;
     return String(str ?? "").length;
   }
@@ -739,6 +739,27 @@ export class StringRuntime {
     return StringRuntime.sprintf(ctx, new PHPLiteral(format), ...argsRefs);
   }
 
+  public static str_starts_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
+    const haystack = String(haystackArg?.get() ?? "");
+    const needle = String(needleArg?.get() ?? "");
+    if (needle === "") return true;
+    return haystack.startsWith(needle);
+  }
+
+  public static str_ends_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
+    const haystack = String(haystackArg?.get() ?? "");
+    const needle = String(needleArg?.get() ?? "");
+    if (needle === "") return true;
+    return haystack.endsWith(needle);
+  }
+
+  public static str_contains(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
+    const haystack = String(haystackArg?.get() ?? "");
+    const needle = String(needleArg?.get() ?? "");
+    if (needle === "") return true;
+    return haystack.includes(needle);
+  }
+
   public static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number {
     const res = StringRuntime.vsprintf(ctx, formatArg, valuesArg);
     ctx.echo(res);
@@ -746,6 +767,9 @@ export class StringRuntime {
   }
 
   static functions = {
+    "str_starts_with": StringRuntime.str_starts_with,
+    "str_ends_with": StringRuntime.str_ends_with,
+    "str_contains": StringRuntime.str_contains,
     "parse_str": StringRuntime.parse_str,
     "version_compare": StringRuntime.version_compare,
     "unpack": StringRuntime.unpack,

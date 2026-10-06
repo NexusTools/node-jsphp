@@ -4,7 +4,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import cluster from "cluster";
 import { Command } from "commander";
-import { PHPEngine } from "../PHPEngine.js";
+import { PHPEngine, getDefaultExtensions } from "../PHPEngine.js";
 import { PHPError, PHPExit } from "../runtime/PHPError.js";
 import { NodeJSExtension } from "../extensions/nodejs.js";
 
@@ -89,12 +89,11 @@ export async function runHTTPServer(
     disabledExts.push("nodejs");
   }
 
-  const exts: any[] = [];
-  if (!disabledExts.includes("nodejs")) {
-    exts.push(new NodeJSExtension());
-  }
+  const allExts = [...getDefaultExtensions(), new NodeJSExtension()].filter(
+    (ext) => !disabledExts.includes(ext.name.toLowerCase())
+  );
 
-  const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: exts, disabledExtensions: disabledExts });
+  const engine = new PHPEngine({ cacheDir: options.cacheDir || null, extensions: allExts });
   const absoluteCwd = path.resolve(docRoot);
 
   const server = http.createServer(async (req, res) => {
@@ -185,6 +184,7 @@ export async function runHTTPServer(
         if (err instanceof PHPExit || err?.name === "PHPExit") {
           // Normal exit/redirect
         } else {
+          console.error("HTTP_500_ERR:", err);
           const stackTrace = typeof err.getPHPStackTraceString === "function"
             ? err.getPHPStackTraceString()
             : PHPError.virtualizeJSStack(err.stack || String(err));
@@ -222,6 +222,7 @@ export async function runHTTPServer(
       }
 
       res.end(phpOutput);
+      ctx.close();
     } else {
       try {
         const fileData = await fs.readFile(fullPath);

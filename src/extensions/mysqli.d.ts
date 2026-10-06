@@ -14,12 +14,12 @@ export declare class MySQLiResult {
 }
 export declare class MySQLiObject {
     connection?: mysql.Connection;
-    connect_error: PHPReference;
-    connect_errno: PHPReference;
-    insert_id: PHPReference;
-    affected_rows: PHPReference;
-    error: PHPReference;
-    errno: PHPReference;
+    $connect_error: PHPReference;
+    $connect_errno: PHPReference;
+    $insert_id: PHPReference;
+    $affected_rows: PHPReference;
+    $error: PHPReference;
+    $errno: PHPReference;
     static __$$__new(ctx: PHPContext, hostArg?: PHPReference, userArg?: PHPReference, passwordArg?: PHPReference, databaseArg?: PHPReference, portArg?: PHPReference, socketArg?: PHPReference): Promise<MySQLiObject>;
     __construct(ctx: PHPContext, hostArg?: PHPReference, userArg?: PHPReference, passwordArg?: PHPReference, databaseArg?: PHPReference, portArg?: PHPReference, socketArg?: PHPReference): Promise<void>;
     real_connect(ctx: PHPContext, hostArg?: PHPReference, userArg?: PHPReference, passwordArg?: PHPReference, databaseArg?: PHPReference, portArg?: PHPReference, socketArg?: PHPReference, flagsArg?: PHPReference): Promise<boolean>;

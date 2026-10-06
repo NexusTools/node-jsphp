@@ -1,7 +1,10 @@
 import { PHPFatalError } from "./PHPError.js";
-export class PHPLiteral {
+export class PHPReference {
+}
+export class PHPLiteral extends PHPReference {
     value;
     constructor(value) {
+        super();
         this.value = value;
     }
     get() {
@@ -38,11 +41,66 @@ export class PHPLiteral {
         return val;
     }
 }
-export class PHPVariable {
+export class PHPPropertyReference extends PHPReference {
+    ctx;
+    obj;
+    prop;
+    constructor(ctx, obj, prop) {
+        super();
+        this.ctx = ctx;
+        this.obj = obj;
+        this.prop = prop;
+    }
+    get() {
+        const p = this.prop.startsWith("$") ? this.prop : "$" + this.prop;
+        const nop = this.prop.startsWith("$") ? this.prop.slice(1) : this.prop;
+        if (this.obj && typeof this.obj === "object") {
+            if (p in this.obj) {
+                const val = this.obj[p];
+                return val instanceof PHPReference ? val.get() : val;
+            }
+            if (nop in this.obj && typeof this.obj[nop] !== "function") {
+                const val = this.obj[nop];
+                return val instanceof PHPReference ? val.get() : val;
+            }
+        }
+        return undefined;
+    }
+    set(val) {
+        return this.ctx.setProperty(this.obj, this.prop, val);
+    }
+}
+export class PHPArrayOffsetReference extends PHPReference {
+    container;
+    key;
+    constructor(container, key) {
+        super();
+        this.container = container;
+        this.key = key;
+    }
+    get() {
+        const obj = this.container instanceof PHPReference ? this.container.get() : this.container;
+        if (obj && typeof obj === "object") {
+            const val = obj[this.key];
+            return val instanceof PHPReference ? val.get() : val;
+        }
+        return undefined;
+    }
+    set(val) {
+        const obj = this.container instanceof PHPReference ? this.container.get() : this.container;
+        const unwrapped = val instanceof PHPReference ? val.get() : val;
+        if (obj && typeof obj === "object") {
+            obj[this.key] = unwrapped;
+        }
+        return unwrapped;
+    }
+}
+export class PHPVariable extends PHPReference {
     value;
     refTarget;
     constructor(initialValue = undefined) {
-        if (initialValue && typeof initialValue === "object" && typeof initialValue.get === "function") {
+        super();
+        if (initialValue instanceof PHPReference) {
             const ref = initialValue;
             if (ref.refTarget) {
                 let rootTarget = ref.refTarget;
@@ -67,7 +125,17 @@ export class PHPVariable {
     set(val) {
         if (this.refTarget)
             return this.refTarget.set(val);
-        const unwrapped = val && typeof val === "object" && typeof val.get === "function" ? val.get() : val;
+        const unwrapped = val instanceof PHPReference ? val.get() : val;
+        if (Array.isArray(unwrapped)) {
+            const copy = [...unwrapped];
+            for (const k of Object.keys(unwrapped)) {
+                if (isNaN(Number(k)))
+                    copy[k] = unwrapped[k];
+            }
+            delete copy.__ptr;
+            this.value = copy;
+            return copy;
+        }
         this.value = unwrapped;
         return unwrapped;
     }
@@ -93,29 +161,29 @@ export class PHPVariable {
             throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
         }
         const lowerMethod = method.toLowerCase();
-        const callArgs = args.map((arg) => (arg && typeof arg === "object" && typeof arg.get === "function" ? arg : new PHPLiteral(arg)));
+        const callArgs = args.map((arg) => (arg instanceof PHPReference ? arg : new PHPLiteral(arg)));
         if (typeof obj.callMethod === "function") {
             let res = await obj.callMethod(ctx, method, callArgs);
-            if (res && typeof res === "object" && typeof res.get === "function")
+            if (res instanceof PHPReference)
                 res = res.get();
             return res;
         }
         const metadata = obj?.phpClass?.methods?.get ? (obj.phpClass.methods.get(method) || obj.phpClass.methods.get(lowerMethod)) : (obj?.phpClass?.methods?.[method] || obj?.phpClass?.methods?.[lowerMethod]);
         if (metadata?.fn) {
             let res = await metadata.fn.apply(obj, [ctx, ...callArgs]);
-            if (res && typeof res === "object" && typeof res.get === "function")
+            if (res instanceof PHPReference)
                 res = res.get();
             return res;
         }
         if (typeof obj[method] === "function") {
             let res = await obj[method].apply(obj, [ctx, ...callArgs]);
-            if (res && typeof res === "object" && typeof res.get === "function")
+            if (res instanceof PHPReference)
                 res = res.get();
             return res;
         }
         if (typeof obj[lowerMethod] === "function") {
             let res = await obj[lowerMethod].apply(obj, [ctx, ...callArgs]);
-            if (res && typeof res === "object" && typeof res.get === "function")
+            if (res instanceof PHPReference)
                 res = res.get();
             return res;
         }

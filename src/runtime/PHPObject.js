@@ -1,5 +1,5 @@
 import { PHPFatalError } from "./PHPError.js";
-import { PHPVariable } from "./PHPVariable.js";
+import { PHPReference } from "./PHPVariable.js";
 export class PHPClass {
     name;
     parentClass;
@@ -109,7 +109,7 @@ export class PHPObject {
                     const __callMeta = cls.methods.get("__call");
                     if (__callMeta?.fn) {
                         let res = await __callMeta.fn.call(this, ctx, name, args);
-                        if (res instanceof PHPVariable)
+                        if (res instanceof PHPReference)
                             res = res.get();
                         return res;
                     }
@@ -121,7 +121,7 @@ export class PHPObject {
                 for (const propName of Object.getOwnPropertyNames(target)) {
                     if (propName.toLowerCase() === lowerName && typeof this[propName] === "function") {
                         let res = await this[propName].apply(this, args);
-                        if (res instanceof PHPVariable)
+                        if (res instanceof PHPReference)
                             res = res.get();
                         return res;
                     }

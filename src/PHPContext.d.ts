@@ -53,10 +53,13 @@ export declare class PHPContext {
     tickCount: number;
     private stdout;
     private stderr;
-    outputText: string;
-    checkLoop(filepath: string, line: number): void;
+    private outputChunks;
+    get outputText(): string;
+    set outputText(val: string);
+    checkLoop(filepath: string, line: number): Promise<void>;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
     currentClassStack: any[];
+    close(): void;
     get currentClass(): any;
     get currentClassName(): string;
     get currentParentClassName(): string;
@@ -112,6 +115,8 @@ export declare class PHPContext {
     getCurrentFunctionArgs(): any[];
     /** Sets a single array offset on a variable. */
     setVarOffset(name: string, key: any, value: any): any;
+    /** Sets global variable offsets. */
+    setGlobalVar(name: string, keys: any[], value: any): any;
     /** Sets nested array offsets on a variable. */
     setVarOffsets(name: string, keys: any[], value: any): any;
     /** Unsets nested array offsets on a variable. */
@@ -202,4 +207,6 @@ export declare class PHPContext {
     static runFile(filepath: string, options?: PHPContextOptions): Promise<PHPContext>;
     /** Helper to create an engine, context, and execute inline PHP code. */
     static runCode(code: string, options?: PHPContextOptions): Promise<PHPContext>;
+    /** Cleans up references to allow garbage collection of this context. */
+    destroy(): void;
 }

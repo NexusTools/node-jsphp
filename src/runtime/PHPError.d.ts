@@ -10,6 +10,22 @@ export interface PHPStackFrame {
     args?: any[];
 }
 export declare class PHPError extends Error {
+    static readonly E_ERROR = 1;
+    static readonly E_WARNING = 2;
+    static readonly E_PARSE = 4;
+    static readonly E_NOTICE = 8;
+    static readonly E_CORE_ERROR = 16;
+    static readonly E_CORE_WARNING = 32;
+    static readonly E_COMPILE_ERROR = 64;
+    static readonly E_COMPILE_WARNING = 128;
+    static readonly E_USER_ERROR = 256;
+    static readonly E_USER_WARNING = 512;
+    static readonly E_USER_NOTICE = 1024;
+    static readonly E_STRICT = 2048;
+    static readonly E_RECOVERABLE_ERROR = 4096;
+    static readonly E_DEPRECATED = 8192;
+    static readonly E_USER_DEPRECATED = 16384;
+    static readonly E_ALL = 32767;
     phpCode: number;
     phpFile: string;
     phpLine: number;
@@ -20,36 +36,80 @@ export declare class PHPError extends Error {
     static wrapJSError(err: any): PHPError;
     __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void>;
     getMessage(): string;
+    getmessage(): string;
     getCode(): number;
+    getcode(): number;
     getFile(): string;
+    getfile(): string;
     getLine(): number;
+    getline(): number;
     getPrevious(): PHPError | null;
+    getprevious(): PHPError | null;
+    gettrace(): PHPStackFrame[];
+    gettraceasstring(): string;
     static virtualizeJSStack(jsStack: string, phpFile?: string, phpLine?: number, phpTrace?: PHPStackFrame[]): string;
     getPHPStackTraceString(): string;
 }
 export declare class PHPException extends PHPError {
-    static phpName: string;
     static [SYMBOL_PHP_NAME]: string;
     constructor(messageArg?: any, codeArg?: any, previousArg?: any);
 }
+export declare class InvalidArgumentException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class BadMethodCallException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class DomainException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class LengthException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class LogicException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class OutOfRangeException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class OverflowException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class RangeException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class RuntimeException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class UnderflowException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class UnexpectedValueException extends PHPException {
+    static [SYMBOL_PHP_NAME]: string;
+}
+export declare class ErrorException extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
+    severity: number;
+    constructor(message?: string, code?: number, severity?: number, file?: string, line?: number, previous?: any);
+}
 export declare class PHPTypeError extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
 }
 export declare class PHPParseError extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
 }
 export declare class PHPFatalError extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
 }
 export declare class PHPNotice extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
 }
 export declare class PHPWarning extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
 }
 export declare class PHPExit extends PHPError {
     status: any;
     constructor(status?: any);
-}
-export declare class ErrorException extends PHPError {
-    severity: number;
-    constructor(message?: string, code?: number, severity?: number, file?: string, line?: number, previous?: PHPError | null);
-    getSeverity(): number;
 }
 export declare class ErrorRuntime {
     static debug_backtrace(ctx: PHPContext): any;

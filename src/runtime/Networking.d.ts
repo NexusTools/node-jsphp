@@ -11,7 +11,7 @@ export declare class NetworkingRuntime {
     static long2ip(ctx: PHPContext | null, numArg?: PHPReference): string | false;
     static parse_url(ctx: PHPContext | null, urlStrArg?: PHPReference, componentArg?: PHPReference): any;
     static http_build_query(ctx: PHPContext | null, dataArg?: PHPReference, numericPrefixArg?: PHPReference, argSeparatorArg?: PHPReference): string;
-    static header(ctx: PHPContext, headerStrArg?: PHPReference, replaceArg?: PHPReference, codeArg?: PHPReference): void;
+    static header(ctx: PHPContext, headerStrArg?: any, replaceArg?: any, codeArg?: any): void;
     static setcookie(ctx: PHPContext, nameArg?: PHPReference, valueArg?: PHPReference, expiresArg?: PHPReference, pathArg?: PHPReference, domainArg?: PHPReference, secureArg?: PHPReference, httponlyArg?: PHPReference): boolean;
     static setrawcookie(ctx: PHPContext, nameArg?: PHPReference, valueArg?: PHPReference, expiresArg?: PHPReference, pathArg?: PHPReference, domainArg?: PHPReference, secureArg?: PHPReference, httponlyArg?: PHPReference): boolean;
     static header_remove(ctx: PHPContext, nameArg?: PHPReference): void;

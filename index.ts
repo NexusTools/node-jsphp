@@ -1,4 +1,4 @@
-export { PHPEngine } from "./src/PHPEngine.js";
+export { PHPEngine, getDefaultExtensions } from "./src/PHPEngine.js";
 export type { PHPEngineOptions } from "./src/PHPEngine.js";
 export { PHPContext } from "./src/PHPContext.js";
 export type { PHPContextOptions } from "./src/PHPContext.js";

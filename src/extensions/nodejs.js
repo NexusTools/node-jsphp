@@ -1,5 +1,6 @@
 import { createRequire } from "module";
 import { PHPExtension } from "../PHPExtension.js";
+import { PHPReference } from "../runtime/PHPVariable.js";
 export const SYMBOL_PHP_NODEJS_PROXY = Symbol.for("php.nodejsProxy");
 export const SYMBOL_PHP_NODEJS_VALUE = Symbol.for("php.nodejsValue");
 const customRequire = createRequire(import.meta.url);
@@ -118,7 +119,7 @@ export function wrapJSValue(val) {
 export function unwrapPHPValue(val) {
     if (val === null || val === undefined)
         return val;
-    const actual = val && typeof val === "object" && typeof val.get === "function" ? val.get() : val;
+    const actual = val instanceof PHPReference ? val.get() : val;
     if (actual && (typeof actual === "object" || typeof actual === "function") && actual[SYMBOL_PHP_NODEJS_PROXY]) {
         return actual[SYMBOL_PHP_NODEJS_PROXY];
     }

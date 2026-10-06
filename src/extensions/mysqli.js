@@ -37,20 +37,20 @@ export class MySQLiResult {
 }
 export class MySQLiObject {
     connection;
-    connect_error = new PHPVariable(null);
-    connect_errno = new PHPVariable(0);
-    insert_id = new PHPVariable(0);
-    affected_rows = new PHPVariable(0);
-    error = new PHPVariable("");
-    errno = new PHPVariable(0);
+    $connect_error = new PHPVariable(null);
+    $connect_errno = new PHPVariable(0);
+    $insert_id = new PHPVariable(0);
+    $affected_rows = new PHPVariable(0);
+    $error = new PHPVariable("");
+    $errno = new PHPVariable(0);
     static async __$$__new(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
         const obj = Object.create(this.prototype);
-        obj.connect_error = new PHPVariable(null);
-        obj.connect_errno = new PHPVariable(0);
-        obj.insert_id = new PHPVariable(0);
-        obj.affected_rows = new PHPVariable(0);
-        obj.error = new PHPVariable("");
-        obj.errno = new PHPVariable(0);
+        obj.$connect_error = new PHPVariable(null);
+        obj.$connect_errno = new PHPVariable(0);
+        obj.$insert_id = new PHPVariable(0);
+        obj.$affected_rows = new PHPVariable(0);
+        obj.$error = new PHPVariable("");
+        obj.$errno = new PHPVariable(0);
         if (typeof obj.__construct === "function")
             await obj.__construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
         return obj;
@@ -86,18 +86,18 @@ export class MySQLiObject {
                 port: actualPort,
                 connectTimeout: 1000,
             });
-            this.connect_error.set(null);
-            this.connect_errno.set(0);
-            this.error.set("");
-            this.errno.set(0);
+            this.$connect_error.set(null);
+            this.$connect_errno.set(0);
+            this.$error.set("");
+            this.$errno.set(0);
             return true;
         }
         catch (err) {
             console.error("MYSQL CONNECT ERR:", err);
-            this.connect_error.set(err.message);
-            this.connect_errno.set(err.errno || 1045);
-            this.error.set(err.message);
-            this.errno.set(err.errno || 1045);
+            this.$connect_error.set(err.message);
+            this.$connect_errno.set(err.errno || 1045);
+            this.$error.set(err.message);
+            this.$errno.set(err.errno || 1045);
             return false;
         }
     }
@@ -111,14 +111,14 @@ export class MySQLiObject {
                 return new MySQLiResult(results);
             }
             else {
-                this.insert_id.set(results.insertId || 0);
-                this.affected_rows.set(results.affectedRows || 0);
+                this.$insert_id.set(results.insertId || 0);
+                this.$affected_rows.set(results.affectedRows || 0);
                 return true;
             }
         }
         catch (err) {
-            this.error.set(err.message);
-            this.errno.set(err.errno || 1064);
+            this.$error.set(err.message);
+            this.$errno.set(err.errno || 1064);
             return false;
         }
     }
@@ -221,17 +221,17 @@ export class MySQLiExtension extends PHPExtension {
             },
             mysqli_error: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? conn.error.get() : "";
+                return conn ? conn.$error.get() : "";
             },
             mysqli_connect_errno: (ctx) => 0,
             mysqli_connect_error: (ctx) => "",
             mysqli_errno: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? conn.connect_errno.get() : 0;
+                return conn ? conn.$errno.get() : 0;
             },
             mysqli_sqlstate: (ctx, connArg) => {
                 const conn = connArg?.get();
-                return conn ? (conn.connect_errno.get() ? "HY000" : "00000") : "00000";
+                return conn ? (conn.$errno.get() ? "HY000" : "00000") : "00000";
             },
             mysqli_free_result: (ctx, res) => true,
             mysqli_more_results: (ctx, conn) => false,

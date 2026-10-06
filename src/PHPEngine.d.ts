@@ -1,6 +1,10 @@
 import { PHPExtension } from "./PHPExtension.js";
 import { PHPContext, PHPContextOptions } from "./PHPContext.js";
 import { PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
+export declare const PROXY_HANDLER: {
+    get(target: any, prop: any, receiver: any): any;
+    set(target: any, prop: any, value: any, receiver: any): boolean;
+};
 export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
@@ -11,14 +15,14 @@ export interface PHPEngineOptions {
     cacheDir?: string | null;
     watch?: boolean;
 }
+export declare function getDefaultExtensions(): PHPExtension[];
 export declare class PHPEngine {
-    static readonly REVISION = 280;
+    static readonly REVISION = 313;
     static readonly VERSION = "8.5.0";
     static readonly TRUE: PHPLiteral;
     static readonly FALSE: PHPLiteral;
     static readonly NULL: PHPLiteral;
     extensions: Map<string, PHPExtension>;
-    disabledExtensions: Set<string>;
     constants: Record<string, any>;
     functions: Record<string, PHPFunction>;
     classes: Record<string, any>;

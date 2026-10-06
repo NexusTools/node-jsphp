@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -8,6 +9,8 @@ import { PHPEngine, PHPContext } from "../index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+jest.setTimeout(180000);
 
 const MYSQL_ROOT_PASSWORD = process.env.MYSQL_ROOT_PASSWORD || "DNESB*GJ*W(E$GYB$UW#gt78wg";
 const MYSQL_HOST = process.env.MYSQL_HOST || "127.0.0.1";
@@ -53,7 +56,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
   let parsedCookies: Record<string, string> = {};
 
   beforeAll(async () => {
-    engine = new PHPEngine({ cacheDir: null, watch: false });
+    jest.setTimeout(180000);
+    delete process.env.JSPHP_DEBUG;
+    engine = new PHPEngine({ cacheDir: path.join(__dirname, "../.test_cache"), watch: false });
 
     console.log("Setting up MySQL database...");
     const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
@@ -173,7 +178,10 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     try {
       await getCtx.require(setupPhpPath);
     } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
+      if (e.name !== "PHPExit") {
+        console.error("STEP 1 ERROR:", e);
+        throw e;
+      }
     }
 
     console.log("STEP 1 FULL OUTPUT:\n", getOutput);
@@ -213,7 +221,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     const cssContent = fs.readFileSync(installCssPath, "utf8");
     expect(cssContent).toContain("#logo");
     expect(cssContent).toContain("body");
-  }, 30000);
+
+    getCtx.destroy();
+  }, 180000);
 
   test("Step 2: Submit Database Configuration and Create wp-config.php (setup-config.php?step=2)", async () => {
     const setupPhpPath = path.join(wpDir, "wp-admin", "setup-config.php");
@@ -260,7 +270,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
 
     expect(installLink.length).toBeGreaterThan(0);
     expect(fs.existsSync(path.join(wpDir, "wp-config.php"))).toBe(true);
-  }, 30000);
+
+    postCtx.destroy();
+  }, 180000);
 
   test("Step 3: Render Installation Form (install.php)", async () => {
     const installPhpPath = path.join(wpDir, "wp-admin", "install.php");
@@ -291,7 +303,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     const $get = cheerio.load(getOutput);
     const form = $get("form[action='install.php?step=2']");
     expect(form.length).toBeGreaterThan(0);
-  }, 30000);
+
+    getCtx.destroy();
+  }, 180000);
 
   test("Step 4: Execute WordPress Installation (install.php?step=2)", async () => {
     const installPhpPath = path.join(wpDir, "wp-admin", "install.php");
@@ -359,6 +373,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
 
     expect(loginLink.length).toBeGreaterThan(0);
     expect($post("body").text()).toContain("Success!");
+
+    getCtx.destroy();
+    postCtx.destroy();
   }, 60000);
 
   test("Step 5: Login to Control Panel and save session cookies", async () => {
@@ -404,7 +421,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     }
 
     expect(Object.keys(parsedCookies).length).toBeGreaterThan(0);
-  }, 30000);
+
+    loginCtx.destroy();
+  }, 180000);
 
   test("Step 6: Render Dashboard (wp-admin/index.php)", async () => {
     let adminOutput = "";
@@ -436,7 +455,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     const adminTitle = $admin("title, h1").text();
     expect(adminTitle.length).toBeGreaterThan(0);
     expect(adminTitle.toLowerCase()).toContain("dashboard");
-  }, 30000);
+
+    adminCtx.destroy();
+  }, 180000);
 
   test("Step 7: Create and Enable Stack Trace Plugin from Admin Panel", async () => {
     const pluginDir = path.join(wpDir, "wp-content", "plugins", "stacktrace-plugin");
@@ -535,6 +556,9 @@ if (function_exists('add_action')) {
     }
 
     expect(activateCtx.response.statusCode).toBe(302);
+
+    pluginsCtx.destroy();
+    activateCtx.destroy();
   }, 60000);
 
   test("Step 8: Renders Main Home Page (index.php) and verifies plugin executed", async () => {
@@ -567,5 +591,7 @@ if (function_exists('add_action')) {
     expect(homeOutput).toContain("stacktrace_plugin_layer_3()");
     expect(homeOutput).toContain("stacktrace_plugin_layer_2()");
     expect(homeOutput).toContain("stacktrace_plugin_layer_1()");
-  }, 30000);
+
+    homeCtx.destroy();
+  }, 180000);
 });

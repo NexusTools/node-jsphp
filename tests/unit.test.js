@@ -7,6 +7,7 @@ import * as path from "path";
 describe("PHPEngine & AST Unit Tests", () => {
     let engine;
     beforeEach(() => {
+        delete process.env.JSPHP_DEBUG;
         engine = new PHPEngine({ watch: false });
     });
     afterEach(() => {

@@ -5,7 +5,8 @@ import * as crypto from "crypto";
 import chokidar from "chokidar";
 import { PHPContext } from "./PHPContext.js";
 import { JSTranspiler } from "./parser/JSTranspiler.js";
-import { PHPVariable, PHPLiteral } from "./runtime/PHPVariable.js";
+import { PHPVariable, PHPLiteral, PHPReference, PHPPropertyReference, PHPArrayOffsetReference } from "./runtime/PHPVariable.js";
+import { PHPInterface } from "./runtime/PHPInterface.js";
 import vm from "vm";
 import { StringRuntime } from "./runtime/Strings.js";
 import { ArrayRuntime } from "./runtime/Arrays.js";
@@ -18,9 +19,47 @@ import { StreamRuntime } from "./runtime/Streams.js";
 import { ExecRuntime } from "./runtime/Exec.js";
 import { FiberRuntime } from "./runtime/Fiber.js";
 import { EnumRuntime } from "./runtime/Enum.js";
-import { ErrorRuntime, PHPFatalError } from "./runtime/PHPError.js";
+import { ErrorRuntime, PHPError, PHPFatalError } from "./runtime/PHPError.js";
 import { ReflectionRuntime, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES } from "./runtime/Reflection.js";
 import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
+export const PROXY_HANDLER = {
+    get(target, prop, receiver) {
+        if (prop === 'get' || prop === 'set' || prop === 'then' || prop === 'catch' || prop === 'finally' || typeof prop === 'symbol')
+            return target[prop];
+        if (typeof prop === 'string' && prop.startsWith('$')) {
+            if (prop in target)
+                return target[prop];
+            const realProp = prop.slice(1);
+            if (typeof target.__get === 'function')
+                return target.__get(target.__ctx, new PHPLiteral(realProp));
+            return undefined;
+        }
+        if (prop in target)
+            return target[prop];
+        if (typeof target.__call === 'function')
+            return async (ctx, ...args) => target.__call(ctx, new PHPLiteral(prop), new PHPLiteral(args));
+        return target[prop];
+    },
+    set(target, prop, value, receiver) {
+        const propWithDollar = typeof prop === 'string' && prop.startsWith('$') ? prop : '$' + prop;
+        const realProp = typeof prop === 'string' && prop.startsWith('$') ? prop.slice(1) : prop;
+        if (propWithDollar in target) {
+            if (target[propWithDollar] instanceof PHPVariable) {
+                target[propWithDollar].set(value);
+            }
+            else {
+                target[propWithDollar] = value;
+            }
+            return true;
+        }
+        if (typeof target.__set === 'function') {
+            target.__set(target.__ctx, new PHPLiteral(realProp), new PHPLiteral(value));
+            return true;
+        }
+        target[propWithDollar] = value;
+        return true;
+    }
+};
 import { MySQLiExtension } from "./extensions/mysqli.js";
 import { PDOExtension } from "./extensions/pdo.js";
 import { GDExtension } from "./extensions/gd.js";
@@ -34,14 +73,29 @@ import { SPLExtension } from "./extensions/spl.js";
 import { HashExtension } from "./extensions/hash.js";
 import { OpenSSLExtension } from "./extensions/openssl.js";
 import { CoreRuntime } from "./runtime/CoreRuntime.js";
+export function getDefaultExtensions() {
+    return [
+        new MySQLiExtension(),
+        new PDOExtension(),
+        new GDExtension(),
+        new PCREExtension(),
+        new MbstringExtension(),
+        new JSONExtension(),
+        new CurlExtension(),
+        new SessionExtension(),
+        new XMLExtension(),
+        new SPLExtension(),
+        new HashExtension(),
+        new OpenSSLExtension(),
+    ];
+}
 export class PHPEngine {
-    static REVISION = 280;
+    static REVISION = 313;
     static VERSION = "8.5.0";
     static TRUE = new PHPLiteral(true);
     static FALSE = new PHPLiteral(false);
     static NULL = new PHPLiteral(null);
     extensions = new Map();
-    disabledExtensions = new Set();
     constants = {};
     functions = {};
     classes = {};
@@ -83,9 +137,6 @@ export class PHPEngine {
         this.cacheDir = options.cacheDir === null
             ? null
             : (options.cacheDir || process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache"));
-        if (options.disabledExtensions) {
-            options.disabledExtensions.forEach((ext) => this.disabledExtensions.add(ext.toLowerCase()));
-        }
         // Set core PHP constants
         Object.assign(this.constants, PHPEngine.coreConstants);
         if (options.constants) {
@@ -100,23 +151,8 @@ export class PHPEngine {
             }
         }
         this.registerRuntimeImplementations();
-        // Default extensions list if not explicitly provided
-        const defaultExtensions = [
-            new MySQLiExtension(),
-            new PDOExtension(),
-            new GDExtension(),
-            new PCREExtension(),
-            new MbstringExtension(),
-            new JSONExtension(),
-            new CurlExtension(),
-            new SessionExtension(),
-            new XMLExtension(),
-            new SPLExtension(),
-            new HashExtension(),
-            new OpenSSLExtension(),
-            ...(options.extensions || []),
-        ];
-        defaultExtensions.forEach((ext) => this.registerExtension(ext));
+        const extensionsToRegister = options.extensions ? options.extensions : getDefaultExtensions();
+        extensionsToRegister.forEach((ext) => this.registerExtension(ext));
         if (options.watch === true) {
             this.initWatcher();
         }
@@ -168,10 +204,17 @@ export class PHPEngine {
      */
     async resolveClass(name, originalName, ctx) {
         const orig = originalName || name;
-        const shortName = String(orig).split("\\").pop() || String(orig);
         const shortLower = String(name).split("\\").pop() || String(name);
-        // the context classes uses the engine classes as it's prototype so there's no need to check the engine classes
         let resolved = ctx.classes[name] || ctx.classes[shortLower];
+        if (!resolved && !shortLower.includes("\\")) {
+            const suffix = "\\" + shortLower;
+            for (const k of Object.keys(ctx.classes)) {
+                if (k.endsWith(suffix)) {
+                    resolved = ctx.classes[k];
+                    break;
+                }
+            }
+        }
         if (resolved)
             return resolved;
         let resolvingClasses = this.resolvingClasses.get(ctx);
@@ -186,6 +229,15 @@ export class PHPEngine {
             for (const resolver of this.classResolvers) {
                 await resolver(ctx, orig);
                 resolved = ctx.classes[name] || ctx.classes[shortLower];
+                if (!resolved && !shortLower.includes("\\")) {
+                    const suffix = "\\" + shortLower;
+                    for (const k of Object.keys(ctx.classes)) {
+                        if (k.endsWith(suffix)) {
+                            resolved = ctx.classes[k];
+                            break;
+                        }
+                    }
+                }
                 if (resolved)
                     return resolved;
             }
@@ -211,11 +263,18 @@ export class PHPEngine {
         ReflectionRuntime.register(this);
         FiberRuntime.register(this);
         EnumRuntime.register(this);
+        class __cls_stdClass {
+            static async __$$__new(ctx, ...args) {
+                const instance = Object.create(this.prototype);
+                instance.__ctx = ctx;
+                return instance;
+            }
+        }
+        __cls_stdClass[SYMBOL_PHP_NAME] = "stdClass";
+        __cls_stdClass.prototype[SYMBOL_PHP_NAME] = "stdClass";
+        this.classes["stdclass"] = __cls_stdClass;
     }
     registerExtension(extension) {
-        if (this.disabledExtensions.has(extension.name.toLowerCase())) {
-            return;
-        }
         this.extensions.set(extension.name.toLowerCase(), extension);
         extension.onInit(this);
         if (extension.constants)
@@ -230,13 +289,7 @@ export class PHPEngine {
             .sort()
             .map((k) => `${k}@${this.extensions.get(k)?.version || PHPEngine.VERSION}`)
             .join(",");
-        const sortedConsts = Object.entries(this.constants)
-            .map(([k, v]) => `${k}=${v}`)
-            .sort()
-            .join(";");
-        const sortedFuncs = Object.keys(this.functions).sort().join(",");
-        const sortedClasses = Object.keys(this.classes).sort().join(",");
-        return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}|${sortedConsts}|${sortedFuncs}|${sortedClasses}`).digest("hex");
+        return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}`).digest("hex");
     }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);
@@ -263,20 +316,21 @@ export class PHPEngine {
             cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
             engine: this,
         });
+        const jsCode = transpilation.code;
         const moduleObj = { exports: {} };
         try {
-            const factory = new Function("module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", transpilation.code);
-            factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES);
+            const factory = vm.compileFunction(jsCode, ["module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "PHPError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", "PHPReference", "PHPInterface", "PHPPropertyReference", "PHPArrayOffsetReference", "PROXY_HANDLER"], { filename: filepath });
+            factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, PHPError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, PHPReference, PHPInterface, PHPPropertyReference, PHPArrayOffsetReference, PROXY_HANDLER);
             return moduleObj.exports;
         }
         catch (err) {
             if (err.name === "SyntaxError") {
                 try {
-                    new vm.Script(transpilation.code);
+                    new vm.Script(jsCode);
                 }
                 catch (scriptErr) {
                     console.error(`SYNTAX_ERR in ${filepath}: ${scriptErr.message}\nSTACK:\n${scriptErr.stack}`);
-                    const codeLines = transpilation.code.split("\n");
+                    const codeLines = jsCode.split("\n");
                     const match = (scriptErr.stack || "").match(/evalmachine\.<anonymous>:(\d+)/);
                     if (match) {
                         const lineNum = parseInt(match[1], 10);

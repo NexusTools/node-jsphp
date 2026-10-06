@@ -1,26 +1,26 @@
-import { PHPVariable } from "./PHPVariable.js";
-import { PHPExit, PHPFatalError } from "./PHPError.js";
+import { PHPReference, PHPVariable } from "./PHPVariable.js";
+import { PHPExit, PHPFatalError, PHPError } from "./PHPError.js";
 export class CoreRuntime {
     static functions = {
         "exit": (ctx, statusArg = 0) => {
-            const status = statusArg instanceof PHPVariable ? statusArg.get() : statusArg;
+            const status = statusArg instanceof PHPReference ? statusArg.get() : statusArg;
             if (status !== undefined && status !== null && typeof status === "string" && Number.isNaN(Number(status))) {
                 ctx.echo(status);
             }
             throw new PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status));
         },
         "die": (ctx, statusArg = 0) => {
-            const status = statusArg instanceof PHPVariable ? statusArg.get() : statusArg;
+            const status = statusArg instanceof PHPReference ? statusArg.get() : statusArg;
             if (status !== undefined && status !== null && typeof status === "string" && Number.isNaN(Number(status))) {
                 ctx.echo(status);
             }
             throw new PHPExit(typeof status === "number" ? status : (!isNaN(Number(status)) ? Number(status) : status));
         },
         "call_user_func": async (ctx, callbackArg, ...args) => {
-            const callback = callbackArg instanceof PHPVariable ? callbackArg.get() : callbackArg;
+            const callback = callbackArg instanceof PHPReference ? callbackArg.get() : callbackArg;
             if (!callback)
                 return undefined;
-            const callArgs = args.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
+            const callArgs = args.map((arg) => (arg instanceof PHPReference ? arg : new PHPVariable(arg)));
             if (typeof callback === "function")
                 return await callback.apply(ctx, [ctx, ...callArgs]);
             if (typeof callback === "string") {
@@ -36,8 +36,8 @@ export class CoreRuntime {
                 return await fn(ctx, ...callArgs);
             }
             if (Array.isArray(callback) && callback.length === 2) {
-                const obj = callback[0] instanceof PHPVariable ? callback[0].get() : callback[0];
-                const m = String(callback[1] instanceof PHPVariable ? callback[1].get() : callback[1]).toLowerCase();
+                const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
+                const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
                 if (obj && m) {
                     if (typeof obj === "string") {
                         const cls = ctx.classes[obj.toLowerCase()] ?? (await ctx.resolveMissingClass(obj.toLowerCase()));
@@ -57,10 +57,10 @@ export class CoreRuntime {
             return undefined;
         },
         "call_user_func_array": async (ctx, callbackArg, argsArg = []) => {
-            const callback = callbackArg instanceof PHPVariable ? callbackArg.get() : callbackArg;
-            const rawArgs = argsArg instanceof PHPVariable ? argsArg.get() : argsArg;
+            const callback = callbackArg instanceof PHPReference ? callbackArg.get() : callbackArg;
+            const rawArgs = argsArg instanceof PHPReference ? argsArg.get() : argsArg;
             const arrArgs = Array.isArray(rawArgs) ? rawArgs : Object.values(rawArgs || {});
-            const callArgs = arrArgs.map((arg) => (arg instanceof PHPVariable ? arg : new PHPVariable(arg)));
+            const callArgs = arrArgs.map((arg) => (arg instanceof PHPReference ? arg : new PHPVariable(arg)));
             if (!callback)
                 return undefined;
             if (typeof callback === "function")
@@ -78,8 +78,8 @@ export class CoreRuntime {
                 return await fn(ctx, ...callArgs);
             }
             if (Array.isArray(callback) && callback.length === 2) {
-                const obj = callback[0] instanceof PHPVariable ? callback[0].get() : callback[0];
-                const m = String(callback[1] instanceof PHPVariable ? callback[1].get() : callback[1]).toLowerCase();
+                const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
+                const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
                 if (obj && m) {
                     if (typeof obj === "string") {
                         const cls = ctx.classes[obj.toLowerCase()] ?? (await ctx.resolveMissingClass(obj.toLowerCase()));
@@ -100,41 +100,41 @@ export class CoreRuntime {
         },
         "func_get_args": (ctx) => {
             const args = ctx.getCurrentFunctionArgs();
-            return args.map((a) => (a instanceof PHPVariable ? a.get() : a));
+            return args.map((a) => (a instanceof PHPReference ? a.get() : a));
         },
         "func_get_arg": (ctx, indexArg) => {
-            const index = Number(indexArg instanceof PHPVariable ? indexArg.get() : indexArg) || 0;
+            const index = Number(indexArg instanceof PHPReference ? indexArg.get() : indexArg) || 0;
             const args = ctx.getCurrentFunctionArgs();
             const val = args[index];
-            return val instanceof PHPVariable ? val.get() : val;
+            return val instanceof PHPReference ? val.get() : val;
         },
         "func_num_args": (ctx) => {
             return ctx.getCurrentFunctionArgs().length;
         },
         "define": async (ctx, nameArg, valueArg) => {
-            const name = nameArg instanceof PHPVariable ? nameArg.get() : nameArg;
-            const value = valueArg instanceof PHPVariable ? valueArg.get() : valueArg;
+            const name = nameArg instanceof PHPReference ? nameArg.get() : nameArg;
+            const value = valueArg instanceof PHPReference ? valueArg.get() : valueArg;
             const lower = String(name ?? "").toLowerCase();
             if (ctx.hasConstant(lower)) {
                 if (ctx.getConstant(lower) === value) {
                     return true;
                 }
-                await ctx.triggerError(`Constant ${name} already defined`, 2);
+                await ctx.triggerError(`Constant ${name} already defined`, PHPError.E_WARNING);
                 return false;
             }
             ctx.defineConstant(name, value);
             return true;
         },
         "defined": (ctx, nameArg) => {
-            const name = nameArg instanceof PHPVariable ? nameArg.get() : nameArg;
-            return ctx.hasConstant(String(name ?? "").toLowerCase());
+            const name = nameArg instanceof PHPReference ? nameArg.get() : nameArg;
+            return ctx.hasConstant(String(name ?? ""));
         },
         "extension_loaded": (ctx, nameArg) => {
-            const name = nameArg instanceof PHPVariable ? nameArg.get() : nameArg;
+            const name = nameArg instanceof PHPReference ? nameArg.get() : nameArg;
             return Boolean(name && typeof name === "string" && ctx.engine.extensions.has(name.toLowerCase()));
         },
         "function_exists": (ctx, nameArg) => {
-            const name = nameArg instanceof PHPVariable ? nameArg.get() : nameArg;
+            const name = nameArg instanceof PHPReference ? nameArg.get() : nameArg;
             return Boolean(name && typeof name === "string" && (name.toLowerCase() in ctx.functions));
         },
         "class_alias": async (ctx, original, alias, autoload = true) => {
@@ -216,12 +216,12 @@ export class CoreRuntime {
             return false;
         },
         "constant": (ctx, nameArg) => {
-            const name = nameArg instanceof PHPVariable ? nameArg.get() : nameArg;
+            const name = nameArg instanceof PHPReference ? nameArg.get() : nameArg;
             return ctx.getConstant(String(name ?? "").toLowerCase());
         },
         "assert": (ctx, assertionArg, descriptionArg) => {
-            const assertion = assertionArg instanceof PHPVariable ? assertionArg.get() : assertionArg;
-            const description = descriptionArg instanceof PHPVariable ? descriptionArg.get() : descriptionArg;
+            const assertion = assertionArg instanceof PHPReference ? assertionArg.get() : assertionArg;
+            const description = descriptionArg instanceof PHPReference ? descriptionArg.get() : descriptionArg;
             if (!assertion) {
                 if (description)
                     throw new PHPFatalError(`Assertion failed: ${description}`);
@@ -230,23 +230,33 @@ export class CoreRuntime {
             return true;
         },
         "is_callable": (ctx, vArg) => {
-            const v = vArg instanceof PHPVariable ? vArg.get() : vArg;
+            const v = vArg instanceof PHPReference ? vArg.get() : vArg;
             if (typeof v === "function")
                 return true;
             if (typeof v === "string") {
                 const lower = v.toLowerCase();
+                if (lower.includes("::")) {
+                    const [clsName, m] = lower.split("::");
+                    const cls = ctx.classes[clsName] || ctx.engine.classes[clsName];
+                    if (!cls)
+                        return false;
+                    return typeof cls[m] === "function" || typeof cls.prototype?.[m] === "function" || typeof cls.__callStatic === "function";
+                }
                 return Object.hasOwn(ctx.functions, lower) || Object.hasOwn(ctx.engine.functions, lower);
             }
             if (Array.isArray(v) && v.length === 2) {
-                const obj = v[0] instanceof PHPVariable ? v[0].get() : v[0];
-                const m = v[1] instanceof PHPVariable ? v[1].get() : v[1];
+                const obj = v[0] instanceof PHPReference ? v[0].get() : v[0];
+                const m = v[1] instanceof PHPReference ? v[1].get() : v[1];
                 if (typeof m === "string") {
+                    const mLower = m.toLowerCase();
                     if (typeof obj === "string") {
                         const cls = ctx.classes[obj.toLowerCase()] || ctx.engine.classes[obj.toLowerCase()];
-                        return Boolean(cls && cls.methods && cls.methods.has(m.toLowerCase()));
+                        if (!cls)
+                            return false;
+                        return typeof cls[mLower] === "function" || typeof cls.prototype?.[mLower] === "function" || typeof cls.__callStatic === "function";
                     }
-                    if (obj && typeof obj === "object" && obj.constructor !== Object && obj.constructor !== Array) {
-                        return typeof obj[m] === "function" || typeof obj[m.toLowerCase()] === "function" || typeof obj.__call === "function";
+                    if (obj && typeof obj === "object") {
+                        return typeof obj[m] === "function" || typeof obj[mLower] === "function" || typeof obj.__call === "function";
                     }
                 }
             }
@@ -256,7 +266,7 @@ export class CoreRuntime {
             return false;
         },
         "ini_get": (ctx, optionArg) => {
-            const option = optionArg instanceof PHPVariable ? optionArg.get() : optionArg;
+            const option = optionArg instanceof PHPReference ? optionArg.get() : optionArg;
             const opt = (option || "").toLowerCase();
             if (opt === "display_errors")
                 return "1";
@@ -282,6 +292,11 @@ export class CoreRuntime {
         },
         "register_tick_function": (ctx, callback, ...args) => true,
         "unregister_tick_function": (ctx, callback) => true,
+        "error_log": (ctx, messageArg) => {
+            const msg = String((messageArg && typeof messageArg === "object" && typeof messageArg.get === "function" ? messageArg.get() : messageArg) ?? "");
+            console.log("[PHP ERROR LOG]", msg);
+            return true;
+        },
     };
     static register(engine) {
         engine.registerFunctions(CoreRuntime.functions);

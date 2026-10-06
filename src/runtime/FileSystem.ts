@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import * as fsSync from "fs";
 import * as path from "path";
 import * as os from "os";
 import { glob as matchGlob } from "glob";
@@ -181,9 +182,10 @@ export class FileSystemRuntime {
     }
   }
 
-  public static basename(ctx: PHPContext, filepathArg?: PHPReference, suffixArg?: PHPReference): string {
-    const filepath = String(filepathArg?.get() ?? "");
-    const suffix = suffixArg ? String(suffixArg.get() ?? "") : undefined;
+  public static basename(ctx: PHPContext, filepathArg?: any, suffixArg?: any): string {
+    const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
+    const suffixVal = suffixArg && typeof suffixArg === "object" && typeof suffixArg.get === "function" ? suffixArg.get() : suffixArg;
+    const suffix = suffixVal ? String(suffixVal) : undefined;
     const normalized = filepath.replace(/\\/g, "/");
     let base = path.basename(normalized);
     if (suffix && base.endsWith(suffix)) {
@@ -192,13 +194,13 @@ export class FileSystemRuntime {
     return base;
   }
 
-  public static dirname(ctx: PHPContext, filepathArg?: PHPReference): string {
-    const filepath = String(filepathArg?.get() ?? "");
+  public static dirname(ctx: PHPContext, filepathArg?: any): string {
+    const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
     return path.dirname(filepath);
   }
 
-  public static pathinfo(ctx: PHPContext, filepathArg?: PHPReference, flagsArg?: PHPReference): Record<string, string> {
-    const filepath = String(filepathArg?.get() ?? "");
+  public static pathinfo(ctx: PHPContext, filepathArg?: any, flagsArg?: any): Record<string, string> {
+    const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
     const parsed = path.parse(filepath);
     return {
       dirname: parsed.dir,
@@ -298,6 +300,36 @@ export class FileSystemRuntime {
     }
   }
 
+  public static opendir(ctx: PHPContext, pathArg?: any): any {
+    const rawPath = String((pathArg && typeof pathArg === "object" && typeof pathArg.get === "function" ? pathArg.get() : pathArg) ?? "");
+    const resolved = resolvePath(ctx, rawPath);
+    try {
+      if (!fsSync.existsSync(resolved) || !fsSync.statSync(resolved).isDirectory()) return false;
+      const entries = fsSync.readdirSync(resolved);
+      return { isResource: true, resourceType: "dir", path: resolved, entries, ptr: 0 };
+    } catch {
+      return false;
+    }
+  }
+
+  public static readdir(ctx: PHPContext, handleArg?: any): string | false {
+    const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    if (!handle || typeof handle !== "object" || !Array.isArray(handle.entries)) return false;
+    if (handle.ptr >= handle.entries.length) return false;
+    return handle.entries[handle.ptr++];
+  }
+
+  public static closedir(ctx: PHPContext, handleArg?: any): boolean {
+    const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    if (handle && typeof handle === "object") handle.entries = [];
+    return true;
+  }
+
+  public static rewinddir(ctx: PHPContext, handleArg?: any): void {
+    const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    if (handle && typeof handle === "object") handle.ptr = 0;
+  }
+
   static constants = {
     glob_err: 1,
     glob_mark: 2,
@@ -331,6 +363,10 @@ export class FileSystemRuntime {
     "dirname": FileSystemRuntime.dirname,
     "pathinfo": FileSystemRuntime.pathinfo,
     "mkdir": FileSystemRuntime.mkdir,
+    "opendir": FileSystemRuntime.opendir,
+    "readdir": FileSystemRuntime.readdir,
+    "closedir": FileSystemRuntime.closedir,
+    "rewinddir": FileSystemRuntime.rewinddir,
     "chmod": FileSystemRuntime.chmod,
     "rmdir": FileSystemRuntime.rmdir,
     "unlink": FileSystemRuntime.unlink,

@@ -1,6 +1,6 @@
 import type { PHPContext } from "../PHPContext.js";
 import { PHPFatalError } from "./PHPError.js";
-import { PHPVariable } from "./PHPVariable.js";
+import { PHPReference } from "./PHPVariable.js";
 
 export interface PHPParameterMetadata {
   name: string;
@@ -141,7 +141,7 @@ export class PHPObject {
           const __callMeta = cls.methods.get("__call");
           if (__callMeta?.fn) {
             let res = await __callMeta.fn.call(this, ctx, name, args);
-            if (res instanceof PHPVariable) res = res.get();
+            if (res instanceof PHPReference) res = res.get();
             return res;
           }
         }
@@ -152,7 +152,7 @@ export class PHPObject {
         for (const propName of Object.getOwnPropertyNames(target)) {
           if (propName.toLowerCase() === lowerName && typeof (this as any)[propName] === "function") {
             let res = await (this as any)[propName].apply(this, args);
-            if (res instanceof PHPVariable) res = res.get();
+            if (res instanceof PHPReference) res = res.get();
             return res;
           }
         }

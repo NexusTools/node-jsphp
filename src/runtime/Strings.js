@@ -1,9 +1,9 @@
-import { PHPLiteral } from "./PHPVariable.js";
+import { PHPLiteral, PHPReference } from "./PHPVariable.js";
 import { defineFunction } from "./Reflection.js";
 export class StringRuntime {
     /** Gets string length. */
     static strlen(ctx, strArg) {
-        const str = strArg?.get();
+        const str = strArg instanceof PHPReference ? strArg.get() : strArg;
         if (Buffer.isBuffer(str))
             return str.length;
         return String(str ?? "").length;
@@ -726,12 +726,36 @@ export class StringRuntime {
         const argsRefs = arr.map((v) => new PHPLiteral(v));
         return StringRuntime.sprintf(ctx, new PHPLiteral(format), ...argsRefs);
     }
+    static str_starts_with(ctx, haystackArg, needleArg) {
+        const haystack = String(haystackArg?.get() ?? "");
+        const needle = String(needleArg?.get() ?? "");
+        if (needle === "")
+            return true;
+        return haystack.startsWith(needle);
+    }
+    static str_ends_with(ctx, haystackArg, needleArg) {
+        const haystack = String(haystackArg?.get() ?? "");
+        const needle = String(needleArg?.get() ?? "");
+        if (needle === "")
+            return true;
+        return haystack.endsWith(needle);
+    }
+    static str_contains(ctx, haystackArg, needleArg) {
+        const haystack = String(haystackArg?.get() ?? "");
+        const needle = String(needleArg?.get() ?? "");
+        if (needle === "")
+            return true;
+        return haystack.includes(needle);
+    }
     static vprintf(ctx, formatArg, valuesArg) {
         const res = StringRuntime.vsprintf(ctx, formatArg, valuesArg);
         ctx.echo(res);
         return res.length;
     }
     static functions = {
+        "str_starts_with": StringRuntime.str_starts_with,
+        "str_ends_with": StringRuntime.str_ends_with,
+        "str_contains": StringRuntime.str_contains,
         "parse_str": StringRuntime.parse_str,
         "version_compare": StringRuntime.version_compare,
         "unpack": StringRuntime.unpack,

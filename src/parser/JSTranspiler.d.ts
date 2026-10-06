@@ -3,6 +3,7 @@ export interface TranspileOptions {
     engineSHA1?: string;
     cacheDir?: string;
     engine?: PHPEngine;
+    sourceMap?: boolean;
 }
 export interface TranspilationResult {
     code: string;
@@ -17,9 +18,9 @@ export declare class JSTranspiler {
     private currentNamespaceNameOriginal;
     private classImports;
     private classImportsOriginal;
+    private loopLabelCounter;
     private switchLabelCounter;
-    private switchLabelStack;
-    private foreachDepth;
+    private loopStack;
     constructor();
     transpile(code: string, filepath?: string, options?: TranspileOptions): TranspilationResult;
     private collectFunctionsInNodes;

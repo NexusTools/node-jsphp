@@ -16,9 +16,9 @@ export declare class FileSystemRuntime {
     static filesize(ctx: PHPContext, filepathArg?: PHPReference): Promise<number | false>;
     static filemtime(ctx: PHPContext, filepathArg?: PHPReference): Promise<number | false>;
     static realpath(ctx: PHPContext, filepathArg?: PHPReference): Promise<string | false>;
-    static basename(ctx: PHPContext, filepathArg?: PHPReference, suffixArg?: PHPReference): string;
-    static dirname(ctx: PHPContext, filepathArg?: PHPReference): string;
-    static pathinfo(ctx: PHPContext, filepathArg?: PHPReference, flagsArg?: PHPReference): Record<string, string>;
+    static basename(ctx: PHPContext, filepathArg?: any, suffixArg?: any): string;
+    static dirname(ctx: PHPContext, filepathArg?: any): string;
+    static pathinfo(ctx: PHPContext, filepathArg?: any, flagsArg?: any): Record<string, string>;
     static mkdir(ctx: PHPContext, dirpathArg?: PHPReference, modeArg?: PHPReference, recursiveArg?: PHPReference): Promise<boolean>;
     static chmod(ctx: PHPContext, filenameArg?: PHPReference, modeArg?: PHPReference): Promise<boolean>;
     static rmdir(ctx: PHPContext, dirpathArg?: PHPReference): Promise<boolean>;
@@ -28,6 +28,10 @@ export declare class FileSystemRuntime {
     static tempnam(ctx: PHPContext, dirArg?: PHPReference, prefixArg?: PHPReference): Promise<string | false>;
     static sys_get_temp_dir(ctx?: PHPContext): string;
     static scandir(ctx: PHPContext, dirpathArg?: PHPReference): Promise<string[] | false>;
+    static opendir(ctx: PHPContext, pathArg?: any): any;
+    static readdir(ctx: PHPContext, handleArg?: any): string | false;
+    static closedir(ctx: PHPContext, handleArg?: any): boolean;
+    static rewinddir(ctx: PHPContext, handleArg?: any): void;
     static constants: {
         glob_err: number;
         glob_mark: number;
@@ -60,6 +64,10 @@ export declare class FileSystemRuntime {
         dirname: typeof FileSystemRuntime.dirname;
         pathinfo: typeof FileSystemRuntime.pathinfo;
         mkdir: typeof FileSystemRuntime.mkdir;
+        opendir: typeof FileSystemRuntime.opendir;
+        readdir: typeof FileSystemRuntime.readdir;
+        closedir: typeof FileSystemRuntime.closedir;
+        rewinddir: typeof FileSystemRuntime.rewinddir;
         chmod: typeof FileSystemRuntime.chmod;
         rmdir: typeof FileSystemRuntime.rmdir;
         unlink: typeof FileSystemRuntime.unlink;
