@@ -297,8 +297,30 @@ export class CoreRuntime {
             console.log("[PHP ERROR LOG]", msg);
             return true;
         },
+        "debug_backtrace": (ctx, optionsArg, limitArg) => {
+            const trace = ctx.getPHPBacktrace();
+            const limit = Number(limitArg?.get()) || 0;
+            return limit > 0 ? trace.slice(0, limit) : trace;
+        },
+        "debug_print_backtrace": (ctx, optionsArg, limitArg) => {
+            const trace = ctx.getPHPBacktrace();
+            const limit = Number(limitArg?.get()) || 0;
+            const items = limit > 0 ? trace.slice(0, limit) : trace;
+            let out = "";
+            items.forEach((f, i) => {
+                out += `#${i} ${f.file || ""}(${f.line || 0}): ${f.function || "{main}"}()\n`;
+            });
+            ctx.echo(out);
+        },
+    };
+    static constants = {
+        DEBUG_BACKTRACE_PROVIDE_OBJECT: 1,
+        DEBUG_BACKTRACE_IGNORE_ARGS: 2,
+        debug_backtrace_provide_object: 1,
+        debug_backtrace_ignore_args: 2,
     };
     static register(engine) {
+        engine.registerConstants(CoreRuntime.constants);
         engine.registerFunctions(CoreRuntime.functions);
     }
 }

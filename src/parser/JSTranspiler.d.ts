@@ -4,6 +4,7 @@ export interface TranspileOptions {
     cacheDir?: string;
     engine?: PHPEngine;
     sourceMap?: boolean;
+    format?: "cjs" | "esm";
 }
 export interface TranspilationResult {
     code: string;

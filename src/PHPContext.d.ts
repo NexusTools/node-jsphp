@@ -55,6 +55,7 @@ export declare class PHPContext {
     private stderr;
     private outputChunks;
     get outputText(): string;
+    get symbols(): Record<string, any>;
     set outputText(val: string);
     checkLoop(filepath: string, line: number): Promise<void>;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
@@ -207,6 +208,8 @@ export declare class PHPContext {
     static runFile(filepath: string, options?: PHPContextOptions): Promise<PHPContext>;
     /** Helper to create an engine, context, and execute inline PHP code. */
     static runCode(code: string, options?: PHPContextOptions): Promise<PHPContext>;
+    private cleanupTasks;
+    registerCleanup(task: () => Promise<void> | void): void;
     /** Cleans up references to allow garbage collection of this context. */
-    destroy(): void;
+    destroy(): Promise<void>;
 }

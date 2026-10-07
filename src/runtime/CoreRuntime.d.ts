@@ -1,4 +1,5 @@
 import { PHPContext } from "../PHPContext.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class CoreRuntime {
     static functions: {
         exit: (ctx: PHPContext, statusArg?: any) => never;
@@ -25,6 +26,9 @@ export declare class CoreRuntime {
         register_tick_function: (ctx: PHPContext, callback: any, ...args: any[]) => boolean;
         unregister_tick_function: (ctx: PHPContext, callback: any) => boolean;
         error_log: (ctx: PHPContext, messageArg: any) => boolean;
+        debug_backtrace: (ctx: PHPContext, optionsArg?: PHPReference, limitArg?: PHPReference) => any[];
+        debug_print_backtrace: (ctx: PHPContext, optionsArg?: PHPReference, limitArg?: PHPReference) => void;
     };
+    static constants: Record<string, any>;
     static register(engine: any): void;
 }

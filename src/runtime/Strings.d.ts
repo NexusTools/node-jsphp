@@ -59,6 +59,10 @@ export declare class StringRuntime {
     static strcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number;
     /** Binary safe string comparison of the first n characters. */
     static strncmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number;
+    /** Binary safe case-insensitive string comparison. */
+    static strcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number;
+    /** Binary safe case-insensitive string comparison of the first n characters. */
+    static strncasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number;
     /** Quote string with slashes. */
     static addslashes(ctx: PHPContext, strArg?: PHPReference): string;
     static addcslashes(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string;
@@ -93,6 +97,8 @@ export declare class StringRuntime {
     static bin2hex(ctx: PHPContext, stringArg?: PHPReference): string;
     /** Decodes a hexadecimally encoded binary string. */
     static hex2bin(ctx: PHPContext, hexStringArg?: PHPReference): string;
+    static base64_encode(ctx: PHPContext, stringArg?: PHPReference): string;
+    static base64_decode(ctx: PHPContext, stringArg?: PHPReference): string;
     /** Compares two "PHP-standardized" version number strings. */
     static version_compare(ctx: PHPContext, v1Arg?: PHPReference, v2Arg?: PHPReference, opArg?: PHPReference): any;
     /**
@@ -146,6 +152,8 @@ export declare class StringRuntime {
         ucwords: typeof StringRuntime.ucwords;
         strcmp: typeof StringRuntime.strcmp;
         strncmp: typeof StringRuntime.strncmp;
+        strcasecmp: typeof StringRuntime.strcasecmp;
+        strncasecmp: typeof StringRuntime.strncasecmp;
         addslashes: typeof StringRuntime.addslashes;
         addcslashes: typeof StringRuntime.addcslashes;
         stripslashes: typeof StringRuntime.stripslashes;
@@ -164,6 +172,8 @@ export declare class StringRuntime {
         ord: typeof StringRuntime.ord;
         bin2hex: typeof StringRuntime.bin2hex;
         hex2bin: typeof StringRuntime.hex2bin;
+        base64_encode: typeof StringRuntime.base64_encode;
+        base64_decode: typeof StringRuntime.base64_decode;
     };
     static register(engine: PHPEngine): void;
 }

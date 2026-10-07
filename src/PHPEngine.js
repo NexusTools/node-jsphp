@@ -101,6 +101,20 @@ export class PHPEngine {
     classes = {};
     interfaces = {};
     internalVars = {};
+    symbols = {
+        PHPVariable,
+        PHPLiteral,
+        PHPFatalError,
+        PHPError,
+        SYMBOL_PHP_NAME,
+        SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS,
+        SYMBOL_PHP_CLASS_INTERFACES,
+        PHPReference,
+        PHPInterface,
+        PHPPropertyReference,
+        PHPArrayOffsetReference,
+        PROXY_HANDLER,
+    };
     classResolvers = [];
     resolvingClasses = new Map();
     compiledCache = new Map();
@@ -229,6 +243,14 @@ export class PHPEngine {
             for (const resolver of this.classResolvers) {
                 await resolver(ctx, orig);
                 resolved = ctx.classes[name] || ctx.classes[shortLower];
+                if (!resolved && orig.toLowerCase() === "deferredclass") {
+                    await resolver(ctx, "DeferredClass");
+                    resolved = ctx.classes[name] || ctx.classes[shortLower];
+                }
+                if (!resolved && orig !== name) {
+                    await resolver(ctx, name);
+                    resolved = ctx.classes[name] || ctx.classes[shortLower];
+                }
                 if (!resolved && !shortLower.includes("\\")) {
                     const suffix = "\\" + shortLower;
                     for (const k of Object.keys(ctx.classes)) {
@@ -247,7 +269,32 @@ export class PHPEngine {
         }
         return undefined;
     }
+    registerCoreInterfaces() {
+        const traversable = new PHPInterface("Traversable");
+        const iterator = new PHPInterface("Iterator", [traversable]);
+        const iteratorAggregate = new PHPInterface("IteratorAggregate", [traversable]);
+        const arrayAccess = new PHPInterface("ArrayAccess");
+        const countable = new PHPInterface("Countable");
+        const serializable = new PHPInterface("Serializable");
+        const jsonSerializable = new PHPInterface("JsonSerializable");
+        const throwable = new PHPInterface("Throwable");
+        const stringable = new PHPInterface("Stringable");
+        const unitEnum = new PHPInterface("UnitEnum");
+        const backedEnum = new PHPInterface("BackedEnum", [unitEnum]);
+        this.interfaces["traversable"] = traversable;
+        this.interfaces["iterator"] = iterator;
+        this.interfaces["iteratoraggregate"] = iteratorAggregate;
+        this.interfaces["arrayaccess"] = arrayAccess;
+        this.interfaces["countable"] = countable;
+        this.interfaces["serializable"] = serializable;
+        this.interfaces["jsonserializable"] = jsonSerializable;
+        this.interfaces["throwable"] = throwable;
+        this.interfaces["stringable"] = stringable;
+        this.interfaces["unitenum"] = unitEnum;
+        this.interfaces["backedenum"] = backedEnum;
+    }
     registerRuntimeImplementations() {
+        this.registerCoreInterfaces();
         CoreRuntime.register(this);
         StringRuntime.register(this);
         ArrayRuntime.register(this);
@@ -266,7 +313,7 @@ export class PHPEngine {
         class __cls_stdClass {
             static async __$$__new(ctx, ...args) {
                 const instance = Object.create(this.prototype);
-                instance.__ctx = ctx;
+                Object.defineProperty(instance, "__ctx", { value: ctx, writable: true, configurable: true, enumerable: false });
                 return instance;
             }
         }
@@ -341,8 +388,11 @@ export class PHPEngine {
             throw err;
         }
     }
+    contexts = new Set();
     createContext(options = {}) {
-        return new PHPContext(this, options);
+        const ctx = new PHPContext(this, options);
+        this.contexts.add(ctx);
+        return ctx;
     }
     initWatcher() {
         this.watcher = chokidar.watch([], { ignoreInitial: true });
@@ -351,7 +401,27 @@ export class PHPEngine {
             this.compiledCache.delete(resolved);
         });
     }
+    clearCache() {
+        this.compiledCache.clear();
+        if (typeof globalThis.gc === "function") {
+            try {
+                globalThis.gc();
+            }
+            catch (e) { }
+        }
+    }
     async close() {
+        for (const ctx of Array.from(this.contexts)) {
+            await ctx.destroy();
+        }
+        this.contexts.clear();
+        this.compiledCache.clear();
+        if (typeof globalThis.gc === "function") {
+            try {
+                globalThis.gc();
+            }
+            catch (e) { }
+        }
         if (this.watcher) {
             const w = this.watcher;
             this.watcher = undefined;

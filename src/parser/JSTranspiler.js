@@ -72,7 +72,27 @@ export class JSTranspiler {
         }
         const lines = [];
         const lineMap = new Map();
-        lines.push("module.exports = async function(ctx) {");
+        const format = options.format || "cjs";
+        if (format === "esm") {
+            lines.push("export default async function(ctx) {");
+        }
+        else {
+            lines.push("module.exports = async function(ctx) {");
+        }
+        lines.push("  if (ctx && typeof ctx.createContext === \"function\") ctx = ctx.createContext();");
+        lines.push("  const _syms = ctx?.engine?.symbols || ctx?.symbols || {};");
+        lines.push("  const PHPVariable = _syms.PHPVariable || (typeof arguments !== 'undefined' && arguments[2]);");
+        lines.push("  const PHPLiteral = _syms.PHPLiteral || (typeof arguments !== 'undefined' && arguments[3]);");
+        lines.push("  const PHPFatalError = _syms.PHPFatalError || (typeof arguments !== 'undefined' && arguments[4]);");
+        lines.push("  const PHPError = _syms.PHPError || (typeof arguments !== 'undefined' && arguments[5]);");
+        lines.push("  const SYMBOL_PHP_NAME = _syms.SYMBOL_PHP_NAME || (typeof arguments !== 'undefined' && arguments[6]);");
+        lines.push("  const SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS = _syms.SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS || (typeof arguments !== 'undefined' && arguments[7]);");
+        lines.push("  const SYMBOL_PHP_CLASS_INTERFACES = _syms.SYMBOL_PHP_CLASS_INTERFACES || (typeof arguments !== 'undefined' && arguments[8]);");
+        lines.push("  const PHPReference = _syms.PHPReference || (typeof arguments !== 'undefined' && arguments[9]);");
+        lines.push("  const PHPInterface = _syms.PHPInterface || (typeof arguments !== 'undefined' && arguments[10]);");
+        lines.push("  const PHPPropertyReference = _syms.PHPPropertyReference || (typeof arguments !== 'undefined' && arguments[11]);");
+        lines.push("  const PHPArrayOffsetReference = _syms.PHPArrayOffsetReference || (typeof arguments !== 'undefined' && arguments[12]);");
+        lines.push("  const PROXY_HANDLER = _syms.PROXY_HANDLER || (typeof arguments !== 'undefined' && arguments[13]);");
         lines.push("  try {");
         this.currentClassName = "";
         this.currentNamespaceName = "";
@@ -730,7 +750,7 @@ export class JSTranspiler {
                 });
                 lines.push(`${pad}  static async __$$__new(ctx, ...args) {`);
                 lines.push(`${pad}    const instance = Object.create(this.prototype);`);
-                lines.push(`${pad}    instance.__ctx = ctx;`);
+                lines.push(`${pad}    Object.defineProperty(instance, "__ctx", { value: ctx, writable: true, configurable: true, enumerable: false });`);
                 lines.push(`${pad}    await this.__$$__init(ctx, instance);`);
                 lines.push(`${pad}    if (this.prototype[SYMBOL_PHP_HAS_MAGIC_METHODS]) {`);
                 lines.push(`${pad}      const proxy = new Proxy(instance, PROXY_HANDLER);`);
@@ -759,6 +779,18 @@ export class JSTranspiler {
                 lines.push(`${pad}__cls_${safeClassId}[SYMBOL_PHP_NAME] = ${JSON.stringify(originalClassName)};`);
                 lines.push(`${pad}__cls_${safeClassId}.prototype[SYMBOL_PHP_NAME] = ${JSON.stringify(originalClassName)};`);
                 lines.push(`${pad}__cls_${safeClassId}.__php_parent = ${isChildClass ? `__parent_${safeClassId}` : "null"};`);
+                lines.push(`${pad}__cls_${safeClassId}.__php_properties = new Map();`);
+                for (const item of bodyItems) {
+                    if (item?.kind === "propertystatement") {
+                        const vis = item.visibility || "public";
+                        const isStat = Boolean(item.isStatic);
+                        for (const property of item.properties || []) {
+                            const rawName = property.name?.name || property.name;
+                            const propName = rawName.startsWith("$") ? rawName.slice(1) : rawName;
+                            lines.push(`${pad}__cls_${safeClassId}.__php_properties.set(${JSON.stringify(propName)}, { visibility: ${JSON.stringify(vis)}, isStatic: ${isStat} });`);
+                        }
+                    }
+                }
                 if (selfHasMagic) {
                     lines.push(`${pad}__cls_${safeClassId}.prototype[SYMBOL_PHP_HAS_MAGIC_METHODS] = true;`);
                 }

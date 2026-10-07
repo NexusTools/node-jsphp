@@ -101,6 +101,9 @@ export class PHPContext {
     get outputText() {
         return this.outputChunks.join("");
     }
+    get symbols() {
+        return this.engine.symbols;
+    }
     set outputText(val) {
         this.outputChunks = [val];
     }
@@ -371,7 +374,13 @@ export class PHPContext {
                     return true;
                 },
                 has: (target, prop) => {
-                    return typeof prop === "string" ? (prop in target) : Reflect.has(target, prop);
+                    if (typeof prop === "string") {
+                        if (["GLOBALS", "_GET", "_POST", "_SERVER", "_COOKIE", "_FILES", "_ENV", "_REQUEST", "_SESSION"].includes(prop)) {
+                            return true;
+                        }
+                        return prop in target;
+                    }
+                    return Reflect.has(target, prop);
                 },
                 deleteProperty: (target, prop) => {
                     if (typeof prop === "string") {
@@ -381,11 +390,29 @@ export class PHPContext {
                     return Reflect.deleteProperty(target, prop);
                 },
                 ownKeys: (target) => {
-                    return Object.keys(target);
+                    const keys = new Set(Object.keys(target));
+                    keys.add("GLOBALS");
+                    keys.add("_GET");
+                    keys.add("_POST");
+                    keys.add("_SERVER");
+                    keys.add("_COOKIE");
+                    keys.add("_FILES");
+                    keys.add("_ENV");
+                    keys.add("_REQUEST");
+                    keys.add("_SESSION");
+                    return Array.from(keys);
                 },
                 getOwnPropertyDescriptor: (target, prop) => {
-                    if (typeof prop === "string" && prop in target) {
-                        return { enumerable: true, configurable: true, writable: true, value: this.getGlobalPHPVar(prop).get() };
+                    if (typeof prop === "string") {
+                        if (prop === "GLOBALS") {
+                            return { enumerable: true, configurable: true, writable: true, value: this.globalsProxy };
+                        }
+                        if (["_GET", "_POST", "_SERVER", "_COOKIE", "_FILES", "_ENV", "_REQUEST", "_SESSION"].includes(prop)) {
+                            return { enumerable: true, configurable: true, writable: true, value: this.getGlobalPHPVar(prop).get() };
+                        }
+                        if (prop in target) {
+                            return { enumerable: true, configurable: true, writable: true, value: this.getGlobalPHPVar(prop).get() };
+                        }
                     }
                     return Reflect.getOwnPropertyDescriptor(target, prop);
                 }
@@ -747,15 +774,19 @@ export class PHPContext {
     async resolveMissingClass(className, originalName) {
         const orig = originalName || className;
         const lower = className.toLowerCase();
-        let cls = await this.engine.resolveClass(lower, orig, this);
+        let cls = this.interfaces[lower] || this.engine.interfaces[lower] || await this.engine.resolveClass(lower, orig, this);
         if (!cls && (lower.endsWith("exception") || lower.endsWith("error"))) {
             cls = this.classes["exception"] || this.classes["error"] || this.engine.classes["exception"] || this.engine.classes["error"];
+        }
+        if (!cls) {
+            throw new PHPFatalError(`Class "${orig}" not found`);
         }
         return cls;
     }
     async resolveClass(className, originalName) {
         const lower = className.toLowerCase();
-        return this.classes[className] || this.classes[lower] || await this.resolveMissingClass(className, originalName);
+        const orig = originalName || (className !== lower ? className : (className.charAt(0).toUpperCase() + className.slice(1)));
+        return this.classes[className] || this.classes[lower] || await this.resolveMissingClass(lower, orig);
     }
     /**
      * Gets a static class constant.
@@ -1014,8 +1045,20 @@ export class PHPContext {
         await ctx.eval(code);
         return ctx;
     }
+    cleanupTasks = [];
+    registerCleanup(task) {
+        this.cleanupTasks.push(task);
+    }
     /** Cleans up references to allow garbage collection of this context. */
-    destroy() {
+    async destroy() {
+        for (const task of this.cleanupTasks) {
+            try {
+                await task();
+            }
+            catch (e) { }
+        }
+        this.cleanupTasks = [];
+        this.engine.contexts.delete(this);
         this.vars = {};
         this.constants = Object.create(null);
         this.functions = Object.create(null);

@@ -8,14 +8,15 @@
   "bin": {
     "php": "bin/php.js",
     "php-fpm": "bin/php-fpm.js",
-    "php-http-server": "bin/php-http-server.js"
+    "php-http-server": "bin/php-http-server.js",
+    "php2js": "bin/php-to-js.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-vm-modules --max-old-space-size=8192 node_modules/jest/bin/jest.js",
+    "test": "cmd /c \"set NODE_OPTIONS=--max-old-space-size=8192 && node --experimental-vm-modules --expose-gc node_modules/jest/bin/jest.js -i\"",
     "prepare": "npm run build"
   },
   "keywords": [

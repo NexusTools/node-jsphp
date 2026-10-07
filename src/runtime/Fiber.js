@@ -1,3 +1,4 @@
+import { PHPReference } from "./PHPVariable.js";
 export class PHPFiberError extends Error {
 }
 export class PHPFiberExit extends Error {
@@ -10,7 +11,22 @@ export class PHPFiber {
     suspended = false;
     value = undefined;
     constructor(callback) {
-        this.callback = callback;
+        if (callback)
+            this.callback = callback;
+    }
+    static async __$$__new(ctx, callbackArg) {
+        const obj = Object.create(this.prototype);
+        obj.running = false;
+        obj.started = false;
+        obj.terminated = false;
+        obj.suspended = false;
+        obj.value = undefined;
+        await obj.__construct(ctx, callbackArg);
+        return obj;
+    }
+    async __construct(ctx, callbackArg) {
+        const cb = callbackArg?.get ? callbackArg.get() : callbackArg;
+        this.callback = cb;
     }
     async start(ctx, ...args) {
         if (this.started)
@@ -18,7 +34,13 @@ export class PHPFiber {
         this.started = true;
         this.running = true;
         try {
-            this.value = await this.callback.apply(null, [ctx, ...args]);
+            const cb = this.callback instanceof PHPReference ? this.callback.get() : this.callback;
+            if (typeof cb === "function") {
+                this.value = await cb(ctx, ...args);
+            }
+            else if (ctx && typeof ctx.callUserFunction === "function") {
+                this.value = await ctx.callUserFunction(cb, args);
+            }
             this.terminated = true;
             this.running = false;
             return this.value;
@@ -30,9 +52,13 @@ export class PHPFiber {
         }
     }
     isStarted() { return this.started; }
+    isstarted() { return this.isStarted(); }
     isRunning() { return this.running; }
+    isrunning() { return this.isRunning(); }
     isSuspended() { return this.suspended; }
+    issuspended() { return this.isSuspended(); }
     isTerminated() { return this.terminated; }
+    isterminated() { return this.isTerminated(); }
     static async suspend(value = undefined) {
         return value;
     }

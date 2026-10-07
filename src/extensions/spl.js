@@ -47,8 +47,8 @@ export class SPLExtension extends PHPExtension {
             }
         });
         this.functions = {
-            spl_object_id: (ctx, value) => this.getObjectId(value, "spl_object_id"),
-            spl_object_hash: (ctx, value) => this.getObjectId(value, "spl_object_hash").toString(16).padStart(32, "0"),
+            spl_object_id: async (ctx, value) => this.getObjectId(value, "spl_object_id"),
+            spl_object_hash: async (ctx, value) => this.getObjectId(value, "spl_object_hash").toString(16).padStart(32, "0"),
             spl_autoload_register: (ctx, callbackArg) => {
                 const callback = callbackArg instanceof PHPReference ? callbackArg.get() : callbackArg;
                 if (callback !== undefined && callback !== null) {

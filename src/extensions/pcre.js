@@ -46,6 +46,16 @@ export class PCREExtension extends PHPExtension {
             Object.assign(target, matches);
         }
     }
+    preg_quote(ctx, strArg, delimiterArg) {
+        const str = String(strArg?.get() ?? "");
+        const delimiter = delimiterArg?.get() ? String(delimiterArg.get()) : null;
+        let escaped = str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        if (delimiter && delimiter.length > 0) {
+            const delimEsc = delimiter.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+            escaped = escaped.replace(new RegExp(delimEsc, "g"), "\\" + delimiter);
+        }
+        return escaped;
+    }
     onInit(engine) {
         this.constants = {
             preg_pattern_order: 1,
@@ -62,7 +72,7 @@ export class PCREExtension extends PHPExtension {
                 const flags = Number(flagsArg?.get()) || 0;
                 const offset = Number(offsetArg?.get()) || 0;
                 try {
-                    const regex = this.compilePattern(pattern, true, Boolean(flags & 256));
+                    const regex = this.compilePattern(pattern, false, Boolean(flags & 256));
                     regex.lastIndex = offset < 0 ? Math.max(0, subject.length + offset) : offset;
                     const match = regex.exec(subject);
                     this.storeMatches(ctx, matchesObj, match ? this.captures(match, flags) : []);
@@ -161,6 +171,7 @@ export class PCREExtension extends PHPExtension {
             },
             preg_last_error: (ctx) => ctx.getInternalVar("lastPregError") || 0,
             preg_last_error_msg: (ctx) => ctx.getInternalVar("lastPregError") ? "Internal error" : "No error",
+            preg_quote: (ctx, strArg, delimiterArg) => this.preg_quote(ctx, strArg, delimiterArg),
             preg_split: (ctx, patternArg, subjectArg, limitArg, flagsArg) => {
                 const pattern = ctx.str(patternArg?.get());
                 const subject = ctx.str(subjectArg?.get());

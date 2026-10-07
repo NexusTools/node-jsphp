@@ -353,6 +353,20 @@ export class StringRuntime {
     return StringRuntime.strcmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
   }
 
+  /** Binary safe case-insensitive string comparison. */
+  public static strcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number {
+    const s1 = String(str1Arg?.get() ?? "").toLowerCase();
+    const s2 = String(str2Arg?.get() ?? "").toLowerCase();
+    if (s1 === s2) return 0;
+    return s1 < s2 ? -1 : 1;
+  }
+
+  /** Binary safe case-insensitive string comparison of the first n characters. */
+  public static strncasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number {
+    const length = Number(lengthArg?.get()) || 0;
+    return StringRuntime.strcasecmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
+  }
+
   /** Quote string with slashes. */
   public static addslashes(ctx: PHPContext, strArg?: PHPReference): string {
     return String(strArg?.get() ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
@@ -562,7 +576,7 @@ export class StringRuntime {
     const padLength = Number(padLengthArg?.get()) || 0;
     const padString = padStringArg?.get() !== undefined ? String(padStringArg.get()) : " ";
     const padType = padTypeArg?.get() !== undefined ? Number(padTypeArg.get()) : 1;
-    if (s.length >= padLength) return s;
+    if (s.length >= padLength || !padString) return s;
     const needed = padLength - s.length;
     const pStr = padString.repeat(Math.ceil(needed / padString.length)).substring(0, needed);
     if (padType === 0) return pStr + s; // STR_PAD_LEFT
@@ -577,7 +591,8 @@ export class StringRuntime {
   /** Convert a string to an array. */
   public static str_split(ctx: PHPContext, stringArg?: PHPReference, lengthArg?: PHPReference): string[] {
     const s = String(stringArg?.get() ?? "");
-    const length = Number(lengthArg?.get()) || 1;
+    let length = Number(lengthArg?.get());
+    if (isNaN(length) || length < 1) length = 1;
     const res: string[] = [];
     for (let i = 0; i < s.length; i += length) {
       res.push(s.substring(i, i + length));
@@ -609,6 +624,16 @@ export class StringRuntime {
   /** Decodes a hexadecimally encoded binary string. */
   public static hex2bin(ctx: PHPContext, hexStringArg?: PHPReference): string {
     return Buffer.from(String(hexStringArg?.get() ?? ""), "hex").toString("utf8");
+  }
+
+  public static base64_encode(ctx: PHPContext, stringArg?: PHPReference): string {
+    const str = String(stringArg?.get() ?? "");
+    return Buffer.from(str, "binary").toString("base64");
+  }
+
+  public static base64_decode(ctx: PHPContext, stringArg?: PHPReference): string {
+    const str = String(stringArg?.get() ?? "");
+    return Buffer.from(str, "base64").toString("binary");
   }
 
   /** Compares two "PHP-standardized" version number strings. */
@@ -805,6 +830,8 @@ export class StringRuntime {
     "ucwords": StringRuntime.ucwords,
     "strcmp": StringRuntime.strcmp,
     "strncmp": StringRuntime.strncmp,
+    "strcasecmp": StringRuntime.strcasecmp,
+    "strncasecmp": StringRuntime.strncasecmp,
     "addslashes": StringRuntime.addslashes,
     "addcslashes": StringRuntime.addcslashes,
     "stripslashes": StringRuntime.stripslashes,
@@ -823,6 +850,8 @@ export class StringRuntime {
     "ord": StringRuntime.ord,
     "bin2hex": StringRuntime.bin2hex,
     "hex2bin": StringRuntime.hex2bin,
+    "base64_encode": StringRuntime.base64_encode,
+    "base64_decode": StringRuntime.base64_decode,
   };
 
   public static register(engine: PHPEngine): void {

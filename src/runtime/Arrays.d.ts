@@ -12,13 +12,13 @@ export declare class ArrayRuntime {
     static array_key_exists(ctx: PHPContext, keyArg?: any, searchArg?: any): boolean;
     static array_merge(ctx: PHPContext, ...arraysArgs: any[]): any;
     static array_combine(ctx: PHPContext, keysArg?: any, valuesArg?: any): Record<string, any> | false;
-    static array_fill(ctx: PHPContext, startIndexArg?: PHPReference, countArg?: PHPReference, valueArg?: PHPReference): any[] | Record<string, any>;
+    static array_fill(ctx: PHPContext, startIndexArg?: PHPReference, countArg?: PHPReference, valueArg?: PHPReference): Promise<any[] | Record<string, any>>;
     static array_fill_keys(ctx: PHPContext, keysArg?: PHPReference, valueArg?: PHPReference): Record<string, any>;
     static array_intersect(ctx: PHPContext, arrayArg?: PHPReference, ...othersArgs: PHPReference[]): any;
     static array_diff(ctx: PHPContext, arrayArg?: PHPReference, ...othersArgs: PHPReference[]): any;
     static array_intersect_key(ctx: PHPContext, arrayArg?: PHPReference, ...othersArgs: PHPReference[]): any;
     static array_diff_key(ctx: PHPContext, arrayArg?: PHPReference, ...othersArgs: PHPReference[]): any;
-    static array_slice(ctx: PHPContext, arrayArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): any[];
+    static array_slice(ctx: PHPContext, arrayArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference, preserveKeysArg?: PHPReference): any;
     static array_change_key_case(ctx: PHPContext, arrayArg?: PHPReference, caseArg?: PHPReference): Record<string, any> | null;
     static usort(ctx: PHPContext, arrayArg?: PHPReference, callbackArg?: PHPReference): Promise<boolean>;
     static uasort(ctx: PHPContext, arrayArg?: PHPReference, callbackArg?: PHPReference): Promise<boolean>;

@@ -24,20 +24,33 @@ export class VariablesRuntime {
                 throw new PHPTypeError("Recursive serialization is not supported");
             active.add(input);
             try {
-                if (input && typeof input === "object" && input.constructor !== Object && input.constructor !== Array) {
-                    const name = input[SYMBOL_PHP_NAME] || input.constructor?.[SYMBOL_PHP_NAME] || input.constructor?.name || "stdClass";
-                    scope[name] ||= class {
-                    };
-                    const result = new scope[name]();
-                    for (const [property, entry] of Object.entries(input)) {
-                        result[property] = prepare(entry instanceof PHPVariable ? entry.get() : entry);
+                if (input && typeof input === "object") {
+                    const isPhpObject = Boolean(input[SYMBOL_PHP_NAME] || (input.constructor && input.constructor !== Object && input.constructor !== Array && input.constructor[SYMBOL_PHP_NAME]));
+                    if (isPhpObject) {
+                        const name = input[SYMBOL_PHP_NAME] || input.constructor[SYMBOL_PHP_NAME] || "stdClass";
+                        scope[name] ||= class {
+                        };
+                        const result = new scope[name]();
+                        for (const [property, entry] of Object.entries(input)) {
+                            if (property.startsWith("__"))
+                                continue;
+                            const cleanProp = property.startsWith("$") ? property.slice(1) : property;
+                            result[cleanProp] = prepare(entry instanceof PHPVariable ? entry.get() : entry);
+                        }
+                        return result;
+                    }
+                    if (Array.isArray(input)) {
+                        return input.map(prepare);
+                    }
+                    const result = {};
+                    for (const [key, entry] of Object.entries(input)) {
+                        if (key.startsWith("__"))
+                            continue;
+                        const cleanKey = key.startsWith("$") ? key.slice(1) : key;
+                        result[cleanKey] = prepare(entry instanceof PHPVariable ? entry.get() : entry);
                     }
                     return result;
                 }
-                if (Array.isArray(input) && Object.keys(input).every((key, index) => key === String(index))) {
-                    return input.map(prepare);
-                }
-                return Object.fromEntries(Object.entries(input).map(([key, entry]) => [key, prepare(entry)]));
             }
             finally {
                 active.delete(input);
@@ -147,10 +160,12 @@ export class VariablesRuntime {
         return typeof val === "function" || (typeof val === "object" && val !== null && !Array.isArray(val) && val.constructor !== Object);
     }
     /** Gets the properties of the given object. */
-    static get_object_vars(ctx, valueArg) {
+    static async get_object_vars(ctx, valueArg) {
         const value = valueArg instanceof PHPReference ? valueArg.get() : valueArg;
-        if (value && typeof value === "object" && value.constructor !== Object && value.constructor !== Array && !(value instanceof PHPError)) {
-            return Object.fromEntries(Object.entries(value).filter(([k, v]) => v instanceof PHPVariable).map(([k, v]) => [k, v.get()]));
+        if (typeof value === "function")
+            return {};
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new PHPTypeError("get_object_vars(): Argument #1 ($object) must be of type object");
         }
         if (value instanceof PHPError) {
             const properties = value.phpClass?.properties || new Map();
@@ -158,12 +173,35 @@ export class VariablesRuntime {
                 .filter(([, metadata]) => metadata.visibility === "public" && !metadata.isStatic)
                 .map(([name]) => [name, value[name]]));
         }
-        if (typeof value === "function")
-            return {};
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-            throw new PHPTypeError("get_object_vars(): Argument #1 ($object) must be of type object");
+        let propMetaMap = null;
+        let cls = value.constructor;
+        while (cls && cls !== Object) {
+            if (cls.__php_properties) {
+                if (!propMetaMap)
+                    propMetaMap = new Map();
+                for (const [k, v] of cls.__php_properties.entries()) {
+                    if (!propMetaMap.has(k)) {
+                        propMetaMap.set(k, v);
+                    }
+                }
+            }
+            cls = cls.__php_parent || Object.getPrototypeOf(cls);
         }
-        return { ...value };
+        const result = {};
+        for (const [k, v] of Object.entries(value)) {
+            if (k.startsWith("__"))
+                continue;
+            const cleanKey = k.startsWith("$") ? k.slice(1) : k;
+            if (propMetaMap) {
+                const meta = propMetaMap.get(cleanKey);
+                if (meta) {
+                    if (meta.visibility !== "public" || meta.isStatic)
+                        continue;
+                }
+            }
+            result[cleanKey] = v instanceof PHPVariable ? v.get() : v;
+        }
+        return result;
     }
     /** Finds whether a variable is a scalar. */
     static is_scalar(ctx, valArg) {

@@ -1,6 +1,8 @@
 import { PHPExtension } from "./PHPExtension.js";
 import { PHPContext, PHPContextOptions } from "./PHPContext.js";
-import { PHPLiteral, PHPReference } from "./runtime/PHPVariable.js";
+import { PHPVariable, PHPLiteral, PHPReference, PHPPropertyReference, PHPArrayOffsetReference } from "./runtime/PHPVariable.js";
+import { PHPInterface } from "./runtime/PHPInterface.js";
+import { PHPError, PHPFatalError } from "./runtime/PHPError.js";
 export declare const PROXY_HANDLER: {
     get(target: any, prop: any, receiver: any): any;
     set(target: any, prop: any, value: any, receiver: any): boolean;
@@ -28,6 +30,23 @@ export declare class PHPEngine {
     classes: Record<string, any>;
     interfaces: Record<string, any>;
     internalVars: Record<string, any>;
+    readonly symbols: {
+        PHPVariable: typeof PHPVariable;
+        PHPLiteral: typeof PHPLiteral;
+        PHPFatalError: typeof PHPFatalError;
+        PHPError: typeof PHPError;
+        SYMBOL_PHP_NAME: symbol;
+        SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS: symbol;
+        SYMBOL_PHP_CLASS_INTERFACES: symbol;
+        PHPReference: typeof PHPReference;
+        PHPInterface: typeof PHPInterface;
+        PHPPropertyReference: typeof PHPPropertyReference;
+        PHPArrayOffsetReference: typeof PHPArrayOffsetReference;
+        PROXY_HANDLER: {
+            get(target: any, prop: any, receiver: any): any;
+            set(target: any, prop: any, value: any, receiver: any): boolean;
+        };
+    };
     private classResolvers;
     private resolvingClasses;
     private compiledCache;
@@ -64,12 +83,15 @@ export declare class PHPEngine {
      * Resolves a class by name using registered class resolvers.
      */
     resolveClass(name: string, originalName: string, ctx: PHPContext): Promise<any>;
+    private registerCoreInterfaces;
     private registerRuntimeImplementations;
     registerExtension(extension: PHPExtension): void;
     getConfigurationSHA1(): string;
     compileFile(filepath: string): Promise<Function>;
     compileCode(code: string, filepath?: string): Promise<Function>;
+    contexts: Set<PHPContext>;
     createContext(options?: PHPContextOptions): PHPContext;
     private initWatcher;
+    clearCache(): void;
     close(): Promise<void>;
 }

@@ -50,8 +50,8 @@ export class SPLExtension extends PHPExtension {
     });
 
     this.functions = {
-      spl_object_id: (ctx: PHPContext, value?: PHPReference) => this.getObjectId(value, "spl_object_id"),
-      spl_object_hash: (ctx: PHPContext, value?: PHPReference) => this.getObjectId(value, "spl_object_hash").toString(16).padStart(32, "0"),
+      spl_object_id: async (ctx: PHPContext, value?: PHPReference) => this.getObjectId(value, "spl_object_id"),
+      spl_object_hash: async (ctx: PHPContext, value?: PHPReference) => this.getObjectId(value, "spl_object_hash").toString(16).padStart(32, "0"),
       spl_autoload_register: (ctx: PHPContext, callbackArg?: any) => {
         const callback = callbackArg instanceof PHPReference ? callbackArg.get() : callbackArg;
         if (callback !== undefined && callback !== null) {

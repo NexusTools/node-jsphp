@@ -80,11 +80,29 @@ export class PHPError extends Error {
     return new PHPError(String(err ?? "Unknown error"));
   }
 
+  public static async __$$__new(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError> {
+    const obj = Object.create(this.prototype);
+    obj.name = this.name;
+    obj.phpCode = 0;
+    obj.phpFile = ctx?.currentFile || "";
+    obj.phpLine = ctx?.currentLine || 0;
+    obj.phpTrace = ctx?.getPHPBacktrace ? ctx.getPHPBacktrace() : [];
+    obj.previous = null;
+    obj.rawJSStack = new Error().stack || "";
+    await obj.__construct(ctx, messageArg, codeArg, previousArg);
+    if (obj.rawJSStack) {
+      obj.stack = PHPError.virtualizeJSStack(obj.rawJSStack, obj.phpFile, obj.phpLine, obj.phpTrace);
+    }
+    return obj;
+  }
+
   public async __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void> {
     const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
     const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+    const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
     this.message = String(msg ?? "");
     this.phpCode = Number(code || 0);
+    this.previous = previous;
   }
 
   public getMessage(): string {
@@ -217,7 +235,7 @@ export class UnexpectedValueException extends PHPException {
 
 export class ErrorException extends PHPError {
   public static [SYMBOL_PHP_NAME] = "ErrorException";
-  public severity: number;
+  public severity: number = 1;
 
   constructor(
     message: string = "",
@@ -230,6 +248,25 @@ export class ErrorException extends PHPError {
     super(message, code, file, line, [], previous);
     this.severity = severity;
   }
+
+  public async __construct(ctx: any, messageArg?: any, codeArg?: any, severityArg?: any, fileArg?: any, lineArg?: any, previousArg?: any): Promise<void> {
+    const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
+    const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+    const severity = severityArg ? (typeof severityArg.get === "function" ? severityArg.get() : severityArg) : 1;
+    const file = fileArg ? (typeof fileArg.get === "function" ? fileArg.get() : fileArg) : (ctx?.currentFile || "");
+    const line = lineArg ? (typeof lineArg.get === "function" ? lineArg.get() : lineArg) : (ctx?.currentLine || 0);
+    const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
+
+    this.message = String(msg ?? "");
+    this.phpCode = Number(code || 0);
+    this.severity = Number(severity || 1);
+    this.phpFile = String(file || "");
+    this.phpLine = Number(line || 0);
+    this.previous = previous;
+  }
+
+  public getSeverity(): number { return this.severity; }
+  public getseverity(): number { return this.getSeverity(); }
 }
 
 export class PHPTypeError extends PHPError {

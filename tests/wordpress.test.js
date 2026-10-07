@@ -65,7 +65,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     beforeAll(async () => {
         jest.setTimeout(180000);
         delete process.env.JSPHP_DEBUG;
-        engine = new PHPEngine({ cacheDir: path.join(__dirname, "../.test_cache"), watch: false });
+        engine = new PHPEngine({ watch: false });
         console.log("Setting up MySQL database...");
         const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
         const possiblePasses = Array.from(new Set([process.env.MYSQL_ROOT_PASSWORD, "", "root", "DNESB*GJ*W(E$GYB$UW#gt78wg"].filter((x) => typeof x === "string")));
@@ -142,27 +142,32 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
             fs.writeFileSync(wpZipPath, Buffer.from(arrayBuffer));
             console.log("WordPress zip downloaded successfully.");
         }
-        const translationsFile = path.join(wpDir, "wp-includes", "pomo", "translations.php");
-        if (!fs.existsSync(translationsFile)) {
-            console.log("Extracting WordPress archive...");
-            forceRmSync(wpDir);
-            fs.mkdirSync(wpDir, { recursive: true });
-            const tmpDir = path.join(__dirname, "../wp_temp_extract");
-            forceRmSync(tmpDir);
-            fs.mkdirSync(tmpDir, { recursive: true });
-            const zip = new AdmZip(wpZipPath);
-            zip.extractAllTo(tmpDir, true);
-            const subFolder = path.join(tmpDir, "wordpress");
-            copyRecursiveSync(subFolder, wpDir);
-            forceRmSync(tmpDir);
-            console.log("WordPress extracted successfully to:", wpDir);
-        }
+        console.log("Extracting fresh WordPress archive...");
+        forceRmSync(wpDir);
+        fs.mkdirSync(wpDir, { recursive: true });
+        const tmpDir = path.join(__dirname, "../wp_temp_extract");
+        forceRmSync(tmpDir);
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const zip = new AdmZip(wpZipPath);
+        zip.extractAllTo(tmpDir, true);
+        const subFolder = path.join(tmpDir, "wordpress");
+        copyRecursiveSync(subFolder, wpDir);
+        forceRmSync(tmpDir);
+        console.log("WordPress extracted successfully to:", wpDir);
         const wpConfigPath = path.join(wpDir, "wp-config.php");
         if (fs.existsSync(wpConfigPath)) {
             fs.unlinkSync(wpConfigPath);
         }
+        console.log("BEFOREALL DONE");
     }, 180000);
     afterAll(async () => {
+        const wpConfigPath = path.join(wpDir, "wp-config.php");
+        if (fs.existsSync(wpConfigPath)) {
+            try {
+                fs.unlinkSync(wpConfigPath);
+            }
+            catch (e) { }
+        }
         if (engine) {
             try {
                 const cleanupCtx = engine.createContext();
@@ -209,7 +214,6 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
                 throw e;
             }
         }
-        console.log("STEP 1 FULL OUTPUT:\n", getOutput);
         const $get = cheerio.load(getOutput);
         const form = $get("form[action='setup-config.php?step=2']");
         expect(form.length).toBeGreaterThan(0);
@@ -356,6 +360,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
                     weblog_title: "WordPress on JSPHP",
                     user_name: "admin",
                     admin_password: "password123!",
+                    admin_password2: "password123!",
                     admin_email: "admin@example.com",
                     blog_public: "1",
                     pw_weak: "1",

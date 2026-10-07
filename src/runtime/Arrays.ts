@@ -102,16 +102,45 @@ export class ArrayRuntime {
 
   public static array_merge(ctx: PHPContext, ...arraysArgs: any[]): any {
     const arrays = arraysArgs.map(unwrap);
-    if (arrays.every((a) => Array.isArray(a))) {
-      return ([] as any[]).concat(...arrays);
-    }
-    const result: Record<string, any> = {};
+    let isPureArray = true;
     for (const arr of arrays) {
-      if (arr && typeof arr === "object") {
-        Object.assign(result, arr);
+      if (!Array.isArray(arr)) {
+        isPureArray = false;
+        break;
       }
     }
-    return result;
+    if (isPureArray) {
+      return ([] as any[]).concat(...arrays);
+    }
+
+    const resultArr: any[] = [];
+    const resultObj: Record<string, any> = {};
+    let isResultArr = true;
+
+    for (const arr of arrays) {
+      if (!arr || typeof arr !== "object") continue;
+      if (Array.isArray(arr)) {
+        if (isResultArr) {
+          resultArr.push(...arr);
+        } else {
+          for (const item of arr) {
+            resultObj[resultArr.length] = item;
+            resultArr.push(item);
+          }
+        }
+      } else {
+        isResultArr = false;
+        for (const [k, v] of Object.entries(arr)) {
+          if (/^(0|[1-9]\d*)$/.test(k)) {
+            resultObj[resultArr.length] = v;
+            resultArr.push(v);
+          } else {
+            resultObj[k] = v;
+          }
+        }
+      }
+    }
+    return isResultArr ? resultArr : resultObj;
   }
 
   public static array_combine(ctx: PHPContext, keysArg?: any, valuesArg?: any): Record<string, any> | false {
@@ -127,12 +156,18 @@ export class ArrayRuntime {
     return res;
   }
 
-  public static array_fill(ctx: PHPContext, startIndexArg?: PHPReference, countArg?: PHPReference, valueArg?: PHPReference): any[] | Record<string, any> {
-    const startIndex = Number(startIndexArg?.get()) || 0;
-    const count = Number(countArg?.get()) || 0;
+  public static async array_fill(ctx: PHPContext, startIndexArg?: PHPReference, countArg?: PHPReference, valueArg?: PHPReference): Promise<any[] | Record<string, any>> {
+    const startIndex = Math.floor(Number(startIndexArg?.get()) || 0);
+    const rawCount = Number(countArg?.get());
+    const count = Number.isNaN(rawCount) ? 0 : Math.floor(rawCount);
     const value = valueArg?.get();
     if (count < 0) throw new PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
-    if (count === 0 || startIndex === 0) return Array.from({ length: count }, () => value);
+    if (count === 0) return [];
+    if (startIndex === 0) {
+      const arr: any[] = [];
+      for (let i = 0; i < count; i++) arr.push(value);
+      return arr;
+    }
     const result: Record<string, any> = {};
     for (let offset = 0; offset < count; offset++) result[startIndex + offset] = value;
     return result;
@@ -220,15 +255,29 @@ export class ArrayRuntime {
     return result;
   }
 
-  public static array_slice(ctx: PHPContext, arrayArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): any[] {
+  public static array_slice(ctx: PHPContext, arrayArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference, preserveKeysArg?: PHPReference): any {
     const array = arrayArg?.get();
-    const offset = Number(offsetArg?.get()) || 0;
+    let offset = Number(offsetArg?.get()) || 0;
     const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
-    if (!Array.isArray(array)) return [];
+    const preserveKeys = Boolean(preserveKeysArg?.get());
+    if (!array || typeof array !== "object") return Array.isArray(array) ? [] : {};
+    const keys = Object.keys(array);
+    const total = keys.length;
+    let start = offset < 0 ? Math.max(0, total + offset) : offset;
+    let end = total;
     if (length !== undefined) {
-      return array.slice(offset, offset + length);
+      if (length < 0) end = Math.max(start, total + length);
+      else end = Math.min(total, start + length);
     }
-    return array.slice(offset);
+    const slicedKeys = keys.slice(start, end);
+    if (Array.isArray(array) && !preserveKeys) {
+      return slicedKeys.map((k) => (array as any)[k]);
+    }
+    const res: Record<string, any> = {};
+    for (const k of slicedKeys) {
+      res[k] = (array as any)[k];
+    }
+    return res;
   }
 
   public static array_change_key_case(ctx: PHPContext, arrayArg?: PHPReference, caseArg?: PHPReference): Record<string, any> | null {

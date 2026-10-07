@@ -56,11 +56,28 @@ export class PHPError extends Error {
         }
         return new PHPError(String(err ?? "Unknown error"));
     }
+    static async __$$__new(ctx, messageArg, codeArg, previousArg) {
+        const obj = Object.create(this.prototype);
+        obj.name = this.name;
+        obj.phpCode = 0;
+        obj.phpFile = ctx?.currentFile || "";
+        obj.phpLine = ctx?.currentLine || 0;
+        obj.phpTrace = ctx?.getPHPBacktrace ? ctx.getPHPBacktrace() : [];
+        obj.previous = null;
+        obj.rawJSStack = new Error().stack || "";
+        await obj.__construct(ctx, messageArg, codeArg, previousArg);
+        if (obj.rawJSStack) {
+            obj.stack = PHPError.virtualizeJSStack(obj.rawJSStack, obj.phpFile, obj.phpLine, obj.phpTrace);
+        }
+        return obj;
+    }
     async __construct(ctx, messageArg, codeArg, previousArg) {
         const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
         const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+        const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
         this.message = String(msg ?? "");
         this.phpCode = Number(code || 0);
+        this.previous = previous;
     }
     getMessage() {
         return this.message || this.properties?.get("message") || "";
@@ -165,11 +182,27 @@ export class UnexpectedValueException extends PHPException {
 }
 export class ErrorException extends PHPError {
     static [SYMBOL_PHP_NAME] = "ErrorException";
-    severity;
+    severity = 1;
     constructor(message = "", code = 0, severity = 1, file = "", line = 0, previous = null) {
         super(message, code, file, line, [], previous);
         this.severity = severity;
     }
+    async __construct(ctx, messageArg, codeArg, severityArg, fileArg, lineArg, previousArg) {
+        const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
+        const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
+        const severity = severityArg ? (typeof severityArg.get === "function" ? severityArg.get() : severityArg) : 1;
+        const file = fileArg ? (typeof fileArg.get === "function" ? fileArg.get() : fileArg) : (ctx?.currentFile || "");
+        const line = lineArg ? (typeof lineArg.get === "function" ? lineArg.get() : lineArg) : (ctx?.currentLine || 0);
+        const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
+        this.message = String(msg ?? "");
+        this.phpCode = Number(code || 0);
+        this.severity = Number(severity || 1);
+        this.phpFile = String(file || "");
+        this.phpLine = Number(line || 0);
+        this.previous = previous;
+    }
+    getSeverity() { return this.severity; }
+    getseverity() { return this.getSeverity(); }
 }
 export class PHPTypeError extends PHPError {
     static [SYMBOL_PHP_NAME] = "TypeError";

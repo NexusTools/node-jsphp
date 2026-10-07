@@ -29,7 +29,7 @@ export declare class VariablesRuntime {
     /** Finds whether a variable is an object. */
     static is_object(ctx: PHPContext | null, valArg?: any): boolean;
     /** Gets the properties of the given object. */
-    static get_object_vars(ctx: PHPContext | null, valueArg?: any): Record<string, any>;
+    static get_object_vars(ctx: PHPContext | null, valueArg?: any): Promise<Record<string, any>>;
     /** Finds whether a variable is a scalar. */
     static is_scalar(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a string. */

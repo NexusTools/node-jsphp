@@ -326,6 +326,19 @@ export class StringRuntime {
         const length = Number(lengthArg?.get()) || 0;
         return StringRuntime.strcmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
     }
+    /** Binary safe case-insensitive string comparison. */
+    static strcasecmp(ctx, str1Arg, str2Arg) {
+        const s1 = String(str1Arg?.get() ?? "").toLowerCase();
+        const s2 = String(str2Arg?.get() ?? "").toLowerCase();
+        if (s1 === s2)
+            return 0;
+        return s1 < s2 ? -1 : 1;
+    }
+    /** Binary safe case-insensitive string comparison of the first n characters. */
+    static strncasecmp(ctx, str1Arg, str2Arg, lengthArg) {
+        const length = Number(lengthArg?.get()) || 0;
+        return StringRuntime.strcasecmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
+    }
     /** Quote string with slashes. */
     static addslashes(ctx, strArg) {
         return String(strArg?.get() ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
@@ -534,7 +547,7 @@ export class StringRuntime {
         const padLength = Number(padLengthArg?.get()) || 0;
         const padString = padStringArg?.get() !== undefined ? String(padStringArg.get()) : " ";
         const padType = padTypeArg?.get() !== undefined ? Number(padTypeArg.get()) : 1;
-        if (s.length >= padLength)
+        if (s.length >= padLength || !padString)
             return s;
         const needed = padLength - s.length;
         const pStr = padString.repeat(Math.ceil(needed / padString.length)).substring(0, needed);
@@ -550,7 +563,9 @@ export class StringRuntime {
     /** Convert a string to an array. */
     static str_split(ctx, stringArg, lengthArg) {
         const s = String(stringArg?.get() ?? "");
-        const length = Number(lengthArg?.get()) || 1;
+        let length = Number(lengthArg?.get());
+        if (isNaN(length) || length < 1)
+            length = 1;
         const res = [];
         for (let i = 0; i < s.length; i += length) {
             res.push(s.substring(i, i + length));
@@ -577,6 +592,14 @@ export class StringRuntime {
     /** Decodes a hexadecimally encoded binary string. */
     static hex2bin(ctx, hexStringArg) {
         return Buffer.from(String(hexStringArg?.get() ?? ""), "hex").toString("utf8");
+    }
+    static base64_encode(ctx, stringArg) {
+        const str = String(stringArg?.get() ?? "");
+        return Buffer.from(str, "binary").toString("base64");
+    }
+    static base64_decode(ctx, stringArg) {
+        const str = String(stringArg?.get() ?? "");
+        return Buffer.from(str, "base64").toString("binary");
     }
     /** Compares two "PHP-standardized" version number strings. */
     static version_compare(ctx, v1Arg, v2Arg, opArg) {
@@ -791,6 +814,8 @@ export class StringRuntime {
         "ucwords": StringRuntime.ucwords,
         "strcmp": StringRuntime.strcmp,
         "strncmp": StringRuntime.strncmp,
+        "strcasecmp": StringRuntime.strcasecmp,
+        "strncasecmp": StringRuntime.strncasecmp,
         "addslashes": StringRuntime.addslashes,
         "addcslashes": StringRuntime.addcslashes,
         "stripslashes": StringRuntime.stripslashes,
@@ -809,6 +834,8 @@ export class StringRuntime {
         "ord": StringRuntime.ord,
         "bin2hex": StringRuntime.bin2hex,
         "hex2bin": StringRuntime.hex2bin,
+        "base64_encode": StringRuntime.base64_encode,
+        "base64_decode": StringRuntime.base64_decode,
     };
     static register(engine) {
         engine.registerFunctions(StringRuntime.functions);

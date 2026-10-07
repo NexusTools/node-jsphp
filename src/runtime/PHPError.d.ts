@@ -34,6 +34,7 @@ export declare class PHPError extends Error {
     rawJSStack: string;
     constructor(messageArg?: any, codeArg?: any, fileArg?: any, lineArg?: any, traceArg?: any, previousArg?: any);
     static wrapJSError(err: any): PHPError;
+    static __$$__new(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError>;
     __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void>;
     getMessage(): string;
     getmessage(): string;
@@ -91,6 +92,9 @@ export declare class ErrorException extends PHPError {
     static [SYMBOL_PHP_NAME]: string;
     severity: number;
     constructor(message?: string, code?: number, severity?: number, file?: string, line?: number, previous?: any);
+    __construct(ctx: any, messageArg?: any, codeArg?: any, severityArg?: any, fileArg?: any, lineArg?: any, previousArg?: any): Promise<void>;
+    getSeverity(): number;
+    getseverity(): number;
 }
 export declare class PHPTypeError extends PHPError {
     static [SYMBOL_PHP_NAME]: string;

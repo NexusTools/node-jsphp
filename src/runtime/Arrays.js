@@ -98,16 +98,47 @@ export class ArrayRuntime {
     }
     static array_merge(ctx, ...arraysArgs) {
         const arrays = arraysArgs.map(unwrap);
-        if (arrays.every((a) => Array.isArray(a))) {
-            return [].concat(...arrays);
-        }
-        const result = {};
+        let isPureArray = true;
         for (const arr of arrays) {
-            if (arr && typeof arr === "object") {
-                Object.assign(result, arr);
+            if (!Array.isArray(arr)) {
+                isPureArray = false;
+                break;
             }
         }
-        return result;
+        if (isPureArray) {
+            return [].concat(...arrays);
+        }
+        const resultArr = [];
+        const resultObj = {};
+        let isResultArr = true;
+        for (const arr of arrays) {
+            if (!arr || typeof arr !== "object")
+                continue;
+            if (Array.isArray(arr)) {
+                if (isResultArr) {
+                    resultArr.push(...arr);
+                }
+                else {
+                    for (const item of arr) {
+                        resultObj[resultArr.length] = item;
+                        resultArr.push(item);
+                    }
+                }
+            }
+            else {
+                isResultArr = false;
+                for (const [k, v] of Object.entries(arr)) {
+                    if (/^(0|[1-9]\d*)$/.test(k)) {
+                        resultObj[resultArr.length] = v;
+                        resultArr.push(v);
+                    }
+                    else {
+                        resultObj[k] = v;
+                    }
+                }
+            }
+        }
+        return isResultArr ? resultArr : resultObj;
     }
     static array_combine(ctx, keysArg, valuesArg) {
         const keys = unwrap(keysArg);
@@ -121,14 +152,21 @@ export class ArrayRuntime {
         });
         return res;
     }
-    static array_fill(ctx, startIndexArg, countArg, valueArg) {
-        const startIndex = Number(startIndexArg?.get()) || 0;
-        const count = Number(countArg?.get()) || 0;
+    static async array_fill(ctx, startIndexArg, countArg, valueArg) {
+        const startIndex = Math.floor(Number(startIndexArg?.get()) || 0);
+        const rawCount = Number(countArg?.get());
+        const count = Number.isNaN(rawCount) ? 0 : Math.floor(rawCount);
         const value = valueArg?.get();
         if (count < 0)
             throw new PHPFatalError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
-        if (count === 0 || startIndex === 0)
-            return Array.from({ length: count }, () => value);
+        if (count === 0)
+            return [];
+        if (startIndex === 0) {
+            const arr = [];
+            for (let i = 0; i < count; i++)
+                arr.push(value);
+            return arr;
+        }
         const result = {};
         for (let offset = 0; offset < count; offset++)
             result[startIndex + offset] = value;
@@ -225,16 +263,32 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_slice(ctx, arrayArg, offsetArg, lengthArg) {
+    static array_slice(ctx, arrayArg, offsetArg, lengthArg, preserveKeysArg) {
         const array = arrayArg?.get();
-        const offset = Number(offsetArg?.get()) || 0;
+        let offset = Number(offsetArg?.get()) || 0;
         const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
-        if (!Array.isArray(array))
-            return [];
+        const preserveKeys = Boolean(preserveKeysArg?.get());
+        if (!array || typeof array !== "object")
+            return Array.isArray(array) ? [] : {};
+        const keys = Object.keys(array);
+        const total = keys.length;
+        let start = offset < 0 ? Math.max(0, total + offset) : offset;
+        let end = total;
         if (length !== undefined) {
-            return array.slice(offset, offset + length);
+            if (length < 0)
+                end = Math.max(start, total + length);
+            else
+                end = Math.min(total, start + length);
         }
-        return array.slice(offset);
+        const slicedKeys = keys.slice(start, end);
+        if (Array.isArray(array) && !preserveKeys) {
+            return slicedKeys.map((k) => array[k]);
+        }
+        const res = {};
+        for (const k of slicedKeys) {
+            res[k] = array[k];
+        }
+        return res;
     }
     static array_change_key_case(ctx, arrayArg, caseArg) {
         const array = arrayArg?.get();

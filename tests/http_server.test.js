@@ -170,6 +170,13 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
     });
     test("Serves WordPress setup-config.php with rendered text and stylesheet", async () => {
         const wpDir = path.join(__dirname, "../wordpress-test");
+        const wpConfigPath = path.join(wpDir, "wp-config.php");
+        if (fs.existsSync(wpConfigPath)) {
+            try {
+                fs.unlinkSync(wpConfigPath);
+            }
+            catch (e) { }
+        }
         const wpServer = await runHTTPServer(8889, wpDir, { cacheDir: path.join(__dirname, "../.test_cache") });
         try {
             const res = await new Promise((resolve, reject) => {
@@ -179,7 +186,6 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
                     r.on("end", () => resolve({ status: r.statusCode || 0, body: b }));
                 }).on("error", reject);
             });
-            console.log("STEP -1 HEAD:\n", res.body.slice(0, res.body.indexOf("</head>") + 7));
             expect(res.status).toBe(200);
             expect(res.body).toContain("wp-core-ui");
             expect(res.body).toMatch(/<link\s+rel=['"]stylesheet['"].*?install/i);
@@ -200,6 +206,12 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
         }
         finally {
             wpServer.close();
+            if (fs.existsSync(wpConfigPath)) {
+                try {
+                    fs.unlinkSync(wpConfigPath);
+                }
+                catch (e) { }
+            }
         }
     }, 180000);
 });
