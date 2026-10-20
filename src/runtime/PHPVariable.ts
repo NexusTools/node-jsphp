@@ -1,7 +1,9 @@
 import type { PHPContext } from "../PHPContext.js";
 import { PHPFatalError } from "./PHPError.js";
+import { SYMBOL_PHP_NAME } from "./Reflection.js";
 
 export abstract class PHPReference {
+  public readonly __isPHPReference: boolean = true;
   public abstract get(): any;
   public abstract set(val: any): any;
   public bindRef?(target: PHPReference): void;
@@ -10,7 +12,18 @@ export abstract class PHPReference {
   public call?(ctx: PHPContext, method: string, args: any[]): Promise<any>;
 }
 
+export function isPHPReference(val: any): val is PHPReference {
+  if (!val || (typeof val !== "object" && typeof val !== "function")) return false;
+  return val instanceof PHPReference || Object.getOwnPropertyDescriptor(val, "__isPHPReference")?.value === true;
+}
+
+export function isPHPVariable(val: any): boolean {
+  if (!val || (typeof val !== "object" && typeof val !== "function")) return false;
+  return val instanceof PHPVariable || Object.getOwnPropertyDescriptor(val, "__isPHPVariable")?.value === true;
+}
+
 export class PHPLiteral extends PHPReference {
+  public readonly __isPHPLiteral: boolean = true;
   private readonly value: any;
 
   constructor(value: any) {
@@ -72,18 +85,33 @@ export class PHPPropertyReference extends PHPReference {
   }
 
   public get(): any {
+    let target = this.obj instanceof PHPReference ? this.obj.get() : this.obj;
+    if (!target || typeof target !== "object") return undefined;
+
     const p = this.prop.startsWith("$") ? this.prop : "$" + this.prop;
     const nop = this.prop.startsWith("$") ? this.prop.slice(1) : this.prop;
-    if (this.obj && typeof this.obj === "object") {
-      if (p in this.obj) {
-        const val = this.obj[p];
+
+    if (p in target) {
+      const val = target[p];
+      return val instanceof PHPReference ? val.get() : val;
+    }
+    if (nop in target && typeof target[nop] !== "function") {
+      const val = target[nop];
+      return val instanceof PHPReference ? val.get() : val;
+    }
+
+    const dataObj = target["$data"]?.get ? target["$data"].get() : target["$data"] || target.data;
+    if (dataObj && typeof dataObj === "object") {
+      if (p in dataObj) {
+        const val = dataObj[p];
         return val instanceof PHPReference ? val.get() : val;
       }
-      if (nop in this.obj && typeof this.obj[nop] !== "function") {
-        const val = this.obj[nop];
+      if (nop in dataObj && typeof dataObj[nop] !== "function") {
+        const val = dataObj[nop];
         return val instanceof PHPReference ? val.get() : val;
       }
     }
+
     return undefined;
   }
 
@@ -122,6 +150,7 @@ export class PHPArrayOffsetReference extends PHPReference {
 }
 
 export class PHPVariable extends PHPReference {
+  public readonly __isPHPVariable: boolean = true;
   private value: any;
   private refTarget?: PHPReference;
 
@@ -156,6 +185,11 @@ export class PHPVariable extends PHPReference {
       for (const k of Object.keys(unwrapped)) {
         if (isNaN(Number(k))) (copy as any)[k] = (unwrapped as any)[k];
       }
+      delete (copy as any).__ptr;
+      this.value = copy;
+      return copy;
+    } else if (typeof unwrapped === "object" && unwrapped !== null && !unwrapped[SYMBOL_PHP_NAME] && unwrapped.constructor === Object) {
+      const copy = { ...unwrapped };
       delete (copy as any).__ptr;
       this.value = copy;
       return copy;

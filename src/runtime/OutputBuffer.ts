@@ -25,6 +25,18 @@ export class OutputBufferStack {
     return this.buffers[this.buffers.length - 1];
   }
 
+  public getLength(): number | false {
+    const contents = this.getContents();
+    return contents === false ? false : Buffer.byteLength(contents, "utf8");
+  }
+
+  public getFlush(ctx?: PHPContext): string | false {
+    const contents = this.getContents();
+    if (contents === false) return false;
+    this.flush(ctx);
+    return contents;
+  }
+
   public flush(ctx?: PHPContext): boolean {
     if (this.buffers.length === 0) return false;
     const content = this.buffers.pop() || "";
@@ -63,6 +75,8 @@ export class OutputBufferRuntime {
     "ob_start": (ctx: PHPContext) => ctx.outputBuffer.start(),
     "ob_get_clean": (ctx: PHPContext) => ctx.outputBuffer.getClean(),
     "ob_get_contents": (ctx: PHPContext) => ctx.outputBuffer.getContents(),
+    "ob_get_length": (ctx: PHPContext) => ctx.outputBuffer.getLength(),
+    "ob_get_flush": (ctx: PHPContext) => ctx.outputBuffer.getFlush(ctx),
     "ob_flush": (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
     "ob_end_flush": (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
     "ob_end_clean": (ctx: PHPContext) => ctx.outputBuffer.endClean(),

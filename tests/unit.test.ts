@@ -68,6 +68,12 @@ describe("PHPEngine & AST Unit Tests", () => {
     expect(out).toBe("Hello World! 10");
   });
 
+  test("Defines integer platform constants", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval("$values = [PHP_INT_SIZE, PHP_INT_MAX, PHP_INT_MIN];");
+    expect(ctx.getVar("values")).toEqual([8, Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER]);
+  });
+
   test("Keeps runtime constants request-local when reusing compiled code", async () => {
     const configuration = engine.getConfigurationSHA1();
     const compiled = await engine.compileCode("<?php define('REQUEST_VALUE', $seed); echo constant('REQUEST_VALUE');");
@@ -220,6 +226,82 @@ describe("PHPEngine & AST Unit Tests", () => {
       echo $g->sayHello('PHP');
     `);
     expect(out).toBe("Hello PHP");
+  });
+
+  test("Allows invoking static PHP methods through an instance", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      class StaticUtility {
+        public static function is_valid($value) { return $value === 'valid'; }
+        public function check($value) { return $this->is_valid($value); }
+      }
+      $instance = new StaticUtility();
+      echo $instance->check('valid') ? 'YES' : 'NO';
+    `);
+    expect(ctx.outputText).toBe("YES");
+  });
+
+  test("Uses PHP array-union semantics for array addition assignment", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      $left = ['scheme' => 'http', 'host' => '127.0.0.1'];
+      $left += ['host' => '', 'path' => '/'];
+      echo $left['host'] . '|' . $left['path'];
+    `);
+    expect(ctx.outputText).toBe("127.0.0.1|/");
+  });
+
+  test("Treats isset on a null property chain as false", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      $block_type = null;
+      echo isset($block_type->supports['interactivity']['clientNavigation']) ? 'SET' : 'UNSET';
+    `);
+    expect(ctx.outputText).toBe("UNSET");
+  });
+
+  test("Treats empty on a null property chain as true", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      $block_type = null;
+      echo empty($block_type->supports) ? 'EMPTY' : 'SET';
+    `);
+    expect(ctx.outputText).toBe("EMPTY");
+  });
+
+  test("Preserves the called class when constructing with new static", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      class LateStaticBase {
+        public static function make() { return new static(); }
+      }
+      class LateStaticChild extends LateStaticBase {}
+      $instance = LateStaticChild::make();
+      echo $instance instanceof LateStaticChild ? 'CHILD' : 'BASE';
+    `);
+    expect(ctx.outputText).toBe("CHILD");
+  });
+
+  test("Persists writes to static array offsets", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      class StaticArrayHolder { public static $items = []; }
+      StaticArrayHolder::$items['key'] = 'value';
+      echo StaticArrayHolder::$items['key'];
+    `);
+    expect(ctx.outputText).toBe("value");
+  });
+
+  test("Returns PHP function names from debug_backtrace", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      function trace_layer_3() { return debug_backtrace(); }
+      function trace_layer_2() { return trace_layer_3(); }
+      function trace_layer_1() { return trace_layer_2(); }
+      $trace = trace_layer_1();
+      echo $trace[0]['function'] . '|' . $trace[1]['function'] . '|' . $trace[2]['function'];
+    `);
+    expect(ctx.outputText).toBe("trace_layer_3|trace_layer_2|trace_layer_1");
   });
 
   test("Does not substitute unrelated or hard-coded static methods", async () => {
@@ -415,5 +497,12 @@ describe("PHPEngine & AST Unit Tests", () => {
     expect(ctx.getVar("s")).toBe("install.css");
     expect(ctx.getVar("x")).toBe("foo");
     expect(ctx.getVar("y")).toBe("bar");
+  });
+
+  afterAll(() => {
+    const defaultCacheDir = process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache");
+    if (fsSync.existsSync(defaultCacheDir)) {
+      try { fsSync.rmSync(defaultCacheDir, { recursive: true, force: true }); } catch (e) {}
+    }
   });
 });

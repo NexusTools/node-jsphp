@@ -22,4 +22,17 @@ describe("Output Buffering Tests", () => {
     `);
     expect(out).toBe("Direct content: Buffered content");
   });
+
+  test("ob_get_length and ob_get_flush report and flush buffered output", async () => {
+    let out = "";
+    const ctx = engine.createContext({ stdout: (d) => { out += d; } });
+    await ctx.eval(`
+      ob_start();
+      echo 'Buffered';
+      $length = ob_get_length();
+      $contents = ob_get_flush();
+      echo $length . ':' . $contents;
+    `);
+    expect(out).toBe("Buffered8:Buffered");
+  });
 });

@@ -7,7 +7,7 @@ describe("Strings Runtime Tests", () => {
     afterEach(() => {
         engine.close();
     });
-    test("String functions: strlen, substr, strpos, stripos, strrpos, strripos, strstr", async () => {
+    test("String functions: strlen, substr, strpos, stripos, strrpos, strripos, strstr, stristr", async () => {
         let out = "";
         const ctx = engine.createContext({ stdout: (d) => { out += d; } });
         await ctx.eval(`
@@ -18,8 +18,10 @@ describe("Strings Runtime Tests", () => {
       echo strrpos('hello world', 'o') . ';';
       echo strripos('HELLO WORLD', 'O') . ';';
       echo strstr('hello world', 'world') . ';';
+      echo stristr('Hello World', 'WORLD') . ';';
+      echo stristr('Hello World', 'WORLD', true) . ';';
     `);
-        expect(out).toBe("5;ell;1;1;7;7;world;");
+        expect(out).toBe("5;ell;1;1;7;7;world;World;Hello ;");
     });
     test("String functions: str_replace, str_ireplace, explode, implode, trim, ltrim, rtrim", async () => {
         let out = "";

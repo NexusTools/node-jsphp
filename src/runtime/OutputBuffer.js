@@ -19,6 +19,17 @@ export class OutputBufferStack {
             return false;
         return this.buffers[this.buffers.length - 1];
     }
+    getLength() {
+        const contents = this.getContents();
+        return contents === false ? false : Buffer.byteLength(contents, "utf8");
+    }
+    getFlush(ctx) {
+        const contents = this.getContents();
+        if (contents === false)
+            return false;
+        this.flush(ctx);
+        return contents;
+    }
     flush(ctx) {
         if (this.buffers.length === 0)
             return false;
@@ -55,6 +66,8 @@ export class OutputBufferRuntime {
         "ob_start": (ctx) => ctx.outputBuffer.start(),
         "ob_get_clean": (ctx) => ctx.outputBuffer.getClean(),
         "ob_get_contents": (ctx) => ctx.outputBuffer.getContents(),
+        "ob_get_length": (ctx) => ctx.outputBuffer.getLength(),
+        "ob_get_flush": (ctx) => ctx.outputBuffer.getFlush(ctx),
         "ob_flush": (ctx) => ctx.outputBuffer.flush(ctx),
         "ob_end_flush": (ctx) => ctx.outputBuffer.flush(ctx),
         "ob_end_clean": (ctx) => ctx.outputBuffer.endClean(),

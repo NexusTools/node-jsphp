@@ -21,6 +21,7 @@ export declare class JSTranspiler {
     private classImportsOriginal;
     private loopLabelCounter;
     private switchLabelCounter;
+    private anonClassCounter;
     private loopStack;
     constructor();
     transpile(code: string, filepath?: string, options?: TranspileOptions): TranspilationResult;

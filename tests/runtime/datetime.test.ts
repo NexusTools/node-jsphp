@@ -11,6 +11,20 @@ describe("DateTime Runtime Tests", () => {
     engine.close();
   });
 
+  test("checkdate validates Gregorian calendar dates", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      $dates = [
+        checkdate(2, 29, 2000),
+        checkdate(2, 29, 1900),
+        checkdate(4, 31, 2024),
+        checkdate(12, 31, 32767),
+        checkdate(1, 1, 0),
+      ];
+    `);
+    expect(ctx.getVar("dates")).toEqual([true, false, false, true, false]);
+  });
+
   test("DateTime functions: time, microtime, date, strtotime, date_default_timezone_get, date_default_timezone_set", async () => {
     let out = "";
     const ctx = engine.createContext({ stdout: (d) => { out += d; } });

@@ -22,6 +22,25 @@ describe("Arrays Runtime Tests", () => {
     `);
         expect(out).toBe("2;2;a,b;1,2;a;");
     });
+    test("array_all evaluates PHP callbacks with associative keys", async () => {
+        let out = "";
+        const ctx = engine.createContext({ stdout: (d) => { out += d; } });
+        await ctx.eval(`
+      $caps = array('read' => true, 'manage_options' => true);
+      echo array_all(array('read', 'manage_options'), fn($cap) => !empty($caps[$cap])) ? 'YES' : 'NO';
+    `);
+        expect(out).toBe("YES");
+    });
+    test("array_pop and array_shift mutate associative PHP arrays", async () => {
+        let out = "";
+        const ctx = engine.createContext({ stdout: (d) => { out += d; } });
+        await ctx.eval(`
+      $values = array('first' => 'one', 'second' => 'two');
+      echo array_pop($values) . ';' . array_pop($values) . ';';
+      echo empty($values) ? 'EMPTY' : 'NOT_EMPTY';
+    `);
+        expect(out).toBe("two;one;EMPTY");
+    });
     test("Array functions: in_array, array_search, array_key_exists, key_exists, array_merge, array_combine", async () => {
         let out = "";
         const ctx = engine.createContext({ stdout: (d) => { out += d; } });
@@ -62,7 +81,7 @@ describe("Arrays Runtime Tests", () => {
         expect(ctx.getVar("negative")).toEqual({ "-2": "item", "-1": "item", 0: "item" });
         expect(ctx.getVar("empty")).toEqual([]);
         const fn = ctx.functions["array_fill"] || ctx.functionMissing("array_fill");
-        await expect(fn(ctx, new PHPLiteral(0), new PHPLiteral(-1), new PHPLiteral("item"))).rejects.toThrow("must be greater than or equal to 0");
+        expect(() => fn(ctx, new PHPLiteral(0), new PHPLiteral(-1), new PHPLiteral("item"))).toThrow("must be greater than or equal to 0");
     });
 });
 //# sourceMappingURL=arrays.test.js.map

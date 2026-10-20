@@ -38,6 +38,19 @@ describe("SPL Extension Tests", () => {
         expect(ctx.getVar("first_hash")).not.toBe(ctx.getVar("second_hash"));
         expect(typeof ctx.getVar("callback_id")).toBe("number");
     });
+    test("Recursive filesystem iterators enumerate paths and regex matches", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator('wordpress-test/wp-content/themes/twentytwentyfive')
+      );
+      $json_files = new RegexIterator($files, '/^.+\\\\.json$/i', RecursiveRegexIterator::GET_MATCH);
+      $all_files = iterator_to_array($files);
+      $all_json_files = iterator_to_array($json_files);
+    `);
+        expect(Object.keys(ctx.getVar("all_files") ?? {}).length).toBeGreaterThan(0);
+        expect(Object.keys(ctx.getVar("all_json_files") ?? {}).length).toBeGreaterThan(0);
+    });
     test.each(["spl_object_id", "spl_object_hash"])("%s rejects non-objects", async (functionName) => {
         const ctx = engine.createContext();
         const fn = ctx.functions[functionName] || ctx.functionMissing(functionName);

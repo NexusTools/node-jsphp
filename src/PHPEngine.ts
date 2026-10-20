@@ -31,8 +31,6 @@ export const PROXY_HANDLER = {
     if (prop === 'get' || prop === 'set' || prop === 'then' || prop === 'catch' || prop === 'finally' || typeof prop === 'symbol') return target[prop];
     if (typeof prop === 'string' && prop.startsWith('$')) {
       if (prop in target) return target[prop];
-      const realProp = prop.slice(1);
-      if (typeof target.__get === 'function') return target.__get(target.__ctx, new PHPLiteral(realProp));
       return undefined;
     }
     if (prop in target) return target[prop];
@@ -41,7 +39,6 @@ export const PROXY_HANDLER = {
   },
   set(target: any, prop: any, value: any, receiver: any) {
     const propWithDollar = typeof prop === 'string' && prop.startsWith('$') ? prop : '$' + prop;
-    const realProp = typeof prop === 'string' && prop.startsWith('$') ? prop.slice(1) : prop;
     if (propWithDollar in target) {
       if (target[propWithDollar] instanceof PHPVariable) {
         target[propWithDollar].set(value);
@@ -50,8 +47,8 @@ export const PROXY_HANDLER = {
       }
       return true;
     }
-    if (typeof target.__set === 'function') { target.__set(target.__ctx, new PHPLiteral(realProp), new PHPLiteral(value)); return true; }
-    target[propWithDollar] = value; return true;
+    target[propWithDollar] = value;
+    return true;
   }
 };
 
@@ -99,7 +96,7 @@ export function getDefaultExtensions(): PHPExtension[] {
 }
 
 export class PHPEngine {
-  public static readonly REVISION = 313;
+  public static readonly REVISION = 444;
   public static readonly VERSION = "8.5.0";
 
   public static readonly TRUE = new PHPLiteral(true);
@@ -138,6 +135,17 @@ export class PHPEngine {
     php_version: PHPEngine.VERSION,
     php_engine: "jsphp",
     php_os: process.platform === "win32" ? "WINNT" : "Linux",
+    php_int_size: 8,
+    php_int_max: Number.MAX_SAFE_INTEGER,
+    php_int_min: Number.MIN_SAFE_INTEGER,
+    php_url_scheme: 0,
+    php_url_host: 1,
+    php_url_port: 2,
+    php_url_user: 3,
+    php_url_pass: 4,
+    php_url_path: 5,
+    php_url_query: 6,
+    php_url_fragment: 7,
     directory_separator: path.sep,
     path_separator: process.platform === "win32" ? ";" : ":",
     e_error: 1,
@@ -251,13 +259,21 @@ export class PHPEngine {
     const orig = originalName || name;
     const shortLower = String(name).split("\\").pop() || String(name);
 
-    let resolved = ctx.classes[name] || ctx.classes[shortLower];
+    let resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
     if (!resolved && !shortLower.includes("\\")) {
       const suffix = "\\" + shortLower;
       for (const k of Object.keys(ctx.classes)) {
         if (k.endsWith(suffix)) {
           resolved = ctx.classes[k];
           break;
+        }
+      }
+      if (!resolved) {
+        for (const k of Object.keys(ctx.interfaces)) {
+          if (k.endsWith(suffix)) {
+            resolved = ctx.interfaces[k];
+            break;
+          }
         }
       }
     }
@@ -274,14 +290,14 @@ export class PHPEngine {
     try {
       for (const resolver of this.classResolvers) {
         await resolver(ctx, orig);
-        resolved = ctx.classes[name] || ctx.classes[shortLower];
+        resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
         if (!resolved && orig.toLowerCase() === "deferredclass") {
           await resolver(ctx, "DeferredClass");
-          resolved = ctx.classes[name] || ctx.classes[shortLower];
+          resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
         }
         if (!resolved && orig !== name) {
           await resolver(ctx, name);
-          resolved = ctx.classes[name] || ctx.classes[shortLower];
+          resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
         }
         if (!resolved && !shortLower.includes("\\")) {
           const suffix = "\\" + shortLower;
@@ -374,6 +390,10 @@ export class PHPEngine {
     return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}`).digest("hex");
   }
 
+  public clearCompiledCache(): void {
+    this.compiledCache.clear();
+  }
+
   public async compileFile(filepath: string): Promise<Function> {
     const resolvedPath = path.resolve(filepath);
     if (this.compiledCache.has(resolvedPath)) {
@@ -398,7 +418,8 @@ export class PHPEngine {
   }
 
   public async compileCode(code: string, filepath: string = "eval"): Promise<Function> {
-    const transpilation = this.transpiler.transpile(code, filepath, {
+    const transpiler = new JSTranspiler();
+    const transpilation = transpiler.transpile(code, filepath, {
       engineSHA1: this.getConfigurationSHA1(),
       cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
       engine: this,
@@ -409,10 +430,10 @@ export class PHPEngine {
     try {
       const factory = vm.compileFunction(
         jsCode,
-        ["module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "PHPError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", "PHPReference", "PHPInterface", "PHPPropertyReference", "PHPArrayOffsetReference", "PROXY_HANDLER"],
+        ["module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "PHPError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", "PHPReference", "PHPInterface", "PHPPropertyReference", "PHPArrayOffsetReference", "PROXY_HANDLER", "path"],
         { filename: filepath }
       );
-      factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, PHPError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, PHPReference, PHPInterface, PHPPropertyReference, PHPArrayOffsetReference, PROXY_HANDLER);
+      factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, PHPError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, PHPReference, PHPInterface, PHPPropertyReference, PHPArrayOffsetReference, PROXY_HANDLER, path);
       return moduleObj.exports;
     } catch (err: any) {
       if (err.name === "SyntaxError") {
@@ -461,6 +482,11 @@ export class PHPEngine {
     }
     this.contexts.clear();
     this.compiledCache.clear();
+    for (const ext of this.extensions.values()) {
+      if (typeof (ext as any).onClose === "function") {
+        try { await (ext as any).onClose(this); } catch {}
+      }
+    }
     if (typeof (globalThis as any).gc === "function") {
       try { (globalThis as any).gc(); } catch (e) {}
     }

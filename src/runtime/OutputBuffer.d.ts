@@ -6,6 +6,8 @@ export declare class OutputBufferStack {
     write(data: string): void;
     getClean(): string | false;
     getContents(): string | false;
+    getLength(): number | false;
+    getFlush(ctx?: PHPContext): string | false;
     flush(ctx?: PHPContext): boolean;
     endClean(): boolean;
     flushAll(ctx: PHPContext): void;
@@ -18,6 +20,8 @@ export declare class OutputBufferRuntime {
         ob_start: (ctx: PHPContext) => boolean;
         ob_get_clean: (ctx: PHPContext) => string | false;
         ob_get_contents: (ctx: PHPContext) => string | false;
+        ob_get_length: (ctx: PHPContext) => number | false;
+        ob_get_flush: (ctx: PHPContext) => string | false;
         ob_flush: (ctx: PHPContext) => boolean;
         ob_end_flush: (ctx: PHPContext) => boolean;
         ob_end_clean: (ctx: PHPContext) => boolean;

@@ -1,5 +1,6 @@
 import type { PHPContext } from "../PHPContext.js";
 export declare abstract class PHPReference {
+    readonly __isPHPReference: boolean;
     abstract get(): any;
     abstract set(val: any): any;
     bindRef?(target: PHPReference): void;
@@ -7,7 +8,10 @@ export declare abstract class PHPReference {
     isReference?(): boolean;
     call?(ctx: PHPContext, method: string, args: any[]): Promise<any>;
 }
+export declare function isPHPReference(val: any): val is PHPReference;
+export declare function isPHPVariable(val: any): boolean;
 export declare class PHPLiteral extends PHPReference {
+    readonly __isPHPLiteral: boolean;
     private readonly value;
     constructor(value: any);
     get(): any;
@@ -36,6 +40,7 @@ export declare class PHPArrayOffsetReference extends PHPReference {
     set(val: any): any;
 }
 export declare class PHPVariable extends PHPReference {
+    readonly __isPHPVariable: boolean;
     private value;
     private refTarget?;
     constructor(initialValue?: any);

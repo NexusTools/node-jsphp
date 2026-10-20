@@ -81,6 +81,22 @@ export class PHPDateTime {
     return DateTimeRuntime.date(null as any, new PHPLiteral(fmt), new PHPLiteral(Math.floor(this.date.getTime() / 1000)));
   }
 
+  public modify(ctxOrMod?: any, modArg?: any): PHPDateTime {
+    const modStr = String(modArg?.get ? modArg.get() : (modArg || ctxOrMod || ""));
+    const match = modStr.match(/^([+-]?\d+)\s*(day|days|month|months|year|years|hour|hours|minute|minutes|second|seconds)$/i);
+    if (match) {
+      const amount = parseInt(match[1], 10);
+      const unit = match[2].toLowerCase();
+      if (unit.startsWith("day")) this.date.setDate(this.date.getDate() + amount);
+      else if (unit.startsWith("month")) this.date.setMonth(this.date.getMonth() + amount);
+      else if (unit.startsWith("year")) this.date.setFullYear(this.date.getFullYear() + amount);
+      else if (unit.startsWith("hour")) this.date.setHours(this.date.getHours() + amount);
+      else if (unit.startsWith("minute")) this.date.setMinutes(this.date.getMinutes() + amount);
+      else if (unit.startsWith("second")) this.date.setSeconds(this.date.getSeconds() + amount);
+    }
+    return this;
+  }
+
   public setTimezone(ctxOrTz?: any, tzArg?: any): PHPDateTime {
     const tz = tzArg?.get ? tzArg.get() : (tzArg || ctxOrTz);
     if (tz instanceof PHPDateTimeZone) {
@@ -100,6 +116,33 @@ export class PHPDateTime {
   }
   public gettimestamp(): number { return this.getTimestamp(); }
 
+  public getOffset(): number {
+    if (this.timezone) {
+      return this.timezone.getOffset(this);
+    }
+    return 0;
+  }
+  public getoffset(): number { return this.getOffset(); }
+
+  public static createFromFormat(ctxOrFmt?: any, fmtArg?: any, dtArg?: any, tzArg?: any): PHPDateTime | false {
+    const fmt = String(fmtArg?.get ? fmtArg.get() : (fmtArg || ctxOrFmt || ""));
+    const dt = String(dtArg?.get ? dtArg.get() : (dtArg || ""));
+    const tz = tzArg?.get ? tzArg.get() : tzArg;
+
+    const d = new PHPDateTime();
+    if (tz instanceof PHPDateTimeZone) d.timezone = tz;
+
+    const timestamp = Date.parse(dt);
+    if (!isNaN(timestamp)) {
+      d.date = new Date(timestamp);
+      return d;
+    }
+    return d;
+  }
+  public static createfromformat(ctxOrFmt?: any, fmtArg?: any, dtArg?: any, tzArg?: any): PHPDateTime | false {
+    return PHPDateTime.createFromFormat(ctxOrFmt, fmtArg, dtArg, tzArg);
+  }
+
   public setTimestamp(ctxOrTs?: any, tsArg?: any): PHPDateTime {
     const ts = Number(tsArg?.get ? tsArg.get() : (tsArg || ctxOrTs)) || 0;
     this.date = new Date(ts * 1000);
@@ -111,6 +154,13 @@ export class PHPDateTime {
 export class PHPDateTimeImmutable extends PHPDateTime {
   public static [SYMBOL_PHP_NAME] = "DateTimeImmutable";
 
+  public override modify(ctxOrMod?: any, modArg?: any): PHPDateTimeImmutable {
+    const clone = Object.create(PHPDateTimeImmutable.prototype);
+    clone.date = new Date(this.date.getTime());
+    clone.timezone = this.timezone;
+    return (PHPDateTime.prototype.modify.call(clone, ctxOrMod, modArg) as PHPDateTimeImmutable);
+  }
+
   public static async createFromMutable(ctxOrDt?: any, dtArg?: any): Promise<PHPDateTimeImmutable> {
     const dt = dtArg?.get ? dtArg.get() : (dtArg || ctxOrDt);
     const imm = Object.create(this.prototype);
@@ -121,10 +171,32 @@ export class PHPDateTimeImmutable extends PHPDateTime {
   public static async createfrommutable(ctxOrDt?: any, dtArg?: any): Promise<PHPDateTimeImmutable> {
     return PHPDateTimeImmutable.createFromMutable(ctxOrDt, dtArg);
   }
+
+  public static override createFromFormat(ctxOrFmt?: any, fmtArg?: any, dtArg?: any, tzArg?: any): PHPDateTimeImmutable | false {
+    const dt = PHPDateTime.createFromFormat(ctxOrFmt, fmtArg, dtArg, tzArg);
+    if (!dt) return false;
+    const imm = Object.create(PHPDateTimeImmutable.prototype);
+    imm.date = new Date(dt.date.getTime());
+    imm.timezone = dt.timezone;
+    return imm;
+  }
+  public static override createfromformat(ctxOrFmt?: any, fmtArg?: any, dtArg?: any, tzArg?: any): PHPDateTimeImmutable | false {
+    return PHPDateTimeImmutable.createFromFormat(ctxOrFmt, fmtArg, dtArg, tzArg);
+  }
 }
 
 export class DateTimeRuntime {
   private static defaultTimezone = "UTC";
+
+  public static checkdate(ctx: PHPContext, monthArg?: any, dayArg?: any, yearArg?: any): boolean {
+    const month = Number(monthArg?.get !== undefined ? monthArg.get() : monthArg);
+    const day = Number(dayArg?.get !== undefined ? dayArg.get() : dayArg);
+    const year = Number(yearArg?.get !== undefined ? yearArg.get() : yearArg);
+    if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return false;
+    if (year < 1 || year > 32767 || month < 1 || month > 12 || day < 1) return false;
+    const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day <= daysInMonth[month - 1];
+  }
 
   public static time(ctx?: PHPContext): number {
     return Math.floor(Date.now() / 1000);
@@ -208,12 +280,51 @@ export class DateTimeRuntime {
     return res;
   }
 
+  public static date_create(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false {
+    let dtStr = datetimeArg?.get !== undefined ? datetimeArg.get() : datetimeArg;
+    while (dtStr instanceof PHPReference) dtStr = dtStr.get();
+    let tz = timezoneArg?.get !== undefined ? timezoneArg.get() : timezoneArg;
+    while (tz instanceof PHPReference) tz = tz.get();
+
+    const d = new PHPDateTime();
+    if (tz instanceof PHPDateTimeZone) d.timezone = tz;
+
+    const str = ctx.str(dtStr || "now");
+    const ts = Date.parse(str === "now" ? new Date().toISOString() : str);
+    if (!isNaN(ts)) {
+      d.date = new Date(ts);
+    }
+    return d;
+  }
+
+  public static date_create_immutable(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false {
+    const dt = DateTimeRuntime.date_create(ctx, datetimeArg, timezoneArg);
+    if (!dt) return false;
+    const imm = Object.create(PHPDateTimeImmutable.prototype);
+    imm.date = new Date(dt.date.getTime());
+    imm.timezone = dt.timezone;
+    return imm;
+  }
+
+  public static date_create_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false {
+    return PHPDateTime.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
+  }
+
+  public static date_create_immutable_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false {
+    return PHPDateTimeImmutable.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
+  }
+
   static functions = {
+    "checkdate": DateTimeRuntime.checkdate,
     "time": DateTimeRuntime.time,
     "microtime": DateTimeRuntime.microtime,
     "date": DateTimeRuntime.date,
     "gmdate": DateTimeRuntime.gmdate,
     "strtotime": DateTimeRuntime.strtotime,
+    "date_create": DateTimeRuntime.date_create,
+    "date_create_immutable": DateTimeRuntime.date_create_immutable,
+    "date_create_from_format": DateTimeRuntime.date_create_from_format,
+    "date_create_immutable_from_format": DateTimeRuntime.date_create_immutable_from_format,
     "date_default_timezone_get": DateTimeRuntime.date_default_timezone_get,
     "date_default_timezone_set": DateTimeRuntime.date_default_timezone_set,
     "timezone_identifiers_list": DateTimeRuntime.timezone_identifiers_list,

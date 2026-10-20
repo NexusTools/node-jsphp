@@ -7,7 +7,7 @@ export declare class StringRuntime {
     /** Count the number of substring occurrences. */
     static substr_count(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number;
     /** Return part of a string. */
-    static substr(ctx: PHPContext, strArg?: PHPReference, startArg?: PHPReference, lengthArg?: PHPReference): string;
+    static substr(ctx: PHPContext, strArg?: any, startArg?: any, lengthArg?: any): string;
     /** Replace text within a portion of a string. */
     static substr_replace(ctx: PHPContext, subjectArg?: PHPReference, replacementArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): string | string[];
     /** Find the position of the first occurrence of a substring in a string. */
@@ -20,6 +20,8 @@ export declare class StringRuntime {
     static strripos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): number | false;
     /** Find the first occurrence of a string. */
     static strstr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): string | false;
+    /** Find the first case-insensitive occurrence of a string. */
+    static stristr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): string | false;
     /**
      * Replace all occurrences of the search string with the replacement string.
      * @param countRef Output variable passed by reference to receive replacement count.
@@ -63,6 +65,8 @@ export declare class StringRuntime {
     static strcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number;
     /** Binary safe case-insensitive string comparison of the first n characters. */
     static strncasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number;
+    static strnatcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number;
+    static strnatcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number;
     /** Quote string with slashes. */
     static addslashes(ctx: PHPContext, strArg?: PHPReference): string;
     static addcslashes(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string;
@@ -90,15 +94,18 @@ export declare class StringRuntime {
     /** Reverse a string. */
     static strrev(ctx: PHPContext, stringArg?: PHPReference): string;
     /** Generate a single-byte string from a number. */
-    static chr(ctx: PHPContext, asciiArg?: PHPReference): string;
+    static chr(ctx: PHPContext, asciiArg?: any): string;
     /** Convert the first byte of a string to a value between 0 and 255. */
-    static ord(ctx: PHPContext, characterArg?: PHPReference): number;
+    static ord(ctx: PHPContext, characterArg?: any): number;
+    /** Format a number with grouped thousands. */
+    static number_format(ctx: PHPContext, numArg?: any, decimalsArg?: any, decPointArg?: any, thousandsSepArg?: any): string;
     /** Convert binary data into hexadecimal representation. */
     static bin2hex(ctx: PHPContext, stringArg?: PHPReference): string;
     /** Decodes a hexadecimally encoded binary string. */
     static hex2bin(ctx: PHPContext, hexStringArg?: PHPReference): string;
-    static base64_encode(ctx: PHPContext, stringArg?: PHPReference): string;
-    static base64_decode(ctx: PHPContext, stringArg?: PHPReference): string;
+    static substr_compare(ctx: PHPContext, mainStrArg?: PHPReference, strArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference, caseInsensitiveArg?: PHPReference): number;
+    static base64_encode(ctx: PHPContext, stringArg?: any): string;
+    static base64_decode(ctx: PHPContext, stringArg?: any): string;
     /** Compares two "PHP-standardized" version number strings. */
     static version_compare(ctx: PHPContext, v1Arg?: PHPReference, v2Arg?: PHPReference, opArg?: PHPReference): any;
     /**
@@ -112,6 +119,8 @@ export declare class StringRuntime {
     static str_starts_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
     static str_ends_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
     static str_contains(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean;
+    /** Search a string for any of a set of characters. */
+    static strpbrk(ctx: PHPContext, stringArg?: any, charlistArg?: any): string | false;
     static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number;
     static functions: {
         str_starts_with: typeof StringRuntime.str_starts_with;
@@ -124,12 +133,14 @@ export declare class StringRuntime {
         strlen: typeof StringRuntime.strlen;
         substr_count: typeof StringRuntime.substr_count;
         substr: typeof StringRuntime.substr;
+        substr_compare: typeof StringRuntime.substr_compare;
         substr_replace: typeof StringRuntime.substr_replace;
         strpos: typeof StringRuntime.strpos;
         stripos: typeof StringRuntime.stripos;
         strrpos: typeof StringRuntime.strrpos;
         strripos: typeof StringRuntime.strripos;
         strstr: typeof StringRuntime.strstr;
+        stristr: typeof StringRuntime.stristr;
         str_replace: typeof StringRuntime.str_replace;
         strtr: typeof StringRuntime.strtr;
         str_ireplace: typeof StringRuntime.str_ireplace;
@@ -137,8 +148,10 @@ export declare class StringRuntime {
         printf: typeof StringRuntime.printf;
         vsprintf: typeof StringRuntime.vsprintf;
         vprintf: typeof StringRuntime.vprintf;
+        number_format: typeof StringRuntime.number_format;
         strspn: typeof StringRuntime.strspn;
         strcspn: typeof StringRuntime.strcspn;
+        strpbrk: typeof StringRuntime.strpbrk;
         explode: typeof StringRuntime.explode;
         implode: typeof StringRuntime.implode;
         trim: typeof StringRuntime.trim;
@@ -154,6 +167,8 @@ export declare class StringRuntime {
         strncmp: typeof StringRuntime.strncmp;
         strcasecmp: typeof StringRuntime.strcasecmp;
         strncasecmp: typeof StringRuntime.strncasecmp;
+        strnatcmp: typeof StringRuntime.strnatcmp;
+        strnatcasecmp: typeof StringRuntime.strnatcasecmp;
         addslashes: typeof StringRuntime.addslashes;
         addcslashes: typeof StringRuntime.addcslashes;
         stripslashes: typeof StringRuntime.stripslashes;

@@ -7,6 +7,15 @@ import { PHPError, PHPTypeError } from "./PHPError.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
 import { SYMBOL_PHP_NAME } from "./Reflection.js";
 
+export function isPlainObject(value: any): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === null) return true;
+  return !value[SYMBOL_PHP_NAME]
+    && Object.prototype.toString.call(value) === "[object Object]"
+    && prototype.constructor?.name === "Object";
+}
+
 export class VariablesRuntime {
   /**
    * Serializes a value into a PHP-compatible serialized string representation.
@@ -107,49 +116,67 @@ export class VariablesRuntime {
     return true;
   }
 
+  private static unwrapValue(valArg: any): any {
+    let val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    while (val instanceof PHPReference) {
+      val = val.get();
+    }
+    return val;
+  }
+
   /** Finds whether a variable is an array. */
   public static is_array(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
-    return Array.isArray(val) || (typeof val === "object" && val !== null && val.constructor === Object);
+    const val = VariablesRuntime.unwrapValue(valArg);
+    return Array.isArray(val) || isPlainObject(val);
   }
   /** Finds whether a variable is a boolean. */
   public static is_bool(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return typeof val === "boolean";
   }
   /** Finds whether a variable is a float. */
   public static is_float(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return typeof val === "number" && !Number.isInteger(val);
   }
   /** Finds whether a variable is an integer. */
   public static is_int(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return typeof val === "number" && Number.isInteger(val);
   }
   /** Finds whether a variable is NULL. */
   public static is_null(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return val === null || val === undefined;
   }
   /** Finds whether a variable is a number or a numeric string. */
   public static is_numeric(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     if (typeof val === "number") return !Number.isNaN(val);
     if (typeof val !== "string") return false;
     return !Number.isNaN(Number(val)) && !Number.isNaN(parseFloat(val));
   }
   /** Finds whether a variable is an object. */
   public static is_object(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
-    return typeof val === "function" || (typeof val === "object" && val !== null && !Array.isArray(val) && val.constructor !== Object);
+    const val = VariablesRuntime.unwrapValue(valArg);
+    return typeof val === "function" || (typeof val === "object" && val !== null && !Array.isArray(val) && !isPlainObject(val));
   }
   /** Gets the properties of the given object. */
-  public static async get_object_vars(ctx: PHPContext | null, valueArg?: any): Promise<Record<string, any>> {
-    const value = valueArg instanceof PHPReference ? valueArg.get() : valueArg;
+  public static get_object_vars(ctx: PHPContext | null, valueArg?: any): Record<string, any> {
+    const value = VariablesRuntime.unwrapValue(valueArg);
     if (typeof value === "function") return {};
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new PHPTypeError("get_object_vars(): Argument #1 ($object) must be of type object");
+    }
+
+    if (value.constructor === Object) {
+      const cleanObj: Record<string, any> = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (k.startsWith("__")) continue;
+        const cleanKey = k.startsWith("$") ? k.slice(1) : k;
+        cleanObj[cleanKey] = v instanceof PHPVariable ? v.get() : v;
+      }
+      return cleanObj;
     }
 
     if (value instanceof PHPError) {
@@ -189,28 +216,28 @@ export class VariablesRuntime {
   }
   /** Finds whether a variable is a scalar. */
   public static is_scalar(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     const t = typeof val;
     return t === "string" || t === "number" || t === "boolean";
   }
   /** Finds whether a variable is a string. */
   public static is_string(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return typeof val === "string";
   }
   /** Verify that the contents of a variable is an iterable value. */
   public static is_iterable(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return Array.isArray(val) || (val && typeof val === "object");
   }
   /** Verify that the contents of a variable is a countable value. */
   public static is_countable(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return Array.isArray(val) || typeof val === "string";
   }
   /** Finds whether a variable is a resource. */
   public static is_resource(ctx: PHPContext | null, valArg?: any): boolean {
-    const val = valArg instanceof PHPReference ? valArg.get() : valArg;
+    const val = VariablesRuntime.unwrapValue(valArg);
     return val && typeof val === "object" && Boolean(val.isResource);
   }
   /** Get the type of a variable. */
@@ -309,11 +336,14 @@ export class VariablesRuntime {
     return count;
   }
 
-  public static var_export(ctx: PHPContext, valArg?: PHPReference, returnArg?: PHPReference, ...args: any[]): string | true {
+  public static var_export(ctx: PHPContext, valArg?: any, returnArg?: any, ...args: any[]): string | true {
     const depth = typeof args[0] === "number" ? args[0] : 0;
     if (depth > 5) return "'...'";
-    const val = valArg?.get();
-    const returnVal = Boolean(returnArg?.get());
+    let val = valArg?.get !== undefined ? valArg.get() : valArg;
+    while (val instanceof PHPReference) val = val.get();
+    let returnVal = returnArg?.get !== undefined ? returnArg.get() : returnArg;
+    while (returnVal instanceof PHPReference) returnVal = returnVal.get();
+    const isReturn = Boolean(returnVal);
     let str = "";
     if (val === null || val === undefined) str = "NULL";
     else if (typeof val === "boolean") str = val ? "true" : "false";

@@ -5,6 +5,7 @@ import { OutputBufferStack } from "./runtime/OutputBuffer.js";
 import { PHPVariable, PHPReference } from "./runtime/PHPVariable.js";
 export interface PHPContextOptions {
     cwd?: string;
+    root?: string;
     env?: Record<string, string>;
     stdout?: Writable | ((data: string) => void);
     stderr?: Writable | ((data: string) => void);
@@ -32,6 +33,7 @@ export declare class PHPResponse {
 export declare class PHPContext {
     engine: PHPEngine;
     cwd: string;
+    root: string;
     env: Record<string, string>;
     vars: Record<string, any>;
     constants: Record<string, any>;
@@ -49,8 +51,13 @@ export declare class PHPContext {
     errorHandlerStack: any[];
     errorReportingLevel: number;
     includedFiles: Set<string>;
+    currentFile: string;
+    currentLine: number;
+    lastError: Record<string, any> | null;
+    currentDir: string;
     executionDepth: number;
     tickCount: number;
+    private phpCallStack;
     private stdout;
     private stderr;
     private outputChunks;
@@ -64,13 +71,19 @@ export declare class PHPContext {
     get currentClass(): any;
     get currentClassName(): string;
     get currentParentClassName(): string;
+    toLiteral(val: any): PHPReference;
+    toVal(val: any): any;
+    add(left: any, right: any): any;
+    equals(left: any, right: any, strict?: boolean, negate?: boolean): boolean;
     /**
      * Checks if an object is an instance of a class or interface.
      * @param className Class or interface name in lowercase.
      */
-    isInstanceOf(obj: any, className: string): boolean;
+    isInstanceOf(objArg: any, className: string): boolean;
     /** Gets virtualized PHP stack trace frames for error handling and backtraces. */
     getPHPBacktrace(): any[];
+    pushPHPFrame(functionName: string, file: string, line: number): void;
+    popPHPFrame(): void;
     /** Sets a user-defined error handler function. */
     setErrorHandler(handler: any, levels?: number): any;
     /** Restores the previous error handler from the stack. */
@@ -128,18 +141,26 @@ export declare class PHPContext {
     private assignOffset;
     /** Initializes a static variable in function scope. */
     initStaticVar(scope: string, name: string, value: any): void;
+    /** Clones an object or class instance in PHP. */
+    cloneObject(objArg: any): Promise<any>;
     /** Evaluates whether a value is truthy in PHP. */
-    isTruthy(val: any): boolean;
+    isTruthy(valArg: any): boolean;
+    /** Implements PHP's array-union assignment and numeric addition. */
+    addAssign(left: any, right: any): any;
+    /** Evaluates PHP isset operands without raising on missing properties or offsets. */
+    isset(...getters: Array<() => any>): Promise<boolean>;
+    /** Evaluates PHP empty() while suppressing missing-property warnings. */
+    isEmpty(getter: () => any): Promise<boolean>;
     /**
      * Gets a property on an object or array.
      * @param prop Property name in lowercase.
      */
-    getProperty(obj: any, prop: string): Promise<any>;
+    getProperty(obj: any, propArg: any): Promise<any>;
     /**
      * Sets a property on an object or array.
      * @param prop Property name in lowercase.
      */
-    setProperty(obj: any, prop: string, value: any): Promise<any>;
+    setProperty(obj: any, propArg: any, value: any): Promise<any>;
     /** Sets a single property offset on an object. */
     setPropertyOffset(obj: any, prop: string, key: any, value: any): Promise<any>;
     /** Sets nested property offsets on an object. */
@@ -164,6 +185,7 @@ export declare class PHPContext {
      */
     resolveMissingClass(className: string, originalName?: string): Promise<any>;
     resolveClass(className: string, originalName?: string): Promise<any>;
+    resolveClassOrInstance(classRef: any, originalName?: string): Promise<any>;
     /**
      * Gets a static class constant.
      * @param className Class name in lowercase.

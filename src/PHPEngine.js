@@ -29,9 +29,6 @@ export const PROXY_HANDLER = {
         if (typeof prop === 'string' && prop.startsWith('$')) {
             if (prop in target)
                 return target[prop];
-            const realProp = prop.slice(1);
-            if (typeof target.__get === 'function')
-                return target.__get(target.__ctx, new PHPLiteral(realProp));
             return undefined;
         }
         if (prop in target)
@@ -42,7 +39,6 @@ export const PROXY_HANDLER = {
     },
     set(target, prop, value, receiver) {
         const propWithDollar = typeof prop === 'string' && prop.startsWith('$') ? prop : '$' + prop;
-        const realProp = typeof prop === 'string' && prop.startsWith('$') ? prop.slice(1) : prop;
         if (propWithDollar in target) {
             if (target[propWithDollar] instanceof PHPVariable) {
                 target[propWithDollar].set(value);
@@ -50,10 +46,6 @@ export const PROXY_HANDLER = {
             else {
                 target[propWithDollar] = value;
             }
-            return true;
-        }
-        if (typeof target.__set === 'function') {
-            target.__set(target.__ctx, new PHPLiteral(realProp), new PHPLiteral(value));
             return true;
         }
         target[propWithDollar] = value;
@@ -90,7 +82,7 @@ export function getDefaultExtensions() {
     ];
 }
 export class PHPEngine {
-    static REVISION = 313;
+    static REVISION = 444;
     static VERSION = "8.5.0";
     static TRUE = new PHPLiteral(true);
     static FALSE = new PHPLiteral(false);
@@ -125,6 +117,17 @@ export class PHPEngine {
         php_version: PHPEngine.VERSION,
         php_engine: "jsphp",
         php_os: process.platform === "win32" ? "WINNT" : "Linux",
+        php_int_size: 8,
+        php_int_max: Number.MAX_SAFE_INTEGER,
+        php_int_min: Number.MIN_SAFE_INTEGER,
+        php_url_scheme: 0,
+        php_url_host: 1,
+        php_url_port: 2,
+        php_url_user: 3,
+        php_url_pass: 4,
+        php_url_path: 5,
+        php_url_query: 6,
+        php_url_fragment: 7,
         directory_separator: path.sep,
         path_separator: process.platform === "win32" ? ";" : ":",
         e_error: 1,
@@ -219,13 +222,21 @@ export class PHPEngine {
     async resolveClass(name, originalName, ctx) {
         const orig = originalName || name;
         const shortLower = String(name).split("\\").pop() || String(name);
-        let resolved = ctx.classes[name] || ctx.classes[shortLower];
+        let resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
         if (!resolved && !shortLower.includes("\\")) {
             const suffix = "\\" + shortLower;
             for (const k of Object.keys(ctx.classes)) {
                 if (k.endsWith(suffix)) {
                     resolved = ctx.classes[k];
                     break;
+                }
+            }
+            if (!resolved) {
+                for (const k of Object.keys(ctx.interfaces)) {
+                    if (k.endsWith(suffix)) {
+                        resolved = ctx.interfaces[k];
+                        break;
+                    }
                 }
             }
         }
@@ -242,14 +253,14 @@ export class PHPEngine {
         try {
             for (const resolver of this.classResolvers) {
                 await resolver(ctx, orig);
-                resolved = ctx.classes[name] || ctx.classes[shortLower];
+                resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
                 if (!resolved && orig.toLowerCase() === "deferredclass") {
                     await resolver(ctx, "DeferredClass");
-                    resolved = ctx.classes[name] || ctx.classes[shortLower];
+                    resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
                 }
                 if (!resolved && orig !== name) {
                     await resolver(ctx, name);
-                    resolved = ctx.classes[name] || ctx.classes[shortLower];
+                    resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
                 }
                 if (!resolved && !shortLower.includes("\\")) {
                     const suffix = "\\" + shortLower;
@@ -338,6 +349,9 @@ export class PHPEngine {
             .join(",");
         return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}`).digest("hex");
     }
+    clearCompiledCache() {
+        this.compiledCache.clear();
+    }
     async compileFile(filepath) {
         const resolvedPath = path.resolve(filepath);
         if (this.compiledCache.has(resolvedPath)) {
@@ -358,7 +372,8 @@ export class PHPEngine {
         return func;
     }
     async compileCode(code, filepath = "eval") {
-        const transpilation = this.transpiler.transpile(code, filepath, {
+        const transpiler = new JSTranspiler();
+        const transpilation = transpiler.transpile(code, filepath, {
             engineSHA1: this.getConfigurationSHA1(),
             cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
             engine: this,
@@ -366,8 +381,8 @@ export class PHPEngine {
         const jsCode = transpilation.code;
         const moduleObj = { exports: {} };
         try {
-            const factory = vm.compileFunction(jsCode, ["module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "PHPError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", "PHPReference", "PHPInterface", "PHPPropertyReference", "PHPArrayOffsetReference", "PROXY_HANDLER"], { filename: filepath });
-            factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, PHPError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, PHPReference, PHPInterface, PHPPropertyReference, PHPArrayOffsetReference, PROXY_HANDLER);
+            const factory = vm.compileFunction(jsCode, ["module", "exports", "PHPVariable", "PHPLiteral", "PHPFatalError", "PHPError", "SYMBOL_PHP_NAME", "SYMBOL_PHP_HAS_MAGIC_METHODS", "SYMBOL_PHP_CLASS_INTERFACES", "PHPReference", "PHPInterface", "PHPPropertyReference", "PHPArrayOffsetReference", "PROXY_HANDLER", "path"], { filename: filepath });
+            factory(moduleObj, moduleObj.exports, PHPVariable, PHPLiteral, PHPFatalError, PHPError, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, PHPReference, PHPInterface, PHPPropertyReference, PHPArrayOffsetReference, PROXY_HANDLER, path);
             return moduleObj.exports;
         }
         catch (err) {
@@ -416,6 +431,14 @@ export class PHPEngine {
         }
         this.contexts.clear();
         this.compiledCache.clear();
+        for (const ext of this.extensions.values()) {
+            if (typeof ext.onClose === "function") {
+                try {
+                    await ext.onClose(this);
+                }
+                catch { }
+            }
+        }
         if (typeof globalThis.gc === "function") {
             try {
                 globalThis.gc();

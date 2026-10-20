@@ -22,11 +22,13 @@ describe("Networking Runtime Tests", () => {
       $u = parse_url('https://example.com:8080/path?a=1#frag');
       echo $u['host'] . ';';
       echo $u['port'] . ';';
+      echo parse_url('https://example.com/path', PHP_URL_SCHEME) . ';';
+      echo parse_url('https://example.com/path', PHP_URL_HOST) . ';';
       echo http_build_query(array('a' => '1', 'b' => '2')) . ';';
       http_response_code(201);
       echo http_response_code() . ';';
     `);
-        expect(out).toBe("127.0.0.1;example.com;8080;a=1&b=2;201;");
+        expect(out).toBe("127.0.0.1;example.com;8080;https;example.com;a=1&b=2;201;");
         expect(flushedStatus).toBe(200);
         expect(flushedHeaders).toEqual([]);
         expect(ctx.statusCode).toBe(201);

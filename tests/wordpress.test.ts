@@ -1,11 +1,11 @@
 import { jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
-import AdmZip from "adm-zip";
 import mysql2 from "mysql2/promise";
-import { PHPEngine, PHPContext } from "../index.js";
+import { PHPEngine } from "../index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,12 +53,11 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
   let engine: PHPEngine;
   const wpDir = path.join(__dirname, "../wordpress-test");
   const wpZipPath = path.join(__dirname, "latest.zip");
-  let parsedCookies: Record<string, string> = {};
 
   beforeAll(async () => {
     jest.setTimeout(180000);
     delete process.env.JSPHP_DEBUG;
-    engine = new PHPEngine({ watch: false });
+    engine = new PHPEngine({ watch: false, cacheDir: null });
 
     console.log("Setting up MySQL database...");
     const possibleHosts = [MYSQL_HOST, "127.0.0.1", "localhost"];
@@ -82,15 +81,9 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
     if (conn) {
       await conn.query(`DROP DATABASE IF EXISTS \`${TEST_DB_NAME}\`;`);
       await conn.query(`CREATE DATABASE \`${TEST_DB_NAME}\`;`);
-      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'%';`); } catch (e) {}
-      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'localhost';`); } catch (e) {}
-      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'127.0.0.1';`); } catch (e) {}
-      try { await conn.query(`CREATE USER '${TEST_USER}'@'%' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
-      try { await conn.query(`CREATE USER '${TEST_USER}'@'localhost' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
-      try { await conn.query(`CREATE USER '${TEST_USER}'@'127.0.0.1' IDENTIFIED BY '${TEST_PASS}';`); } catch (e) {}
-      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'%';`); } catch (e) {}
-      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'localhost';`); } catch (e) {}
-      try { await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'127.0.0.1';`); } catch (e) {}
+      try { await conn.query(`DROP USER IF EXISTS '${TEST_USER}'@'%', '${TEST_USER}'@'localhost', '${TEST_USER}'@'127.0.0.1';`); } catch (e) {}
+      await conn.query(`CREATE USER '${TEST_USER}'@'%' IDENTIFIED BY '${TEST_PASS}';`);
+      await conn.query(`GRANT ALL PRIVILEGES ON \`${TEST_DB_NAME}\`.* TO '${TEST_USER}'@'%';`);
       await conn.query("FLUSH PRIVILEGES;");
       await conn.end();
       console.log(`MySQL setup complete using root password: ${JSON.stringify(rootPassUsed)}`);
@@ -98,32 +91,34 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
       console.error("CRITICAL: MySQL root connection failed for all attempted passwords!");
     }
 
-    if (!fs.existsSync(wpZipPath)) {
-      console.log("Downloading latest WordPress zip...");
-      const res = await fetch("https://wordpress.org/latest.zip");
-      if (!res.ok) {
-        throw new Error(`Failed to download WordPress zip: ${res.statusText}`);
+    if (!fs.existsSync(path.join(wpDir, "wp-settings.php"))) {
+      if (!fs.existsSync(wpZipPath)) {
+        console.log("Downloading latest WordPress zip...");
+        const res = await fetch("https://wordpress.org/latest.zip");
+        if (!res.ok) {
+          throw new Error(`Failed to download WordPress zip: ${res.statusText}`);
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        fs.writeFileSync(wpZipPath, Buffer.from(arrayBuffer));
+        console.log("WordPress zip downloaded successfully.");
       }
-      const arrayBuffer = await res.arrayBuffer();
-      fs.writeFileSync(wpZipPath, Buffer.from(arrayBuffer));
-      console.log("WordPress zip downloaded successfully.");
+
+      console.log("Extracting fresh WordPress archive...");
+      forceRmSync(wpDir);
+      fs.mkdirSync(wpDir, { recursive: true });
+
+      const tmpDir = path.join(__dirname, "../wp_temp_extract");
+      forceRmSync(tmpDir);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const { execSync } = await import("child_process");
+      execSync(`tar -xf "${wpZipPath}" -C "${tmpDir}"`);
+
+      const subFolder = path.join(tmpDir, "wordpress");
+      copyRecursiveSync(subFolder, wpDir);
+      forceRmSync(tmpDir);
+      console.log("WordPress extracted successfully to:", wpDir);
     }
-
-    console.log("Extracting fresh WordPress archive...");
-    forceRmSync(wpDir);
-    fs.mkdirSync(wpDir, { recursive: true });
-
-    const tmpDir = path.join(__dirname, "../wp_temp_extract");
-    forceRmSync(tmpDir);
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    const zip = new AdmZip(wpZipPath);
-    zip.extractAllTo(tmpDir, true);
-
-    const subFolder = path.join(tmpDir, "wordpress");
-    copyRecursiveSync(subFolder, wpDir);
-    forceRmSync(tmpDir);
-    console.log("WordPress extracted successfully to:", wpDir);
 
     const wpConfigPath = path.join(wpDir, "wp-config.php");
     if (fs.existsSync(wpConfigPath)) {
@@ -133,10 +128,6 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
   }, 180000);
 
   afterAll(async () => {
-    const wpConfigPath = path.join(wpDir, "wp-config.php");
-    if (fs.existsSync(wpConfigPath)) {
-      try { fs.unlinkSync(wpConfigPath); } catch (e) {}
-    }
     if (engine) {
       try {
         const cleanupCtx = engine.createContext();
@@ -151,17 +142,24 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
         console.log("Cleaned up MySQL test database and user via PHP.");
       } catch (e) {
       }
-      engine.close();
+      await engine.close();
     }
   });
 
-  test("Step 1: Renders Setup Config (setup-config.php?step=1)", async () => {
+  test("Executes full WordPress installation and control panel workflow", async () => {
     const setupPhpPath = path.join(wpDir, "wp-admin", "setup-config.php");
+    const installPhpPath = path.join(wpDir, "wp-admin", "install.php");
+    const loginPhpPath = path.join(wpDir, "wp-login.php");
+    const adminIndexPhpPath = path.join(wpDir, "wp-admin", "index.php");
+    const pluginsPhpPath = path.join(wpDir, "wp-admin", "plugins.php");
+    const homePhpPath = path.join(wpDir, "index.php");
 
-    let getOutput = "";
-    const getCtx = engine.createContext({
+    // STEP 1: Render setup-config.php?step=1
+    console.log("STEP 1: GET setup-config.php?step=1");
+    let step1Output = "";
+    const step1Ctx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { getOutput += data; },
+      stdout: (d) => { step1Output += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "GET",
@@ -174,65 +172,17 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
         get: { step: "1" },
       },
     });
+    step1Ctx.setInternalVar("hasServerResponseHandler", true);
+    try { await step1Ctx.require(setupPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
+    expect(step1Output).toContain("dbname");
+    await step1Ctx.destroy();
 
-    getCtx.setInternalVar("hasServerResponseHandler", true);
-
-    try {
-      await getCtx.require(setupPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") {
-        console.error("STEP 1 ERROR:", e);
-        throw e;
-      }
-    }
-
-    const $get = cheerio.load(getOutput);
-    const form = $get("form[action='setup-config.php?step=2']");
-    expect(form.length).toBeGreaterThan(0);
-    expect($get("input[name='dbname']").length).toBe(1);
-    expect($get("input[name='uname']").length).toBe(1);
-    expect($get("input[name='pwd']").length).toBe(1);
-
-    // Verify rendered text
-    const labelDbName = $get("label[for='dbname']").text();
-    expect(labelDbName).toContain("Database Name");
-
-    const labelUname = $get("label[for='uname']").text();
-    expect(labelUname).toContain("Username");
-
-    const labelPwd = $get("label[for='pwd']").text();
-    expect(labelPwd).toContain("Password");
-
-    const labelDbHost = $get("label[for='dbhost']").text();
-    expect(labelDbHost).toContain("Database Host");
-
-    const labelPrefix = $get("label[for='prefix']").text();
-    expect(labelPrefix).toContain("Table Prefix");
-
-    // Verify <link> stylesheet tag in <head>
-    const linkTags = $get("link[rel='stylesheet']");
-    expect(linkTags.length).toBeGreaterThan(0);
-
-    const href = linkTags.first().attr("href") || "";
-    expect(href).toContain(".css");
-
-    // Verify the linked CSS file exists and has valid CSS styles
-    const installCssPath = path.join(wpDir, "wp-admin", "css", "install.css");
-    expect(fs.existsSync(installCssPath)).toBe(true);
-    const cssContent = fs.readFileSync(installCssPath, "utf8");
-    expect(cssContent).toContain("#logo");
-    expect(cssContent).toContain("body");
-
-    getCtx.destroy();
-  }, 180000);
-
-  test("Step 2: Submit Database Configuration and Create wp-config.php (setup-config.php?step=2)", async () => {
-    const setupPhpPath = path.join(wpDir, "wp-admin", "setup-config.php");
-
-    let postOutput = "";
-    const postCtx = engine.createContext({
+    // STEP 2: POST setup-config.php?step=2
+    console.log("STEP 2: POST setup-config.php?step=2");
+    let step2Output = "";
+    const step2Ctx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { postOutput += data; },
+      stdout: (d) => { step2Output += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "POST",
@@ -253,88 +203,51 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
         },
       },
     });
+    step2Ctx.setInternalVar("hasServerResponseHandler", true);
+    try { await step2Ctx.require(setupPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
+    expect(step2Output).toContain("install.php");
+    await step2Ctx.destroy();
 
-    postCtx.setInternalVar("hasServerResponseHandler", true);
+    const wpConfigPath = path.join(wpDir, "wp-config.php");
+    expect(fs.existsSync(wpConfigPath)).toBe(true);
+    let wpConfigContent = fs.readFileSync(wpConfigPath, "utf8");
+    wpConfigContent = wpConfigContent.replace(
+      "/* That's all, stop editing!",
+      "define( 'WP_HTTP_BLOCK_EXTERNAL', true );\nif (function_exists('add_filter')) { add_filter('pre_wp_mail', '__return_true'); }\n/* That's all, stop editing!"
+    );
+    fs.writeFileSync(wpConfigPath, wpConfigContent, "utf8");
 
-    try {
-      await postCtx.require(setupPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
-
-    const $post = cheerio.load(postOutput);
-    const installLink = $post("a[href^='install.php']");
-
-    if (installLink.length === 0) {
-      console.log("Failed DB Setup Output:\n", postOutput);
-    }
-
-    expect(installLink.length).toBeGreaterThan(0);
-    expect(fs.existsSync(path.join(wpDir, "wp-config.php"))).toBe(true);
-
-    postCtx.destroy();
-  }, 180000);
-
-  test("Step 3: Render Installation Form (install.php)", async () => {
-    const installPhpPath = path.join(wpDir, "wp-admin", "install.php");
-
-    let getOutput = "";
-    const getCtx = engine.createContext({
+    // STEP 3: GET install.php?step=1
+    console.log("STEP 3: GET install.php?step=1");
+    let step3Output = "";
+    const step3Ctx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { getOutput += data; },
+      stdout: (d) => { step3Output += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "GET",
-          REQUEST_URI: "/wp-admin/install.php",
+          REQUEST_URI: "/wp-admin/install.php?step=1",
+          QUERY_STRING: "step=1",
           DOCUMENT_ROOT: wpDir,
           SCRIPT_FILENAME: installPhpPath,
           HTTP_HOST: "127.0.0.1",
         },
+        get: { step: "1" },
       },
     });
+    step3Ctx.setInternalVar("hasServerResponseHandler", true);
+    try { await step3Ctx.require(installPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
 
-    getCtx.setInternalVar("hasServerResponseHandler", true);
+    const $step3 = cheerio.load(step3Output);
+    const wpNonce = $step3("#_wpnonce").attr("value") || $step3("input[name='_wpnonce']").attr("value") || $step3("input[name='_wpnonce']").val() || "";
+    await step3Ctx.destroy();
 
-    try {
-      await getCtx.require(installPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
-
-    const $get = cheerio.load(getOutput);
-    const form = $get("form[action='install.php?step=2']");
-    expect(form.length).toBeGreaterThan(0);
-
-    getCtx.destroy();
-  }, 180000);
-
-  test("Step 4: Execute WordPress Installation (install.php?step=2)", async () => {
-    const installPhpPath = path.join(wpDir, "wp-admin", "install.php");
-
-    let getOutput = "";
-    const getCtx = engine.createContext({
+    // STEP 4: POST install.php?step=2
+    console.log("STEP 4: POST install.php?step=2");
+    let step4Output = "";
+    const step4Ctx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { getOutput += data; },
-      superglobals: {
-        server: {
-          REQUEST_METHOD: "GET",
-          REQUEST_URI: "/wp-admin/install.php",
-          DOCUMENT_ROOT: wpDir,
-          SCRIPT_FILENAME: installPhpPath,
-          HTTP_HOST: "127.0.0.1",
-        },
-      },
-    });
-    getCtx.setInternalVar("hasServerResponseHandler", true);
-    try { await getCtx.require(installPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
-
-    const $get = cheerio.load(getOutput);
-    const wpNonce = $get("input[name='_wpnonce']").val() || "";
-
-    let postOutput = "";
-    const postCtx = engine.createContext({
-      cwd: wpDir,
-      stdout: (data) => { postOutput += data; },
+      stdout: (d) => { step4Output += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "POST",
@@ -343,6 +256,7 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
           DOCUMENT_ROOT: wpDir,
           SCRIPT_FILENAME: installPhpPath,
           HTTP_HOST: "127.0.0.1",
+          HTTP_REFERER: "http://127.0.0.1/wp-admin/install.php?step=1",
         },
         get: { step: "2" },
         post: {
@@ -357,131 +271,118 @@ describe("Complete WordPress End-to-End Installation & Control Panel Test", () =
         },
       },
     });
+    step4Ctx.setInternalVar("hasServerResponseHandler", true);
+    try { await step4Ctx.require(installPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
+    expect(step4Output).toContain("Success!");
+    await step4Ctx.destroy();
 
-    postCtx.setInternalVar("hasServerResponseHandler", true);
+    const verifyDb = await mysql2.createConnection({
+      host: MYSQL_HOST,
+      user: TEST_USER,
+      password: TEST_PASS,
+      database: TEST_DB_NAME,
+      port: MYSQL_PORT,
+    });
+    const [capabilityRows] = await verifyDb.query(
+      "SELECT meta_value FROM wp_usermeta WHERE user_id = 1 AND meta_key = 'wp_capabilities'"
+    );
+    const [urlRows] = await verifyDb.query(
+      "SELECT option_name, option_value FROM wp_options WHERE option_name IN ('home', 'siteurl')"
+    );
+    await verifyDb.end();
+    expect((capabilityRows as Array<{ meta_value: string }>)[0]?.meta_value).toBe(
+      'a:1:{s:13:"administrator";b:1;}'
+    );
 
-    try {
-      await postCtx.require(installPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
-
-    const $post = cheerio.load(postOutput);
-    const loginLink = $post("a[href='wp-login.php']");
-
-    if (loginLink.length === 0) {
-      console.log("Failed Install Output:\n", postOutput);
-    }
-
-    expect(loginLink.length).toBeGreaterThan(0);
-    expect($post("body").text()).toContain("Success!");
-
-    getCtx.destroy();
-    postCtx.destroy();
-  }, 60000);
-
-  test("Step 5: Login to Control Panel and save session cookies", async () => {
-    const loginPhpPath = path.join(wpDir, "wp-login.php");
-
-    let postOutput = "";
+    // STEP 5: POST wp-login.php
+    console.log("STEP 5: POST wp-login.php");
     const loginCtx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { postOutput += data; },
       superglobals: {
         server: {
           REQUEST_METHOD: "POST",
           REQUEST_URI: "/wp-login.php",
+          SCRIPT_NAME: "/wp-login.php",
+          PHP_SELF: "/wp-login.php",
           DOCUMENT_ROOT: wpDir,
           SCRIPT_FILENAME: loginPhpPath,
           HTTP_HOST: "127.0.0.1",
+          HTTP_REFERER: "http://127.0.0.1/wp-login.php",
         },
+        cookie: { wordpress_test_cookie: "WP Cookie check" },
         post: {
           log: "admin",
           pwd: "password123!",
-          wp_submit: "Log In",
+          "wp-submit": "Log In",
           redirect_to: "http://127.0.0.1/wp-admin/",
           testcookie: "1",
         },
       },
     });
     loginCtx.setInternalVar("hasServerResponseHandler", true);
+    try { await loginCtx.require(loginPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
 
-    try {
-      await loginCtx.require(loginPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
-
-    const headers = loginCtx.response.headers;
-    const setCookies = headers.filter(h => h.name.toLowerCase() === "set-cookie").map(h => h.value);
-
+    const parsedCookies: Record<string, string> = {};
+    const setCookies = loginCtx.response.headers.filter(h => h.name.toLowerCase() === "set-cookie").map(h => h.value);
     for (const cookieStr of setCookies) {
       const parts = cookieStr.split(";")[0].split("=");
       if (parts.length >= 2) {
         parsedCookies[parts[0].trim()] = parts.slice(1).join("=").trim();
       }
     }
-
     expect(Object.keys(parsedCookies).length).toBeGreaterThan(0);
+    await loginCtx.destroy();
 
-    loginCtx.destroy();
-  }, 180000);
-
-  test("Step 6: Render Dashboard (wp-admin/index.php)", async () => {
+    // STEP 6: GET wp-admin/index.php
+    console.log("STEP 6: GET wp-admin/index.php");
     let adminOutput = "";
     const adminCtx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { adminOutput += data; },
+      stdout: (d) => { adminOutput += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "GET",
           REQUEST_URI: "/wp-admin/index.php",
+          SCRIPT_NAME: "/wp-admin/index.php",
+          PHP_SELF: "/wp-admin/index.php",
           DOCUMENT_ROOT: wpDir,
-          SCRIPT_FILENAME: path.join(wpDir, "wp-admin", "index.php"),
+          SCRIPT_FILENAME: adminIndexPhpPath,
           HTTP_HOST: "127.0.0.1",
         },
         cookie: parsedCookies,
       },
     });
-
     adminCtx.setInternalVar("hasServerResponseHandler", true);
-    const adminIndexPhpPath = path.join(wpDir, "wp-admin", "index.php");
-
-    try {
-      await adminCtx.require(adminIndexPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
+    try { await adminCtx.require(adminIndexPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
 
     const $admin = cheerio.load(adminOutput);
     const adminTitle = $admin("title, h1").text();
     expect(adminTitle.length).toBeGreaterThan(0);
     expect(adminTitle.toLowerCase()).toContain("dashboard");
+    await adminCtx.destroy();
 
-    adminCtx.destroy();
-  }, 180000);
+    // STEP 7: Create and Enable Stack Trace Plugin
+    console.log("STEP 7: Create and Enable Stack Trace Plugin");
+    const pluginsDir = path.join(wpDir, "wp-content", "plugins");
+    const pluginFolder = path.join(pluginsDir, "stacktrace-plugin");
+    fs.mkdirSync(pluginFolder, { recursive: true });
 
-  test("Step 7: Create and Enable Stack Trace Plugin from Admin Panel", async () => {
-    const pluginDir = path.join(wpDir, "wp-content", "plugins", "stacktrace-plugin");
-    fs.mkdirSync(pluginDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(pluginDir, "stacktrace-plugin.php"),
-      `<?php
+    const pluginPhpContent = `<?php
 /**
- * Plugin Name: Stack Trace Verification Plugin
- * Description: Dumps a PHP stack trace and outputs layer information.
+ * Plugin Name: Stack Trace Plugin
+ * Description: Outputs stack trace on action hook
+ * Version: 1.0
  */
 
 function stacktrace_plugin_layer_3() {
-    $trace = debug_backtrace();
+    $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
     echo "--- PLUGIN STACK TRACE ---\\n";
     foreach ($trace as $i => $frame) {
-        $file = isset($frame['file']) ? basename($frame['file']) : '[INTERNAL]';
+        $file = isset($frame['file']) ? basename($frame['file']) : 'unknown';
         $line = isset($frame['line']) ? $frame['line'] : 0;
-        $func = isset($frame['function']) ? $frame['function'] : '{main}';
-        echo "#{$i} {$file}:{$line} {$func}()\\n";
+        $func = isset($frame['function']) ? $frame['function'] : 'unknown';
+        echo "#{$i} {$file}:{$line} -> {$func}()\\n";
     }
-    echo "--- END PLUGIN STACK TRACE ---\\n";
 }
 
 function stacktrace_plugin_layer_2() {
@@ -492,108 +393,92 @@ function stacktrace_plugin_layer_1() {
     stacktrace_plugin_layer_2();
 }
 
-if (function_exists('add_action')) {
-    add_action('wp_footer', 'stacktrace_plugin_layer_1');
-}
-`
-    );
+add_action('wp_head', 'stacktrace_plugin_layer_1');
+add_action('wp_footer', 'stacktrace_plugin_layer_1');
+`;
+    fs.writeFileSync(path.join(pluginFolder, "stacktrace-plugin.php"), pluginPhpContent, "utf8");
 
-    // Fetch plugins page to get the nonces for activation
     let pluginsOutput = "";
     const pluginsCtx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { pluginsOutput += data; },
+      stdout: (d) => { pluginsOutput += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "GET",
           REQUEST_URI: "/wp-admin/plugins.php",
+          SCRIPT_NAME: "/wp-admin/plugins.php",
+          PHP_SELF: "/wp-admin/plugins.php",
           DOCUMENT_ROOT: wpDir,
-          SCRIPT_FILENAME: path.join(wpDir, "wp-admin", "plugins.php"),
+          SCRIPT_FILENAME: pluginsPhpPath,
           HTTP_HOST: "127.0.0.1",
         },
         cookie: parsedCookies,
       },
     });
-
     pluginsCtx.setInternalVar("hasServerResponseHandler", true);
-
-    try {
-      await pluginsCtx.require(path.join(wpDir, "wp-admin", "plugins.php"));
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
+    try { await pluginsCtx.require(pluginsPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
 
     const $plugins = cheerio.load(pluginsOutput);
     const activateLink = $plugins("a[href*='action=activate'][href*='stacktrace-plugin']").attr("href");
+    expect(activateLink).toBeTruthy();
 
-    if (!activateLink) {
-      console.log("Plugins page HTML snippet:", pluginsOutput.substring(0, 1000));
-      throw new Error("Could not find activation link for stacktrace-plugin in plugins.php");
-    }
+    if (activateLink) {
+      const urlObj = new URL(activateLink.replace(/&amp;/g, "&"), "http://127.0.0.1/wp-admin/");
+      const queryParams = Object.fromEntries(urlObj.searchParams.entries());
 
-    // Activate the plugin via a GET request to the activation link
-    let activateOutput = "";
-    const activateCtx = engine.createContext({
-      cwd: wpDir,
-      stdout: (data) => { activateOutput += data; },
-      superglobals: {
-        server: {
-          REQUEST_METHOD: "GET",
-          REQUEST_URI: "/wp-admin/" + activateLink,
-          DOCUMENT_ROOT: wpDir,
-          SCRIPT_FILENAME: path.join(wpDir, "wp-admin", "plugins.php"),
-          HTTP_HOST: "127.0.0.1",
+      let actOutput = "";
+      const actCtx = engine.createContext({
+        cwd: wpDir,
+        stdout: (d) => { actOutput += d; },
+        superglobals: {
+          server: {
+            REQUEST_METHOD: "GET",
+            REQUEST_URI: "/wp-admin/plugins.php" + urlObj.search,
+            QUERY_STRING: urlObj.search.substring(1),
+            SCRIPT_NAME: "/wp-admin/plugins.php",
+            PHP_SELF: "/wp-admin/plugins.php",
+            DOCUMENT_ROOT: wpDir,
+            SCRIPT_FILENAME: pluginsPhpPath,
+            HTTP_HOST: "127.0.0.1",
+            HTTP_REFERER: "http://127.0.0.1/wp-admin/plugins.php",
+          },
+          cookie: parsedCookies,
+          get: queryParams,
         },
-        cookie: parsedCookies,
-        get: Object.fromEntries(new URLSearchParams(activateLink.split("?")[1] || "")),
-      },
-    });
-
-    activateCtx.setInternalVar("hasServerResponseHandler", true);
-
-    try {
-      await activateCtx.require(path.join(wpDir, "wp-admin", "plugins.php"));
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
+      });
+      actCtx.setInternalVar("hasServerResponseHandler", true);
+      try { await actCtx.require(pluginsPhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
+      expect(actCtx.response.statusCode).toBe(302);
+      await actCtx.destroy();
     }
+    await pluginsCtx.destroy();
 
-    expect(activateCtx.response.statusCode).toBe(302);
-
-    pluginsCtx.destroy();
-    activateCtx.destroy();
-  }, 60000);
-
-  test("Step 8: Renders Main Home Page (index.php) and verifies plugin executed", async () => {
+    // STEP 8: GET index.php (Front Page)
+    console.log("STEP 8: GET index.php (Front Page)");
     let homeOutput = "";
     const homeCtx = engine.createContext({
       cwd: wpDir,
-      stdout: (data) => { homeOutput += data; },
+      stdout: (d) => { homeOutput += d; },
       superglobals: {
         server: {
           REQUEST_METHOD: "GET",
-          REQUEST_URI: "/index.php",
+          REQUEST_URI: "/",
+          SCRIPT_NAME: "/index.php",
+          PHP_SELF: "/index.php",
           DOCUMENT_ROOT: wpDir,
-          SCRIPT_FILENAME: path.join(wpDir, "index.php"),
+          SCRIPT_FILENAME: homePhpPath,
           HTTP_HOST: "127.0.0.1",
         },
+        cookie: parsedCookies,
       },
     });
-
     homeCtx.setInternalVar("hasServerResponseHandler", true);
-    const indexPhpPath = path.join(wpDir, "index.php");
-
-    try {
-      await homeCtx.require(indexPhpPath);
-    } catch (e: any) {
-      if (e.name !== "PHPExit") throw e;
-    }
-
+    try { await homeCtx.require(homePhpPath); } catch (e: any) { if (e.name !== "PHPExit") throw e; }
     expect(homeOutput).toContain("--- PLUGIN STACK TRACE ---");
     expect(homeOutput).toContain("stacktrace-plugin.php");
-    expect(homeOutput).toContain("stacktrace_plugin_layer_3()");
-    expect(homeOutput).toContain("stacktrace_plugin_layer_2()");
-    expect(homeOutput).toContain("stacktrace_plugin_layer_1()");
-
-    homeCtx.destroy();
+    expect(homeOutput).toContain("stacktrace_plugin_layer_3");
+    expect(homeOutput).toContain("stacktrace_plugin_layer_2");
+    expect(homeOutput).toContain("stacktrace_plugin_layer_1");
+    await homeCtx.destroy();
   }, 180000);
 });

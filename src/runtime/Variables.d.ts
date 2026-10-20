@@ -1,6 +1,7 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPReference } from "./PHPVariable.js";
+export declare function isPlainObject(value: any): boolean;
 export declare class VariablesRuntime {
     /**
      * Serializes a value into a PHP-compatible serialized string representation.
@@ -14,6 +15,7 @@ export declare class VariablesRuntime {
      * Prints human-readable information about a variable.
      */
     static print_r(ctx: any, valArg?: PHPReference, returnValArg?: PHPReference): string | true;
+    private static unwrapValue;
     /** Finds whether a variable is an array. */
     static is_array(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a boolean. */
@@ -29,7 +31,7 @@ export declare class VariablesRuntime {
     /** Finds whether a variable is an object. */
     static is_object(ctx: PHPContext | null, valArg?: any): boolean;
     /** Gets the properties of the given object. */
-    static get_object_vars(ctx: PHPContext | null, valueArg?: any): Promise<Record<string, any>>;
+    static get_object_vars(ctx: PHPContext | null, valueArg?: any): Record<string, any>;
     /** Finds whether a variable is a scalar. */
     static is_scalar(ctx: PHPContext | null, valArg?: any): boolean;
     /** Finds whether a variable is a string. */
@@ -57,7 +59,7 @@ export declare class VariablesRuntime {
     static getenv(ctx: PHPContext, varnameArg?: any): string | false | Record<string, string>;
     static compact(ctx: PHPContext, ...args: PHPReference[]): Record<string, any>;
     static extract(ctx: PHPContext, arrayArg?: PHPReference): number;
-    static var_export(ctx: PHPContext, valArg?: PHPReference, returnArg?: PHPReference, ...args: any[]): string | true;
+    static var_export(ctx: PHPContext, valArg?: any, returnArg?: any, ...args: any[]): string | true;
     static functions: {
         var_dump: typeof VariablesRuntime.var_dump;
         print_r: typeof VariablesRuntime.print_r;

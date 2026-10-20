@@ -19,7 +19,7 @@ export interface PHPEngineOptions {
 }
 export declare function getDefaultExtensions(): PHPExtension[];
 export declare class PHPEngine {
-    static readonly REVISION = 313;
+    static readonly REVISION = 444;
     static readonly VERSION = "8.5.0";
     static readonly TRUE: PHPLiteral;
     static readonly FALSE: PHPLiteral;
@@ -87,6 +87,7 @@ export declare class PHPEngine {
     private registerRuntimeImplementations;
     registerExtension(extension: PHPExtension): void;
     getConfigurationSHA1(): string;
+    clearCompiledCache(): void;
     compileFile(filepath: string): Promise<Function>;
     compileCode(code: string, filepath?: string): Promise<Function>;
     contexts: Set<PHPContext>;

@@ -1,5 +1,6 @@
 import { PHPEngine } from "../../index.js";
 import { PHPLiteral } from "../../src/runtime/PHPVariable.js";
+import { runInNewContext } from "vm";
 
 describe("Variables & Types Runtime Tests", () => {
   let engine: PHPEngine;
@@ -52,7 +53,7 @@ describe("Variables & Types Runtime Tests", () => {
     expect(ctx.getVar("callback_properties")).toEqual({});
     expect(ctx.getVar("exception_properties")).toEqual({});
     const fnGov = ctx.functions["get_object_vars"] || ctx.functionMissing("get_object_vars");
-    await expect(fnGov(ctx, new PHPLiteral(null))).rejects.toThrow("must be of type object");
+    expect(() => fnGov(ctx, new PHPLiteral(null))).toThrow("must be of type object");
   });
 
   test("serialize produces PHP-compatible scalar, array, and object data", async () => {
@@ -70,5 +71,34 @@ describe("Variables & Types Runtime Tests", () => {
     expect(await fnSer(ctx, new PHPLiteral(null))).toBe("N;");
     const text = String.fromCharCode(233);
     expect(await fnSer(ctx, new PHPLiteral(text))).toBe(`s:2:"${text}";`);
+  });
+
+  test("recognizes cross-realm and null-prototype associative arrays", () => {
+    const ctx = engine.createContext();
+    const phpArray = Object.assign(Object.create(null), { user_id: 1 });
+    const crossRealmArray = runInNewContext("({ user_id: 1, meta_key: 'wp_capabilities' })");
+    const isArray = ctx.functions["is_array"] || ctx.functionMissing("is_array");
+    const isObject = ctx.functions["is_object"] || ctx.functionMissing("is_object");
+
+    expect(isArray(ctx, new PHPLiteral(phpArray))).toBe(true);
+    expect(isObject(ctx, new PHPLiteral(phpArray))).toBe(false);
+    expect(isArray(ctx, new PHPLiteral(crossRealmArray))).toBe(true);
+    expect(isObject(ctx, new PHPLiteral(crossRealmArray))).toBe(false);
+  });
+
+  test("does not treat magic PHP objects with a get method as references", async () => {
+    const ctx = engine.createContext();
+    await ctx.eval(`
+      class MagicGetObject {
+        public function get($name) { return $name; }
+        public function __call($name, $args) { return $name; }
+      }
+      $object = new MagicGetObject();
+      $object_type = is_object($object) ? 'object' : 'not-object';
+      $object_truthy = $object ? 'truthy' : 'falsy';
+    `);
+
+    expect(ctx.getVar("object_type")).toBe("object");
+    expect(ctx.getVar("object_truthy")).toBe("truthy");
   });
 });

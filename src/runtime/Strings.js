@@ -1,4 +1,5 @@
 import { PHPLiteral, PHPReference } from "./PHPVariable.js";
+import { PHPWarning } from "./PHPError.js";
 import { defineFunction } from "./Reflection.js";
 export class StringRuntime {
     /** Gets string length. */
@@ -26,9 +27,18 @@ export class StringRuntime {
     }
     /** Return part of a string. */
     static substr(ctx, strArg, startArg, lengthArg) {
-        const s = String(strArg?.get() ?? "");
-        let start = Number(startArg?.get()) || 0;
-        const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
+        let sVal = strArg?.get !== undefined ? strArg.get() : strArg;
+        while (sVal instanceof PHPReference)
+            sVal = sVal.get();
+        const s = ctx.str(sVal);
+        let startVal = startArg?.get !== undefined ? startArg.get() : startArg;
+        while (startVal instanceof PHPReference)
+            startVal = startVal.get();
+        let start = Number(startVal) || 0;
+        let lenVal = lengthArg?.get !== undefined ? lengthArg.get() : lengthArg;
+        while (lenVal instanceof PHPReference)
+            lenVal = lenVal.get();
+        const length = lenVal !== undefined && lenVal !== null ? Number(lenVal) : undefined;
         if (start < 0)
             start = s.length + start;
         if (length !== undefined) {
@@ -95,6 +105,16 @@ export class StringRuntime {
         const n = String(needleArg?.get() ?? "");
         const beforeNeedle = Boolean(beforeNeedleArg?.get());
         const idx = s.indexOf(n);
+        if (idx === -1)
+            return false;
+        return beforeNeedle ? s.substring(0, idx) : s.substring(idx);
+    }
+    /** Find the first case-insensitive occurrence of a string. */
+    static stristr(ctx, haystackArg, needleArg, beforeNeedleArg) {
+        const s = String(haystackArg?.get() ?? "");
+        const n = String(needleArg?.get() ?? "");
+        const beforeNeedle = Boolean(beforeNeedleArg?.get());
+        const idx = s.toLowerCase().indexOf(n.toLowerCase());
         if (idx === -1)
             return false;
         return beforeNeedle ? s.substring(0, idx) : s.substring(idx);
@@ -214,6 +234,8 @@ export class StringRuntime {
             }
             if (str.length < numWidth) {
                 const padLen = numWidth - str.length;
+                if (padLen > 1000000)
+                    throw new PHPWarning("str_pad(): padding length is too large");
                 const padding = padChar.repeat(padLen);
                 str = leftAlign ? str + padding : padding + str;
             }
@@ -339,9 +361,19 @@ export class StringRuntime {
         const length = Number(lengthArg?.get()) || 0;
         return StringRuntime.strcasecmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
     }
+    static strnatcmp(ctx, str1Arg, str2Arg) {
+        const s1 = ctx.str(str1Arg?.get());
+        const s2 = ctx.str(str2Arg?.get());
+        return s1.localeCompare(s2, undefined, { numeric: true });
+    }
+    static strnatcasecmp(ctx, str1Arg, str2Arg) {
+        const s1 = ctx.str(str1Arg?.get()).toLowerCase();
+        const s2 = ctx.str(str2Arg?.get()).toLowerCase();
+        return s1.localeCompare(s2, undefined, { numeric: true, sensitivity: "base" });
+    }
     /** Quote string with slashes. */
     static addslashes(ctx, strArg) {
-        return String(strArg?.get() ?? "").replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
+        return ctx.str(strArg).replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
     }
     static addcslashes(ctx, strArg, charlistArg) {
         const string = String(strArg?.get() ?? "");
@@ -384,14 +416,14 @@ export class StringRuntime {
     }
     /** Un-quotes a quoted string. */
     static stripslashes(ctx, strArg) {
-        return String(strArg?.get() ?? "").replace(/\\(['"\\0])/g, "$1");
+        return ctx.str(strArg).replace(/\\(['"\\0])/g, "$1");
     }
     static stripcslashes(ctx, strArg) {
         return StringRuntime.stripslashes(ctx, strArg);
     }
     /** Convert special characters to HTML entities. */
     static htmlspecialchars(ctx, strArg) {
-        return String(strArg?.get() ?? "")
+        return ctx.str(strArg)
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -539,6 +571,8 @@ export class StringRuntime {
     static str_repeat(ctx, inputArg, multiplierArg) {
         const input = String(inputArg?.get() ?? "");
         const multiplier = Number(multiplierArg?.get()) || 0;
+        if (multiplier > 1000000)
+            throw new PHPWarning("str_repeat(): multiplier is too large");
         return input.repeat(Math.max(0, multiplier));
     }
     /** Pad a string to a certain length with another string. */
@@ -578,12 +612,46 @@ export class StringRuntime {
     }
     /** Generate a single-byte string from a number. */
     static chr(ctx, asciiArg) {
-        const ascii = Number(asciiArg?.get()) || 0;
+        let val = asciiArg?.get !== undefined ? asciiArg.get() : asciiArg;
+        while (val instanceof PHPReference)
+            val = val.get();
+        const ascii = (Number(val) || 0) & 0xff;
         return String.fromCharCode(ascii);
     }
     /** Convert the first byte of a string to a value between 0 and 255. */
     static ord(ctx, characterArg) {
-        return String(characterArg?.get() ?? "").charCodeAt(0) || 0;
+        let val = characterArg?.get !== undefined ? characterArg.get() : characterArg;
+        while (val instanceof PHPReference)
+            val = val.get();
+        if (typeof val === "number")
+            return val & 0xff;
+        if (Buffer.isBuffer(val))
+            return val.length > 0 ? val[0] : 0;
+        const str = ctx.str(val);
+        return str.length > 0 ? str.charCodeAt(0) & 0xff : 0;
+    }
+    /** Format a number with grouped thousands. */
+    static number_format(ctx, numArg, decimalsArg, decPointArg, thousandsSepArg) {
+        let numVal = numArg?.get !== undefined ? numArg.get() : numArg;
+        while (numVal instanceof PHPReference)
+            numVal = numVal.get();
+        const num = Number(numVal) || 0;
+        let decimalsVal = decimalsArg?.get !== undefined ? decimalsArg.get() : decimalsArg;
+        while (decimalsVal instanceof PHPReference)
+            decimalsVal = decimalsVal.get();
+        const decimals = decimalsVal !== undefined && decimalsVal !== null ? Math.max(0, Math.trunc(Number(decimalsVal))) : 0;
+        let decPointVal = decPointArg?.get !== undefined ? decPointArg.get() : decPointArg;
+        while (decPointVal instanceof PHPReference)
+            decPointVal = decPointVal.get();
+        const decPoint = decPointVal !== undefined && decPointVal !== null ? ctx.str(decPointVal) : ".";
+        let thousandsSepVal = thousandsSepArg?.get !== undefined ? thousandsSepArg.get() : thousandsSepArg;
+        while (thousandsSepVal instanceof PHPReference)
+            thousandsSepVal = thousandsSepVal.get();
+        const thousandsSep = thousandsSepVal !== undefined && thousandsSepVal !== null ? ctx.str(thousandsSepVal) : ",";
+        const fixed = num.toFixed(decimals);
+        const parts = fixed.split(".");
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSep);
+        return parts.join(decPoint);
     }
     /** Convert binary data into hexadecimal representation. */
     static bin2hex(ctx, stringArg) {
@@ -593,12 +661,39 @@ export class StringRuntime {
     static hex2bin(ctx, hexStringArg) {
         return Buffer.from(String(hexStringArg?.get() ?? ""), "hex").toString("utf8");
     }
+    static substr_compare(ctx, mainStrArg, strArg, offsetArg, lengthArg, caseInsensitiveArg) {
+        const mainStr = ctx.str(mainStrArg?.get());
+        const str = ctx.str(strArg?.get());
+        let offset = Number(offsetArg?.get()) || 0;
+        if (offset < 0)
+            offset = mainStr.length + offset;
+        if (offset < 0 || offset >= mainStr.length)
+            return -1;
+        const length = lengthArg?.get() !== undefined && lengthArg.get() !== null ? Number(lengthArg.get()) : str.length;
+        const caseInsensitive = Boolean(caseInsensitiveArg?.get());
+        let sub1 = mainStr.slice(offset, offset + length);
+        let sub2 = str.slice(0, length);
+        if (caseInsensitive) {
+            sub1 = sub1.toLowerCase();
+            sub2 = sub2.toLowerCase();
+        }
+        return sub1 < sub2 ? -1 : (sub1 > sub2 ? 1 : 0);
+    }
     static base64_encode(ctx, stringArg) {
-        const str = String(stringArg?.get() ?? "");
+        let val = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
+        while (val instanceof PHPReference)
+            val = val.get();
+        if (Buffer.isBuffer(val)) {
+            return val.toString("base64");
+        }
+        const str = ctx.str(val);
         return Buffer.from(str, "binary").toString("base64");
     }
     static base64_decode(ctx, stringArg) {
-        const str = String(stringArg?.get() ?? "");
+        let val = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
+        while (val instanceof PHPReference)
+            val = val.get();
+        const str = ctx.str(val);
         return Buffer.from(str, "base64").toString("binary");
     }
     /** Compares two "PHP-standardized" version number strings. */
@@ -683,7 +778,7 @@ export class StringRuntime {
             }
             const obj = {};
             for (const key of keys) {
-                obj[key] = normalize(value[key]);
+                Object.defineProperty(obj, key, { value: normalize(value[key]), enumerable: true, writable: true, configurable: true });
             }
             return obj;
         };
@@ -770,6 +865,23 @@ export class StringRuntime {
             return true;
         return haystack.includes(needle);
     }
+    /** Search a string for any of a set of characters. */
+    static strpbrk(ctx, stringArg, charlistArg) {
+        let s = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
+        while (s instanceof PHPReference)
+            s = s.get();
+        let charlist = charlistArg instanceof PHPReference ? charlistArg.get() : charlistArg;
+        while (charlist instanceof PHPReference)
+            charlist = charlist.get();
+        const str = ctx.str(s);
+        const chars = ctx.str(charlist);
+        for (let i = 0; i < str.length; i++) {
+            if (chars.includes(str[i])) {
+                return str.substring(i);
+            }
+        }
+        return false;
+    }
     static vprintf(ctx, formatArg, valuesArg) {
         const res = StringRuntime.vsprintf(ctx, formatArg, valuesArg);
         ctx.echo(res);
@@ -786,12 +898,14 @@ export class StringRuntime {
         "strlen": StringRuntime.strlen,
         "substr_count": StringRuntime.substr_count,
         "substr": StringRuntime.substr,
+        "substr_compare": StringRuntime.substr_compare,
         "substr_replace": StringRuntime.substr_replace,
         "strpos": StringRuntime.strpos,
         "stripos": StringRuntime.stripos,
         "strrpos": StringRuntime.strrpos,
         "strripos": StringRuntime.strripos,
         "strstr": StringRuntime.strstr,
+        "stristr": StringRuntime.stristr,
         "str_replace": StringRuntime.str_replace,
         "strtr": StringRuntime.strtr,
         "str_ireplace": StringRuntime.str_ireplace,
@@ -799,8 +913,10 @@ export class StringRuntime {
         "printf": StringRuntime.printf,
         "vsprintf": StringRuntime.vsprintf,
         "vprintf": StringRuntime.vprintf,
+        "number_format": StringRuntime.number_format,
         "strspn": StringRuntime.strspn,
         "strcspn": StringRuntime.strcspn,
+        "strpbrk": StringRuntime.strpbrk,
         "explode": StringRuntime.explode,
         "implode": StringRuntime.implode,
         "trim": StringRuntime.trim,
@@ -816,6 +932,8 @@ export class StringRuntime {
         "strncmp": StringRuntime.strncmp,
         "strcasecmp": StringRuntime.strcasecmp,
         "strncasecmp": StringRuntime.strncasecmp,
+        "strnatcmp": StringRuntime.strnatcmp,
+        "strnatcasecmp": StringRuntime.strnatcasecmp,
         "addslashes": StringRuntime.addslashes,
         "addcslashes": StringRuntime.addcslashes,
         "stripslashes": StringRuntime.stripslashes,
