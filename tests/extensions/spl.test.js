@@ -32,11 +32,11 @@ describe("SPL Extension Tests", () => {
       $second_hash = spl_object_hash($second);
       $callback_id = spl_object_id($callback);
     `);
-        expect(ctx.getVar("first_id")).toBe(ctx.getVar("again"));
-        expect(ctx.getVar("first_id")).not.toBe(ctx.getVar("second_id"));
-        expect(ctx.getVar("first_hash")).toMatch(/^[a-f0-9]{32}$/);
-        expect(ctx.getVar("first_hash")).not.toBe(ctx.getVar("second_hash"));
-        expect(typeof ctx.getVar("callback_id")).toBe("number");
+        expect(await ctx.getVar("first_id")).toBe(await ctx.getVar("again"));
+        expect(await ctx.getVar("first_id")).not.toBe(await ctx.getVar("second_id"));
+        expect(await ctx.getVar("first_hash")).toMatch(/^[a-f0-9]{32}$/);
+        expect(await ctx.getVar("first_hash")).not.toBe(await ctx.getVar("second_hash"));
+        expect(typeof await ctx.getVar("callback_id")).toBe("number");
     });
     test("Recursive filesystem iterators enumerate paths and regex matches", async () => {
         const ctx = engine.createContext();
@@ -48,8 +48,8 @@ describe("SPL Extension Tests", () => {
       $all_files = iterator_to_array($files);
       $all_json_files = iterator_to_array($json_files);
     `);
-        expect(Object.keys(ctx.getVar("all_files") ?? {}).length).toBeGreaterThan(0);
-        expect(Object.keys(ctx.getVar("all_json_files") ?? {}).length).toBeGreaterThan(0);
+        expect(Object.keys(await ctx.getVar("all_files") ?? {}).length).toBeGreaterThan(0);
+        expect(Object.keys(await ctx.getVar("all_json_files") ?? {}).length).toBeGreaterThan(0);
     });
     test.each(["spl_object_id", "spl_object_hash"])("%s rejects non-objects", async (functionName) => {
         const ctx = engine.createContext();

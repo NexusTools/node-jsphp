@@ -1,5 +1,7 @@
 import * as net from "net";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 import { fileURLToPath } from "url";
 import { runFPM } from "../index.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -49,11 +51,21 @@ describe("FastCGI Process Manager (PHP-FPM) Tests", () => {
         fpmServer = await runFPM(fpmPort, "127.0.0.1");
     });
     afterAll((done) => {
+        const cleanup = () => {
+            const defaultCacheDir = process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache");
+            if (fs.existsSync(defaultCacheDir)) {
+                try {
+                    fs.rmSync(defaultCacheDir, { recursive: true, force: true });
+                }
+                catch (e) { }
+            }
+            done();
+        };
         if (fpmServer) {
-            fpmServer.close(() => done());
+            fpmServer.close(cleanup);
         }
         else {
-            done();
+            cleanup();
         }
     });
     test("Executes general_test.php over FastCGI protocol", (done) => {

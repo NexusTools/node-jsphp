@@ -64,7 +64,7 @@ export async function runFPM(port = 9000, host = "127.0.0.1") {
     const engine = new PHPEngine();
     const server = net.createServer((socket) => {
         let rxBuffer = Buffer.alloc(0);
-        const requests = new Map();
+        const requests = Object.create(null);
         socket.on("data", (chunk) => {
             rxBuffer = Buffer.concat([rxBuffer, chunk]);
             while (rxBuffer.length >= 8) {
@@ -83,17 +83,17 @@ export async function runFPM(port = 9000, host = "127.0.0.1") {
                     const role = content.readUInt16BE(0);
                     const flags = content.readUInt8(2);
                     const keepConn = Boolean(flags & 1);
-                    requests.set(requestId, {
+                    requests[requestId] = {
                         requestId,
                         role,
                         keepConn,
                         paramsBuffers: [],
                         params: {},
                         stdinBuffers: [],
-                    });
+                    };
                 }
                 else if (type === FCGI_PARAMS) {
-                    const req = requests.get(requestId);
+                    const req = requests[requestId];
                     if (req) {
                         if (content.length > 0) {
                             req.paramsBuffers.push(content);
@@ -105,7 +105,7 @@ export async function runFPM(port = 9000, host = "127.0.0.1") {
                     }
                 }
                 else if (type === FCGI_STDIN) {
-                    const req = requests.get(requestId);
+                    const req = requests[requestId];
                     if (req) {
                         if (content.length > 0) {
                             req.stdinBuffers.push(content);
@@ -113,7 +113,7 @@ export async function runFPM(port = 9000, host = "127.0.0.1") {
                         else {
                             // STDIN EOF -> Execute request
                             executeFCGIRequest(engine, socket, req).then(() => {
-                                requests.delete(requestId);
+                                delete requests[requestId];
                                 if (!req.keepConn) {
                                     socket.end();
                                 }
@@ -125,7 +125,7 @@ export async function runFPM(port = 9000, host = "127.0.0.1") {
                                 endBuf.writeUInt32BE(1, 0); // AppStatus 1
                                 endBuf.writeUInt8(0, 4); // ProtocolStatus complete
                                 writeRecord(socket, FCGI_END_REQUEST, requestId, endBuf);
-                                requests.delete(requestId);
+                                delete requests[requestId];
                                 if (!req.keepConn) {
                                     socket.end();
                                 }

@@ -7,8 +7,21 @@ export declare const SYMBOL_PHP_CONSTANTS: unique symbol;
 export declare const SYMBOL_PHP_PROPERTIES: unique symbol;
 export declare const SYMBOL_PHP_METHODS: unique symbol;
 export declare const SYMBOL_PHP_CLASS: unique symbol;
+export declare const SYMBOL_PHP_PARENT: unique symbol;
+export declare const SYMBOL_PHP_NEW: unique symbol;
+export declare const SYMBOL_PHP_INIT: unique symbol;
 export declare const SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS: unique symbol;
 export declare const SYMBOL_PHP_CLASS_INTERFACES: unique symbol;
+export declare const SYMBOL_PHP_METHOD_THEN: unique symbol;
+export declare const SYMBOL_PHP_STATIC_METHOD_PROTOTYPE: unique symbol;
+export declare function normalizePhpRegistryName(name: string): string;
+export declare function encodePhpIdentifier(name: string): string;
+export declare function encodePhpMethodName(name: string, isStatic?: boolean): string | symbol;
+export declare function encodePhpPropertyName(name: string): string;
+export declare function decodePhpIdentifier(name: string): string;
+export declare function decodePhpPropertyName(name: string): string;
+export declare function decodePhpMethodName(name: string | symbol): string;
+export declare function isEncodedPhpMethodKey(name: string): boolean;
 export interface PHPParameterMetadata {
     name: string;
     position: number;
@@ -24,7 +37,9 @@ export interface PHPPropertyMetadata {
     isStatic: boolean;
     isReadOnly: boolean;
     defaultValue?: any;
+    encodedName?: string;
 }
+export type PHPPropertyMetadataRecord = Record<string, PHPPropertyMetadata>;
 export interface PHPMethodMetadata {
     name: string;
     visibility: "public" | "protected" | "private";
@@ -51,12 +66,12 @@ export interface FunctionMetaOptions {
 export declare function defineFunction<T extends Function>(fn: T, meta: FunctionMetaOptions): T;
 export declare function parseJSFunctionMetadata(fn?: Function, name?: string): any;
 export declare class Reflection {
-    static getModifierNames(ctx: PHPContext, modifiersArg?: PHPReference): string[];
+    static getModifierNames(ctx: PHPContext, modifiersArg?: PHPReference): Promise<string[]>;
 }
 export declare class ReflectionType {
     typeName: string;
     allowsNullFlag: boolean;
-    static __$$__new(ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<ReflectionType>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<ReflectionType>;
     static __construct(this: ReflectionType, ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<void>;
     allowsNull(ctx: PHPContext): boolean;
     getName(ctx: PHPContext): string;
@@ -67,7 +82,7 @@ export declare class ReflectionParameter {
     paramPosition: number;
     defaultValue: any;
     hasDefault: boolean;
-    static __$$__new(ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<ReflectionParameter>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<ReflectionParameter>;
     static __construct(this: ReflectionParameter, ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<void>;
     getName(ctx: PHPContext): string;
     getPosition(ctx: PHPContext): number;
@@ -82,7 +97,7 @@ export declare class ReflectionProperty {
     declaringClassName: string;
     meta?: PHPPropertyMetadata;
     isAccessible: boolean;
-    static __$$__new(ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<ReflectionProperty>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<ReflectionProperty>;
     static __construct(this: ReflectionProperty, ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<void>;
     getName(ctx: PHPContext): string;
     getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass>;
@@ -91,7 +106,7 @@ export declare class ReflectionProperty {
     isPrivate(ctx: PHPContext): boolean;
     isStatic(ctx: PHPContext): boolean;
     isReadOnly(ctx: PHPContext): boolean;
-    setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): void;
+    setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): Promise<void>;
     getValue(ctx: PHPContext, objArg?: PHPReference): Promise<any>;
     setValue(ctx: PHPContext, objArg?: PHPReference, valArg?: PHPReference): Promise<void>;
 }
@@ -99,7 +114,7 @@ export declare class ReflectionMethod {
     className: string;
     methodName: string;
     meta: PHPMethodMetadata;
-    static __$$__new(ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<ReflectionMethod>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<ReflectionMethod>;
     static __construct(this: ReflectionMethod, ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<void>;
     getName(ctx: PHPContext): string;
     getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass>;
@@ -121,7 +136,7 @@ export declare class ReflectionMethod {
 export declare class ReflectionFunction {
     name: string;
     meta: any;
-    static __$$__new(ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<ReflectionFunction>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<ReflectionFunction>;
     static __construct(this: ReflectionFunction, ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<void>;
     getName(ctx: PHPContext): string;
     getNamespaceName(ctx: PHPContext): string;
@@ -135,7 +150,9 @@ export declare class ReflectionFunction {
 export declare class ReflectionClass {
     name: string;
     private phpClass?;
-    static __$$__new(ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<ReflectionClass>;
+    private classConstructor?;
+    private interfaceFlag;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<ReflectionClass>;
     static __construct(this: ReflectionClass, ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<void>;
     getName(ctx: PHPContext): string;
     getShortName(ctx: PHPContext): string;
@@ -146,16 +163,16 @@ export declare class ReflectionClass {
     isAbstract(ctx: PHPContext): boolean;
     isFinal(ctx: PHPContext): boolean;
     isInstantiable(ctx: PHPContext): boolean;
-    isSubclassOf(ctx: PHPContext, classNameArg?: PHPReference): boolean;
-    hasMethod(ctx: PHPContext, nameArg?: PHPReference): boolean;
+    isSubclassOf(ctx: PHPContext, classNameArg?: PHPReference): Promise<boolean>;
+    hasMethod(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean>;
     getMethod(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionMethod>;
     getMethods(ctx: PHPContext): Promise<ReflectionMethod[]>;
-    hasProperty(ctx: PHPContext, nameArg?: PHPReference): boolean;
+    hasProperty(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean>;
     getProperty(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionProperty>;
     getProperties(ctx: PHPContext): Promise<ReflectionProperty[]>;
-    hasConstant(ctx: PHPContext, nameArg?: PHPReference): boolean;
-    getConstant(ctx: PHPContext, nameArg?: PHPReference): any;
-    getConstants(ctx: PHPContext): Record<string, any>;
+    hasConstant(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean>;
+    getConstant(ctx: PHPContext, nameArg?: PHPReference): Promise<any>;
+    getConstants(ctx: PHPContext): Promise<Record<string, any>>;
     newInstance(ctx: PHPContext, ...args: PHPReference[]): Promise<any>;
     newInstanceArgs(ctx: PHPContext, argsArg?: PHPReference): Promise<any>;
     newInstanceWithoutConstructor(ctx: PHPContext): Promise<any>;

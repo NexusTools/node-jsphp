@@ -32,10 +32,10 @@ export declare class PHPClass {
     nativeConstructor?: Function;
     readonly interfaces: PHPClass[];
     readonly traits: any[];
-    constants: Map<string, any>;
-    staticProperties: Map<string, any>;
-    properties: Map<string, PHPPropertyMetadata>;
-    methods: Map<string, PHPMethodMetadata>;
+    constants: Record<string, any>;
+    staticProperties: Record<string, any>;
+    properties: Record<string, PHPPropertyMetadata>;
+    methods: Record<string, PHPMethodMetadata>;
     isAbstract: boolean;
     isFinal: boolean;
     constructor(name: string, parentClass?: PHPClass | Function);
@@ -43,7 +43,7 @@ export declare class PHPClass {
 }
 export declare class PHPObject {
     readonly phpClass: PHPClass;
-    properties: Map<string, any>;
+    properties: Record<string, any>;
     private settingProperties;
     private gettingProperties;
     constructor(phpClass: PHPClass);

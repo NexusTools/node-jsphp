@@ -1,5 +1,6 @@
 import { PHPClass, PHPObject } from "./PHPObject.js";
 import { PHPFatalError } from "./PHPError.js";
+import { SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_NEW } from "./Reflection.js";
 import type { PHPEngine } from "../PHPEngine.js";
 
 export class EnumRuntime {
@@ -12,24 +13,25 @@ export class PHPEnum {
   public name!: string;
   public value?: any;
 
-  public static async __$$__new(ctx: any, nameArg?: any, valueArg?: any): Promise<PHPEnum> {
+  public static async [SYMBOL_PHP_NEW](ctx: any, nameArg?: any, valueArg?: any): Promise<PHPEnum> {
     const obj = Object.create(this.prototype);
-    if (typeof obj.__construct === "function") await obj.__construct(ctx, nameArg, valueArg);
+    await obj.__construct(ctx, nameArg, valueArg);
     return obj;
   }
 
   public async __construct(ctx: any, nameArg?: any, valueArg?: any): Promise<void> {
-    this.name = nameArg ? String(nameArg.get() ?? "") : "";
-    this.value = valueArg ? valueArg.get() : undefined;
+    this.name = nameArg ? String(await nameArg.get() ?? "") : "";
+    this.value = valueArg ? await valueArg.get() : undefined;
   }
 
   public static from(enumClass: any, value: any): PHPEnum {
-    const map = (enumClass as any).__php_constants || enumClass.constants || new Map();
-    const cases = Array.from((map instanceof Map ? map : new Map(Object.entries(map))).entries());
-    for (const [caseName, caseVal] of cases) {
+    const constants = enumClass[SYMBOL_PHP_CONSTANTS] || enumClass.constants || {};
+    const cases = Object.entries(constants) as [string, any][];
+    for (const [caseName, entry] of cases) {
+      const caseVal = entry && typeof entry === "object" && Object.hasOwn(entry, "value") ? entry.value : entry;
       if (caseVal === value) {
         const obj = Object.create(PHPEnum.prototype);
-        obj.name = caseName;
+        obj.name = entry && typeof entry === "object" && typeof entry.name === "string" ? entry.name : caseName;
         obj.value = caseVal;
         return obj;
       }

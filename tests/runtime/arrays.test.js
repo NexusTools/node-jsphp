@@ -76,12 +76,12 @@ describe("Arrays Runtime Tests", () => {
       $negative = array_fill(-2, 3, 'item');
       $empty = array_fill(5, 0, 'item');
     `);
-        expect(ctx.getVar("values")).toEqual([true, true, true]);
-        expect(ctx.getVar("offset")).toEqual({ 5: "item", 6: "item" });
-        expect(ctx.getVar("negative")).toEqual({ "-2": "item", "-1": "item", 0: "item" });
-        expect(ctx.getVar("empty")).toEqual([]);
+        expect(await ctx.getVar("values")).toEqual([true, true, true]);
+        expect(await ctx.getVar("offset")).toEqual({ 5: "item", 6: "item" });
+        expect(await ctx.getVar("negative")).toEqual({ "-2": "item", "-1": "item", 0: "item" });
+        expect(await ctx.getVar("empty")).toEqual([]);
         const fn = ctx.functions["array_fill"] || ctx.functionMissing("array_fill");
-        expect(() => fn(ctx, new PHPLiteral(0), new PHPLiteral(-1), new PHPLiteral("item"))).toThrow("must be greater than or equal to 0");
+        await expect(fn(ctx, new PHPLiteral(0), new PHPLiteral(-1), new PHPLiteral("item"))).rejects.toThrow("must be greater than or equal to 0");
     });
 });
 //# sourceMappingURL=arrays.test.js.map

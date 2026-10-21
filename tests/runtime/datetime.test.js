@@ -18,7 +18,7 @@ describe("DateTime Runtime Tests", () => {
         checkdate(1, 1, 0),
       ];
     `);
-        expect(ctx.getVar("dates")).toEqual([true, false, false, true, false]);
+        expect(await ctx.getVar("dates")).toEqual([true, false, false, true, false]);
     });
     test("DateTime functions: time, microtime, date, strtotime, date_default_timezone_get, date_default_timezone_set", async () => {
         let out = "";

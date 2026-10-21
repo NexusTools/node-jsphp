@@ -8,14 +8,14 @@ export class SessionExtension extends PHPExtension {
 
   public onInit(engine: PHPEngine): void {
     this.functions = {
-      session_start: (ctx: PHPContext) => {
+      session_start: async (ctx: PHPContext) => {
         if (!ctx.superglobals.SESSION) {
           ctx.superglobals.SESSION = {};
         }
         return true;
       },
-      session_id: (ctx: PHPContext, idArg?: PHPReference) => "jsphp-session-id-12345",
-      session_destroy: (ctx: PHPContext) => {
+      session_id: async (ctx: PHPContext, idArg?: PHPReference) => "jsphp-session-id-12345",
+      session_destroy: async (ctx: PHPContext) => {
         ctx.superglobals.SESSION = {};
         return true;
       },

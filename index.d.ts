@@ -1,11 +1,11 @@
 export { PHPEngine, getDefaultExtensions } from "./src/PHPEngine.js";
-export type { PHPEngineOptions } from "./src/PHPEngine.js";
+export type { PHPEngineOptions, PHPFunction } from "./src/PHPEngine.js";
 export { PHPContext } from "./src/PHPContext.js";
 export type { PHPContextOptions } from "./src/PHPContext.js";
 export { PHPExtension } from "./src/PHPExtension.js";
 export { PHPError, PHPException, PHPTypeError, PHPParseError, PHPFatalError, PHPNotice, PHPWarning, PHPExit, ErrorException, } from "./src/runtime/PHPError.js";
 export { PHPInterface } from "./src/runtime/PHPInterface.js";
-export { defineFunction, SYMBOL_PHP_META, SYMBOL_PHP_NAME, SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_PROPERTIES, SYMBOL_PHP_METHODS, SYMBOL_PHP_CLASS, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, Reflection, ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionFunction, ReflectionParameter, ReflectionType, } from "./src/runtime/Reflection.js";
+export { defineFunction, SYMBOL_PHP_META, SYMBOL_PHP_NAME, SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_PROPERTIES, SYMBOL_PHP_METHODS, SYMBOL_PHP_CLASS, SYMBOL_PHP_PARENT, SYMBOL_PHP_NEW, SYMBOL_PHP_INIT, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES, SYMBOL_PHP_METHOD_THEN, SYMBOL_PHP_STATIC_METHOD_PROTOTYPE, encodePhpIdentifier, normalizePhpRegistryName, encodePhpMethodName, encodePhpPropertyName, Reflection, ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionFunction, ReflectionParameter, ReflectionType, } from "./src/runtime/Reflection.js";
 export type { PHPMethodMetadata, PHPPropertyMetadata, PHPParameterMetadata, FunctionMetaOptions } from "./src/runtime/Reflection.js";
 export { Superglobals } from "./src/runtime/Superglobals.js";
 export { OutputBufferStack } from "./src/runtime/OutputBuffer.js";

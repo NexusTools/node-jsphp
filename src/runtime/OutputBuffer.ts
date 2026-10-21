@@ -71,23 +71,23 @@ export class OutputBufferStack {
 
 export class OutputBufferRuntime {
   static functions = {
-    "flush": (ctx: PHPContext) => { ctx.flushHeaders(); return true; },
-    "ob_start": (ctx: PHPContext) => ctx.outputBuffer.start(),
-    "ob_get_clean": (ctx: PHPContext) => ctx.outputBuffer.getClean(),
-    "ob_get_contents": (ctx: PHPContext) => ctx.outputBuffer.getContents(),
-    "ob_get_length": (ctx: PHPContext) => ctx.outputBuffer.getLength(),
-    "ob_get_flush": (ctx: PHPContext) => ctx.outputBuffer.getFlush(ctx),
-    "ob_flush": (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
-    "ob_end_flush": (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
-    "ob_end_clean": (ctx: PHPContext) => ctx.outputBuffer.endClean(),
-    "ob_clean": (ctx: PHPContext) => {
+    "flush": async (ctx: PHPContext) => { ctx.flushHeaders(); return true; },
+    "ob_start": async (ctx: PHPContext) => ctx.outputBuffer.start(),
+    "ob_get_clean": async (ctx: PHPContext) => ctx.outputBuffer.getClean(),
+    "ob_get_contents": async (ctx: PHPContext) => ctx.outputBuffer.getContents(),
+    "ob_get_length": async (ctx: PHPContext) => ctx.outputBuffer.getLength(),
+    "ob_get_flush": async (ctx: PHPContext) => ctx.outputBuffer.getFlush(ctx),
+    "ob_flush": async (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
+    "ob_end_flush": async (ctx: PHPContext) => ctx.outputBuffer.flush(ctx),
+    "ob_end_clean": async (ctx: PHPContext) => ctx.outputBuffer.endClean(),
+    "ob_clean": async (ctx: PHPContext) => {
       if (ctx.outputBuffer.isActive()) {
         ctx.outputBuffer.getClean();
         ctx.outputBuffer.start();
       }
       return true;
     },
-    "ob_get_level": (ctx: PHPContext) => ctx.outputBuffer.getLevel(),
+    "ob_get_level": async (ctx: PHPContext) => ctx.outputBuffer.getLevel(),
   };
 
   public static register(engine: PHPEngine): void {

@@ -20,8 +20,8 @@ describe("PHP Error Handling & set_error_handler Tests", () => {
     expect(ctx.getInternalVar("secretContextKey")).toBe("CONTEXT_SECRET");
 
     // PHP userland cannot see internal variables in $GLOBALS or getVar
-    expect(ctx.getVar("secretEngineKey")).toBeUndefined();
-    expect(ctx.getVar("secretContextKey")).toBeUndefined();
+    expect(await ctx.getVar("secretEngineKey")).toBeUndefined();
+    expect(await ctx.getVar("secretContextKey")).toBeUndefined();
   });
 
   test("set_error_handler catches trigger_error and converts to ErrorException", async () => {
@@ -40,7 +40,7 @@ describe("PHP Error Handling & set_error_handler Tests", () => {
       }
     `);
 
-    expect(ctx.getVar("caught")).toContain("Custom User Warning");
+    expect(await ctx.getVar("caught")).toContain("Custom User Warning");
   });
 
   test("restore_error_handler restores default handler", async () => {

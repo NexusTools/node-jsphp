@@ -8,26 +8,26 @@ import { defineFunction } from "./Reflection.js";
 
 export class NetworkingRuntime {
 
-  public static urlencode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): string {
-    const value = valueArg?.get();
+  public static async urlencode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): Promise<string> {
+    const value = await valueArg?.get();
     let encoded = encodeURIComponent(String(value ?? "")).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
     if (!raw) encoded = encoded.replace(/~/g, "%7E").replace(/%20/g, "+");
     return encoded;
   }
 
-  public static urldecode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): string {
-    const value = valueArg?.get();
+  public static async urldecode(ctx: PHPContext | null, valueArg?: PHPReference, raw = false): Promise<string> {
+    const value = await valueArg?.get();
     let encoded = String(value ?? "").replace(/&/g, "%26");
     if (raw) encoded = encoded.replace(/\+/g, "%2B");
     return new URLSearchParams(`value=${encoded}`).get("value") || "";
   }
 
-  public static gethostname(ctx?: PHPContext): string {
+  public static async gethostname(ctx?: PHPContext): Promise<string> {
     return os.hostname();
   }
 
   public static async gethostbyname(ctx: PHPContext | null, hostnameArg?: PHPReference): Promise<string> {
-    const hostname = String(hostnameArg?.get() ?? "");
+    const hostname = String(await hostnameArg?.get() ?? "");
     try {
       const res = await dns.lookup(hostname, { family: 4 });
       return res.address;
@@ -37,7 +37,7 @@ export class NetworkingRuntime {
   }
 
   public static async gethostbyaddr(ctx: PHPContext | null, ipArg?: PHPReference): Promise<string | false> {
-    const ip = String(ipArg?.get() ?? "");
+    const ip = String(await ipArg?.get() ?? "");
     try {
       const names = await dns.reverse(ip);
       return names[0] || false;
@@ -46,8 +46,8 @@ export class NetworkingRuntime {
     }
   }
 
-  public static ip2long(ctx: PHPContext | null, ipArg?: PHPReference): number | false {
-    const ip = String(ipArg?.get() ?? "");
+  public static async ip2long(ctx: PHPContext | null, ipArg?: PHPReference): Promise<number | false> {
+    const ip = String(await ipArg?.get() ?? "");
     const parts = (ip || "").split(".");
     if (parts.length !== 4) return false;
     let num = 0;
@@ -59,8 +59,8 @@ export class NetworkingRuntime {
     return num >>> 0;
   }
 
-  public static long2ip(ctx: PHPContext | null, numArg?: PHPReference): string | false {
-    const num = Number(numArg?.get());
+  public static async long2ip(ctx: PHPContext | null, numArg?: PHPReference): Promise<string | false> {
+    const num = Number(await numArg?.get());
     if (typeof num !== "number" || num < 0 || num > 4294967295) return false;
     return [
       (num >>> 24) & 255,
@@ -70,9 +70,10 @@ export class NetworkingRuntime {
     ].join(".");
   }
 
-  public static parse_url(ctx: PHPContext | null, urlStrArg?: PHPReference, componentArg?: PHPReference): any {
-    const urlStr = String(urlStrArg?.get() ?? "");
-    const component = componentArg?.get() !== undefined ? Number(componentArg.get()) : -1;
+  public static async parse_url(ctx: PHPContext | null, urlStrArg?: PHPReference, componentArg?: PHPReference): Promise<any> {
+    const urlStr = String(await urlStrArg?.get() ?? "");
+    const componentValue = await componentArg?.get();
+    const component = componentValue !== undefined ? Number(componentValue) : -1;
     try {
       const parsed = new URL(urlStr, "http://localhost");
       const obj: Record<string, any> = {
@@ -105,10 +106,11 @@ export class NetworkingRuntime {
     }
   }
 
-  public static http_build_query(ctx: PHPContext | null, dataArg?: PHPReference, numericPrefixArg?: PHPReference, argSeparatorArg?: PHPReference): string {
-    const data = dataArg?.get();
-    const numericPrefix = String(numericPrefixArg?.get() ?? "");
-    const argSeparator = argSeparatorArg?.get() !== undefined ? String(argSeparatorArg.get()) : "&";
+  public static async http_build_query(ctx: PHPContext | null, dataArg?: PHPReference, numericPrefixArg?: PHPReference, argSeparatorArg?: PHPReference): Promise<string> {
+    const data = await dataArg?.get();
+    const numericPrefix = String(await numericPrefixArg?.get() ?? "");
+    const argSeparatorValue = await argSeparatorArg?.get();
+    const argSeparator = argSeparatorValue !== undefined ? String(argSeparatorValue) : "&";
     if (!data || typeof data !== "object") return "";
     const params = new URLSearchParams();
 
@@ -132,19 +134,19 @@ export class NetworkingRuntime {
     return params.toString().replace(/\+/g, "%20").replace(/&/g, argSeparator);
   }
 
-  public static header(ctx: PHPContext, headerStrArg?: any, replaceArg?: any, codeArg?: any): void {
-    const headerStr = String((headerStrArg && typeof headerStrArg === "object" && typeof headerStrArg.get === "function" ? headerStrArg.get() : headerStrArg) ?? "");
-    const replaceVal = replaceArg && typeof replaceArg === "object" && typeof replaceArg.get === "function" ? replaceArg.get() : replaceArg;
+  public static async header(ctx: PHPContext, headerStrArg?: any, replaceArg?: any, codeArg?: any): Promise<void> {
+    const headerStr = String(await ctx.toVal(headerStrArg) ?? "");
+    const replaceVal = await ctx.toVal(replaceArg);
     const replace = replaceVal !== undefined ? Boolean(replaceVal) : true;
-    const codeVal = codeArg && typeof codeArg === "object" && typeof codeArg.get === "function" ? codeArg.get() : codeArg;
+    const codeVal = await ctx.toVal(codeArg);
     const code = codeVal !== undefined ? Number(codeVal) : undefined;
     if (!headerStr) return;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot modify header information - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot modify header information - no server response handler", PHPError.E_WARNING);
       return;
     }
     if (ctx.response.headersSent) {
-      ctx.triggerError(`Cannot modify header information - headers already sent`, PHPError.E_WARNING);
+      await ctx.triggerError(`Cannot modify header information - headers already sent`, PHPError.E_WARNING);
       return;
     }
     const idx = headerStr.indexOf(":");
@@ -166,7 +168,7 @@ export class NetworkingRuntime {
     }
   }
 
-  public static setcookie(
+  public static async setcookie(
     ctx: PHPContext,
     nameArg?: PHPReference,
     valueArg?: PHPReference,
@@ -175,27 +177,27 @@ export class NetworkingRuntime {
     domainArg?: PHPReference,
     secureArg?: PHPReference,
     httponlyArg?: PHPReference
-  ): boolean {
-    const name = String(nameArg?.get() ?? "");
-    const value = String(valueArg?.get() ?? "");
-    const expires = Number(expiresArg?.get()) || 0;
-    const path = String(pathArg?.get() ?? "");
-    const domain = String(domainArg?.get() ?? "");
-    const secure = Boolean(secureArg?.get());
-    const httponly = Boolean(httponlyArg?.get());
+  ): Promise<boolean> {
+    const name = String(await nameArg?.get() ?? "");
+    const value = String(await valueArg?.get() ?? "");
+    const expires = Number(await expiresArg?.get()) || 0;
+    const path = String(await pathArg?.get() ?? "");
+    const domain = String(await domainArg?.get() ?? "");
+    const secure = Boolean(await secureArg?.get());
+    const httponly = Boolean(await httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot modify cookie information - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot modify cookie information - no server response handler", PHPError.E_WARNING);
       return false;
     }
     if (ctx.response.headersSent) {
-      ctx.triggerError(`Cannot set cookie - headers already sent`, PHPError.E_WARNING);
+      await ctx.triggerError(`Cannot set cookie - headers already sent`, PHPError.E_WARNING);
       return false;
     }
     ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, false);
     return true;
   }
 
-  public static setrawcookie(
+  public static async setrawcookie(
     ctx: PHPContext,
     nameArg?: PHPReference,
     valueArg?: PHPReference,
@@ -204,51 +206,53 @@ export class NetworkingRuntime {
     domainArg?: PHPReference,
     secureArg?: PHPReference,
     httponlyArg?: PHPReference
-  ): boolean {
-    const name = String(nameArg?.get() ?? "");
-    const value = String(valueArg?.get() ?? "");
-    const expires = Number(expiresArg?.get()) || 0;
-    const path = String(pathArg?.get() ?? "");
-    const domain = String(domainArg?.get() ?? "");
-    const secure = Boolean(secureArg?.get());
-    const httponly = Boolean(httponlyArg?.get());
+  ): Promise<boolean> {
+    const name = String(await nameArg?.get() ?? "");
+    const value = String(await valueArg?.get() ?? "");
+    const expires = Number(await expiresArg?.get()) || 0;
+    const path = String(await pathArg?.get() ?? "");
+    const domain = String(await domainArg?.get() ?? "");
+    const secure = Boolean(await secureArg?.get());
+    const httponly = Boolean(await httponlyArg?.get());
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot modify cookie information - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot modify cookie information - no server response handler", PHPError.E_WARNING);
       return false;
     }
     if (ctx.response.headersSent) {
-      ctx.triggerError(`Cannot set raw cookie - headers already sent`, PHPError.E_WARNING);
+      await ctx.triggerError(`Cannot set raw cookie - headers already sent`, PHPError.E_WARNING);
       return false;
     }
     ctx.response.setCookie(name, value, expires, path, domain, secure, httponly, true);
     return true;
   }
 
-  public static header_remove(ctx: PHPContext, nameArg?: PHPReference): void {
-    const name = nameArg?.get() !== undefined ? String(nameArg.get()) : undefined;
+  public static async header_remove(ctx: PHPContext, nameArg?: PHPReference): Promise<void> {
+    const nameValue = await nameArg?.get();
+    const name = nameValue !== undefined ? String(nameValue) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot modify header information - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot modify header information - no server response handler", PHPError.E_WARNING);
       return;
     }
     ctx.response.removeHeader(name);
   }
 
-  public static headers_list(ctx: PHPContext): string[] {
+  public static async headers_list(ctx: PHPContext): Promise<string[]> {
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot access headers - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot access headers - no server response handler", PHPError.E_WARNING);
       return [];
     }
     return ctx.response.getHeadersList();
   }
 
-  public static headers_sent(ctx: PHPContext): boolean {
+  public static async headers_sent(ctx: PHPContext): Promise<boolean> {
     return ctx.response.headersSent;
   }
 
-  public static http_response_code(ctx: PHPContext, codeArg?: PHPReference): number | boolean {
-    const code = codeArg?.get() !== undefined ? Number(codeArg.get()) : undefined;
+  public static async http_response_code(ctx: PHPContext, codeArg?: PHPReference): Promise<number | boolean> {
+    const codeValue = await codeArg?.get();
+    const code = codeValue !== undefined ? Number(codeValue) : undefined;
     if (!ctx.getInternalVar("hasServerResponseHandler")) {
-      ctx.triggerError("Cannot modify response code - no server response handler", PHPError.E_WARNING);
+      await ctx.triggerError("Cannot modify response code - no server response handler", PHPError.E_WARNING);
       return false;
     }
     if (code !== undefined) {
@@ -265,10 +269,10 @@ export class NetworkingRuntime {
     "ip2long": NetworkingRuntime.ip2long,
     "long2ip": NetworkingRuntime.long2ip,
     "parse_url": NetworkingRuntime.parse_url,
-    "urlencode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value),
-    "rawurlencode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value, true),
-    "urldecode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value),
-    "rawurldecode": (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value, true),
+    "urlencode": async (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value),
+    "rawurlencode": async (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urlencode(ctx, value, true),
+    "urldecode": async (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value),
+    "rawurldecode": async (ctx: PHPContext, value?: PHPReference) => NetworkingRuntime.urldecode(ctx, value, true),
     "http_build_query": NetworkingRuntime.http_build_query,
     "header": NetworkingRuntime.header,
     "setcookie": NetworkingRuntime.setcookie,

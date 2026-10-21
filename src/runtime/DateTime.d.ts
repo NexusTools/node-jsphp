@@ -1,13 +1,28 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPReference } from "./PHPVariable.js";
-import { SYMBOL_PHP_NAME } from "./Reflection.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_NEW } from "./Reflection.js";
 export declare class PHPDateTimeZone {
     static [SYMBOL_PHP_NAME]: string;
-    static __php_constants: Map<string, number>;
+    static [SYMBOL_PHP_CONSTANTS]: {
+        africa: number;
+        america: number;
+        antarctica: number;
+        arctic: number;
+        asia: number;
+        atlantic: number;
+        australia: number;
+        europe: number;
+        indian: number;
+        pacific: number;
+        utc: number;
+        all: number;
+        all_with_bc: number;
+        per_country: number;
+    };
     timezone: string;
     constructor(timezone?: string);
-    static __$$__new(ctx: PHPContext, timezoneArg?: PHPReference): Promise<PHPDateTimeZone>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, timezoneArg?: PHPReference): Promise<PHPDateTimeZone>;
     __construct(ctx: PHPContext, timezoneArg?: PHPReference): Promise<void>;
     getName(): string;
     getname(): string;
@@ -19,9 +34,9 @@ export declare class PHPDateTime {
     date: Date;
     timezone?: PHPDateTimeZone;
     constructor(timeStr?: string, timezone?: PHPDateTimeZone);
-    static __$$__new(ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<PHPDateTime>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<PHPDateTime>;
     __construct(ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<void>;
-    format(ctxOrFormat?: any, formatArg?: any): string;
+    format(ctxOrFormat?: any, formatArg?: any): Promise<string>;
     modify(ctxOrMod?: any, modArg?: any): PHPDateTime;
     setTimezone(ctxOrTz?: any, tzArg?: any): PHPDateTime;
     settimezone(ctxOrTz?: any, tzArg?: any): PHPDateTime;
@@ -46,19 +61,19 @@ export declare class PHPDateTimeImmutable extends PHPDateTime {
 }
 export declare class DateTimeRuntime {
     private static defaultTimezone;
-    static checkdate(ctx: PHPContext, monthArg?: any, dayArg?: any, yearArg?: any): boolean;
-    static time(ctx?: PHPContext): number;
-    static microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): string | number;
-    static date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string;
-    static strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): number | false;
-    static date_default_timezone_get(ctx?: PHPContext): string;
-    static date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): boolean;
-    static timezone_identifiers_list(ctx: PHPContext | null, timezoneGroupArg?: PHPReference, countryCodeArg?: PHPReference): string[];
-    static gmdate(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string;
-    static date_create(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false;
-    static date_create_immutable(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false;
-    static date_create_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false;
-    static date_create_immutable_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false;
+    static checkdate(ctx: PHPContext, monthArg?: any, dayArg?: any, yearArg?: any): Promise<boolean>;
+    static time(ctx?: PHPContext): Promise<number>;
+    static microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): Promise<string | number>;
+    static date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): Promise<string>;
+    static strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): Promise<number | false>;
+    static date_default_timezone_get(ctx?: PHPContext): Promise<string>;
+    static date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): Promise<boolean>;
+    static timezone_identifiers_list(ctx: PHPContext | null, timezoneGroupArg?: PHPReference, countryCodeArg?: PHPReference): Promise<string[]>;
+    static gmdate(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): Promise<string>;
+    static date_create(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTime | false>;
+    static date_create_immutable(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTimeImmutable | false>;
+    static date_create_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTime | false>;
+    static date_create_immutable_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTimeImmutable | false>;
     static functions: {
         checkdate: typeof DateTimeRuntime.checkdate;
         time: typeof DateTimeRuntime.time;

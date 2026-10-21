@@ -1,98 +1,128 @@
 import { PHPFatalError } from "./PHPError.js";
 import { SYMBOL_PHP_NAME } from "./Reflection.js";
+export const SYMBOL_PHP_REFERENCE = Symbol.for("php.reference");
+export const SYMBOL_PHP_VARIABLE = Symbol.for("php.variable");
 export class PHPReference {
-    __isPHPReference = true;
+    static [Symbol.hasInstance](value) {
+        if (Function.prototype[Symbol.hasInstance].call(this, value))
+            return true;
+        return this === PHPReference
+            && value !== null
+            && (typeof value === "object" || typeof value === "function")
+            && value[SYMBOL_PHP_REFERENCE] === true;
+    }
+    async setFrom(otherref) {
+        return await this.set(await otherref.get());
+    }
+    async isset() {
+        const value = await this.get();
+        return value !== null && value !== undefined;
+    }
+    async unset() {
+        await this.set(undefined);
+    }
 }
-export function isPHPReference(val) {
-    if (!val || (typeof val !== "object" && typeof val !== "function"))
-        return false;
-    return val instanceof PHPReference || Object.getOwnPropertyDescriptor(val, "__isPHPReference")?.value === true;
+export function isPHPReference(value) {
+    return value instanceof PHPReference
+        || (value !== null && (typeof value === "object" || typeof value === "function") && value[SYMBOL_PHP_REFERENCE] === true);
 }
-export function isPHPVariable(val) {
-    if (!val || (typeof val !== "object" && typeof val !== "function"))
-        return false;
-    return val instanceof PHPVariable || Object.getOwnPropertyDescriptor(val, "__isPHPVariable")?.value === true;
+export function isPHPVariable(value) {
+    return value instanceof PHPVariable
+        || (value !== null && (typeof value === "object" || typeof value === "function") && value[SYMBOL_PHP_VARIABLE] === true);
 }
 export class PHPLiteral extends PHPReference {
-    __isPHPLiteral = true;
     value;
     constructor(value) {
         super();
         this.value = value;
     }
-    get() {
+    async get() {
         return this.value;
     }
-    set(val) {
-        throw new PHPFatalError(`Literals cannot be changed`);
-    }
-    bindRef(target) {
-        // Literal variables do not bind references
-    }
-    unbindRef() {
-        // N/A
-    }
-    isReference() {
-        return false;
-    }
-    async call(ctx, method, args = []) {
-        throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
+    async set(_value) {
+        throw new PHPFatalError("Literals cannot be changed");
     }
     toString() {
-        const val = this.get();
-        return val === null || val === undefined ? "" : String(val);
+        return this.value === null || this.value === undefined ? "" : String(this.value);
     }
     valueOf() {
-        return this.get();
+        return this.value;
     }
     [Symbol.toPrimitive](hint) {
-        const val = this.get();
         if (hint === "number")
-            return Number(val) || 0;
+            return Number(this.value) || 0;
         if (hint === "string")
-            return val === null || val === undefined ? "" : String(val);
-        return val;
+            return this.value === null || this.value === undefined ? "" : String(this.value);
+        return this.value;
     }
 }
 export class PHPPropertyReference extends PHPReference {
     ctx;
     obj;
     prop;
-    constructor(ctx, obj, prop) {
+    phpName;
+    constructor(ctx, obj, prop, phpName = prop.startsWith("$") ? prop.slice(1) : prop) {
         super();
         this.ctx = ctx;
         this.obj = obj;
         this.prop = prop;
+        this.phpName = phpName;
     }
-    get() {
-        let target = this.obj instanceof PHPReference ? this.obj.get() : this.obj;
-        if (!target || typeof target !== "object")
-            return undefined;
-        const p = this.prop.startsWith("$") ? this.prop : "$" + this.prop;
-        const nop = this.prop.startsWith("$") ? this.prop.slice(1) : this.prop;
-        if (p in target) {
-            const val = target[p];
-            return val instanceof PHPReference ? val.get() : val;
+    async get() {
+        const target = isPHPReference(this.obj) ? await this.obj.get() : this.obj;
+        if (target === null || target === undefined) {
+            return this.ctx.getProperty(target, this.prop);
         }
-        if (nop in target && typeof target[nop] !== "function") {
-            const val = target[nop];
-            return val instanceof PHPReference ? val.get() : val;
+        const direct = target[this.prop];
+        if (direct !== undefined) {
+            return isPHPReference(direct) ? await direct.get() : direct;
         }
-        const dataObj = target["$data"]?.get ? target["$data"].get() : target["$data"] || target.data;
-        if (dataObj && typeof dataObj === "object") {
-            if (p in dataObj) {
-                const val = dataObj[p];
-                return val instanceof PHPReference ? val.get() : val;
-            }
-            if (nop in dataObj && typeof dataObj[nop] !== "function") {
-                const val = dataObj[nop];
-                return val instanceof PHPReference ? val.get() : val;
-            }
+        if (typeof target.__get === "function") {
+            return await target.__get(this.ctx, new PHPLiteral(this.phpName));
         }
-        return undefined;
+        return await this.ctx.getProperty(target, this.prop);
     }
-    set(val) {
-        return this.ctx.setProperty(this.obj, this.prop, val);
+    async set(value) {
+        const target = isPHPReference(this.obj) ? await this.obj.get() : this.obj;
+        if (target === null || target === undefined) {
+            return this.ctx.setProperty(target, this.prop, value);
+        }
+        const direct = target[this.prop];
+        if (isPHPReference(direct))
+            return await direct.set(value);
+        if (direct !== undefined) {
+            target[this.prop] = value;
+            return value;
+        }
+        if (typeof target.__set === "function") {
+            return await target.__set(this.ctx, new PHPLiteral(this.phpName), new PHPLiteral(value));
+        }
+        return await this.ctx.setProperty(target, this.prop, value);
+    }
+    async isset() {
+        const target = isPHPReference(this.obj) ? await this.obj.get() : this.obj;
+        if (target === null || target === undefined)
+            return false;
+        const direct = target[this.prop];
+        if (direct !== undefined) {
+            const value = isPHPReference(direct) ? await direct.get() : direct;
+            return value !== null && value !== undefined;
+        }
+        if (typeof target.__isset === "function") {
+            const result = await target.__isset(this.ctx, new PHPLiteral(this.phpName));
+            return this.ctx.isTruthy(isPHPReference(result) ? await result.get() : result);
+        }
+        return false;
+    }
+    async unset() {
+        const target = isPHPReference(this.obj) ? await this.obj.get() : this.obj;
+        if (target === null || target === undefined)
+            return;
+        if (target[this.prop] === undefined && typeof target.__unset === "function") {
+            await target.__unset(this.ctx, new PHPLiteral(this.phpName));
+            return;
+        }
+        delete target[this.prop];
     }
 }
 export class PHPArrayOffsetReference extends PHPReference {
@@ -103,138 +133,75 @@ export class PHPArrayOffsetReference extends PHPReference {
         this.container = container;
         this.key = key;
     }
-    get() {
-        const obj = this.container instanceof PHPReference ? this.container.get() : this.container;
-        if (obj && typeof obj === "object") {
-            const val = obj[this.key];
-            return val instanceof PHPReference ? val.get() : val;
-        }
-        return undefined;
+    async get() {
+        const target = isPHPReference(this.container) ? await this.container.get() : this.container;
+        if (target === null || (typeof target !== "object" && typeof target !== "function"))
+            return undefined;
+        const value = target[this.key];
+        return isPHPReference(value) ? await value.get() : value;
     }
-    set(val) {
-        const obj = this.container instanceof PHPReference ? this.container.get() : this.container;
-        const unwrapped = val instanceof PHPReference ? val.get() : val;
-        if (obj && typeof obj === "object") {
-            obj[this.key] = unwrapped;
+    async set(value) {
+        const target = isPHPReference(this.container) ? await this.container.get() : this.container;
+        const actual = isPHPReference(value) ? await value.get() : value;
+        if (target !== null && (typeof target === "object" || typeof target === "function")) {
+            target[this.key] = actual;
         }
-        return unwrapped;
+        return actual;
     }
 }
 export class PHPVariable extends PHPReference {
-    __isPHPVariable = true;
     value;
-    refTarget;
     constructor(initialValue = undefined) {
         super();
-        if (initialValue instanceof PHPReference) {
-            const ref = initialValue;
-            if (ref.refTarget) {
-                let rootTarget = ref.refTarget;
-                while (rootTarget.refTarget) {
-                    rootTarget = rootTarget.refTarget;
-                }
-                this.refTarget = rootTarget;
-            }
-            else {
-                this.value = ref.get();
-            }
-        }
-        else {
-            this.value = initialValue;
-        }
+        this.value = initialValue;
     }
-    get() {
-        if (this.refTarget)
-            return this.refTarget.get();
+    async get() {
         return this.value;
     }
-    set(val) {
-        if (this.refTarget)
-            return this.refTarget.set(val);
-        const unwrapped = val instanceof PHPReference ? val.get() : val;
-        if (Array.isArray(unwrapped)) {
-            const copy = [...unwrapped];
-            for (const k of Object.keys(unwrapped)) {
-                if (isNaN(Number(k)))
-                    copy[k] = unwrapped[k];
+    async set(value) {
+        const actual = isPHPReference(value) ? await value.get() : value;
+        if (Array.isArray(actual)) {
+            const copy = [...actual];
+            for (const key of Object.keys(actual)) {
+                if (isNaN(Number(key)))
+                    copy[key] = actual[key];
             }
             delete copy.__ptr;
             this.value = copy;
             return copy;
         }
-        else if (typeof unwrapped === "object" && unwrapped !== null && !unwrapped[SYMBOL_PHP_NAME] && unwrapped.constructor === Object) {
-            const copy = { ...unwrapped };
+        if (typeof actual === "object" && actual !== null && !actual[SYMBOL_PHP_NAME] && actual.constructor === Object) {
+            const copy = { ...actual };
             delete copy.__ptr;
             this.value = copy;
             return copy;
         }
-        this.value = unwrapped;
-        return unwrapped;
+        this.value = actual;
+        return actual;
     }
-    bindRef(target) {
-        let actualTarget = target;
-        while (actualTarget.refTarget) {
-            actualTarget = actualTarget.refTarget;
-        }
-        this.refTarget = actualTarget;
-    }
-    unbindRef() {
-        if (this.refTarget) {
-            this.value = this.refTarget.get();
-            this.refTarget = undefined;
-        }
-    }
-    isReference() {
-        return Boolean(this.refTarget);
-    }
-    async call(ctx, method, args = []) {
-        const obj = this.get();
-        if (!obj || (typeof obj !== "object" && typeof obj !== "function")) {
-            throw new PHPFatalError(`Call to a member function ${method}() on a non-object`);
-        }
-        const lowerMethod = method.toLowerCase();
-        const callArgs = args.map((arg) => (arg instanceof PHPReference ? arg : new PHPLiteral(arg)));
-        if (typeof obj.callMethod === "function") {
-            let res = await obj.callMethod(ctx, method, callArgs);
-            if (res instanceof PHPReference)
-                res = res.get();
-            return res;
-        }
-        const metadata = obj?.phpClass?.methods?.get ? (obj.phpClass.methods.get(method) || obj.phpClass.methods.get(lowerMethod)) : (obj?.phpClass?.methods?.[method] || obj?.phpClass?.methods?.[lowerMethod]);
-        if (metadata?.fn) {
-            let res = await metadata.fn.apply(obj, [ctx, ...callArgs]);
-            if (res instanceof PHPReference)
-                res = res.get();
-            return res;
-        }
-        if (typeof obj[method] === "function") {
-            let res = await obj[method].apply(obj, [ctx, ...callArgs]);
-            if (res instanceof PHPReference)
-                res = res.get();
-            return res;
-        }
-        if (typeof obj[lowerMethod] === "function") {
-            let res = await obj[lowerMethod].apply(obj, [ctx, ...callArgs]);
-            if (res instanceof PHPReference)
-                res = res.get();
-            return res;
-        }
-        throw new PHPFatalError(`Call to undefined method ${obj?.constructor?.name}::${method}()`);
+    setFrom(otherref) {
+        if (otherref instanceof PHPVariable)
+            return this.set(otherref.value);
+        return super.setFrom(otherref);
     }
     toString() {
-        const val = this.get();
-        return val === null || val === undefined ? "" : String(val);
+        return this.value === null || this.value === undefined ? "" : String(this.value);
     }
     valueOf() {
-        return this.get();
+        return this.value;
     }
     [Symbol.toPrimitive](hint) {
-        const val = this.get();
         if (hint === "number")
-            return Number(val) || 0;
+            return Number(this.value) || 0;
         if (hint === "string")
-            return val === null || val === undefined ? "" : String(val);
-        return val;
+            return this.value === null || this.value === undefined ? "" : String(this.value);
+        return this.value;
     }
 }
+Object.defineProperties(PHPReference.prototype, {
+    [SYMBOL_PHP_REFERENCE]: { value: true },
+});
+Object.defineProperties(PHPVariable.prototype, {
+    [SYMBOL_PHP_VARIABLE]: { value: true },
+});
 //# sourceMappingURL=PHPVariable.js.map

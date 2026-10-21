@@ -20,9 +20,11 @@ describe("Hash Extension Tests", () => {
         const ctx = engine.createContext();
         await ctx.eval("echo md5('test') . ';' . sha1('test'); $raw_md5 = md5('test', true); $raw_sha1 = sha1('test', true);");
         expect(ctx.outputText).toBe("098f6bcd4621d373cade4e832627b4f6;a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
-        expect(Buffer.isBuffer(ctx.getVar("raw_md5"))).toBe(true);
-        expect(ctx.getVar("raw_md5").length).toBe(16);
-        expect(ctx.getVar("raw_sha1").length).toBe(20);
+        const rawMd5 = await ctx.getVar("raw_md5");
+        const rawSha1 = await ctx.getVar("raw_sha1");
+        expect(Buffer.isBuffer(rawMd5)).toBe(true);
+        expect(rawMd5.length).toBe(16);
+        expect(rawSha1.length).toBe(20);
     });
 });
 //# sourceMappingURL=hash.test.js.map

@@ -9,8 +9,8 @@ export declare class ExecRuntime {
      */
     static exec(ctx: PHPContext, commandArg?: PHPReference, outputArray?: PHPReference, returnVarObj?: PHPReference): Promise<string>;
     static shell_exec(ctx: PHPContext, commandArg?: PHPReference): Promise<string | null>;
-    static escapeshellarg(ctx: PHPContext, argParam?: PHPReference): string;
-    static escapeshellcmd(ctx: PHPContext, cmdParam?: PHPReference): string;
+    static escapeshellarg(ctx: PHPContext, argParam?: PHPReference): Promise<string>;
+    static escapeshellcmd(ctx: PHPContext, cmdParam?: PHPReference): Promise<string>;
     static functions: {
         exec: typeof ExecRuntime.exec;
         shell_exec: typeof ExecRuntime.shell_exec;

@@ -62,23 +62,23 @@ export class OutputBufferStack {
 }
 export class OutputBufferRuntime {
     static functions = {
-        "flush": (ctx) => { ctx.flushHeaders(); return true; },
-        "ob_start": (ctx) => ctx.outputBuffer.start(),
-        "ob_get_clean": (ctx) => ctx.outputBuffer.getClean(),
-        "ob_get_contents": (ctx) => ctx.outputBuffer.getContents(),
-        "ob_get_length": (ctx) => ctx.outputBuffer.getLength(),
-        "ob_get_flush": (ctx) => ctx.outputBuffer.getFlush(ctx),
-        "ob_flush": (ctx) => ctx.outputBuffer.flush(ctx),
-        "ob_end_flush": (ctx) => ctx.outputBuffer.flush(ctx),
-        "ob_end_clean": (ctx) => ctx.outputBuffer.endClean(),
-        "ob_clean": (ctx) => {
+        "flush": async (ctx) => { ctx.flushHeaders(); return true; },
+        "ob_start": async (ctx) => ctx.outputBuffer.start(),
+        "ob_get_clean": async (ctx) => ctx.outputBuffer.getClean(),
+        "ob_get_contents": async (ctx) => ctx.outputBuffer.getContents(),
+        "ob_get_length": async (ctx) => ctx.outputBuffer.getLength(),
+        "ob_get_flush": async (ctx) => ctx.outputBuffer.getFlush(ctx),
+        "ob_flush": async (ctx) => ctx.outputBuffer.flush(ctx),
+        "ob_end_flush": async (ctx) => ctx.outputBuffer.flush(ctx),
+        "ob_end_clean": async (ctx) => ctx.outputBuffer.endClean(),
+        "ob_clean": async (ctx) => {
             if (ctx.outputBuffer.isActive()) {
                 ctx.outputBuffer.getClean();
                 ctx.outputBuffer.start();
             }
             return true;
         },
-        "ob_get_level": (ctx) => ctx.outputBuffer.getLevel(),
+        "ob_get_level": async (ctx) => ctx.outputBuffer.getLevel(),
     };
     static register(engine) {
         engine.registerFunctions(OutputBufferRuntime.functions);

@@ -1,6 +1,6 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
-import { SYMBOL_PHP_NAME } from "./Reflection.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_INIT, SYMBOL_PHP_NEW } from "./Reflection.js";
 export interface PHPStackFrame {
     file: string;
     line: number;
@@ -34,7 +34,8 @@ export declare class PHPError extends Error {
     rawJSStack: string;
     constructor(messageArg?: any, codeArg?: any, fileArg?: any, lineArg?: any, traceArg?: any, previousArg?: any);
     static wrapJSError(err: any): PHPError;
-    static __$$__new(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError>;
+    static [SYMBOL_PHP_NEW](ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError>;
+    static [SYMBOL_PHP_INIT](ctx: any, obj: PHPError): Promise<void>;
     __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void>;
     getMessage(): string;
     getmessage(): string;
@@ -99,6 +100,9 @@ export declare class ErrorException extends PHPError {
 export declare class PHPTypeError extends PHPError {
     static [SYMBOL_PHP_NAME]: string;
 }
+export declare class PHPValueError extends PHPError {
+    static [SYMBOL_PHP_NAME]: string;
+}
 export declare class PHPParseError extends PHPError {
     static [SYMBOL_PHP_NAME]: string;
 }
@@ -116,12 +120,12 @@ export declare class PHPExit extends PHPError {
     constructor(status?: any);
 }
 export declare class ErrorRuntime {
-    static debug_backtrace(ctx: PHPContext): any;
+    static debug_backtrace(ctx: PHPContext): Promise<any>;
     static debug_print_backtrace(ctx: PHPContext): Promise<string>;
-    static set_error_handler(ctx: PHPContext, handlerArg: any, levelsArg?: any): any;
-    static restore_error_handler(ctx: PHPContext): boolean;
+    static set_error_handler(ctx: PHPContext, handlerArg: any, levelsArg?: any): Promise<any>;
+    static restore_error_handler(ctx: PHPContext): Promise<boolean>;
     static trigger_error(ctx: PHPContext, messageArg: any, levelArg?: any): Promise<boolean>;
-    static error_reporting(ctx: PHPContext, levelArg?: any): number;
+    static error_reporting(ctx: PHPContext, levelArg?: any): Promise<number>;
     static functions: {
         debug_backtrace: typeof ErrorRuntime.debug_backtrace;
         debug_print_backtrace: typeof ErrorRuntime.debug_print_backtrace;

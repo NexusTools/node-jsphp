@@ -25,12 +25,12 @@ describe("PCRE Extension Tests", () => {
       $empty_count = preg_match_all('/(?=a)/', 'aa');
       echo preg_replace('#[0-9]#', 'X', 'a1b2');
     `);
-        expect(ctx.getVar("count")).toBe(2);
-        expect(ctx.getVar("matches")).toEqual([["a1", "B22"], ["a", "B"], ["1", "22"]]);
-        expect(ctx.getVar("set_count")).toBe(2);
-        expect(ctx.getVar("sets")[1]).toEqual([["B22", 3], ["B", 3], ["22", 4]]);
-        expect(ctx.getVar("single")).toEqual(["a", "a", null]);
-        expect(ctx.getVar("empty_count")).toBe(2);
+        expect(await ctx.getVar("count")).toBe(2);
+        expect(await ctx.getVar("matches")).toEqual([["a1", "B22"], ["a", "B"], ["1", "22"]]);
+        expect(await ctx.getVar("set_count")).toBe(2);
+        expect((await ctx.getVar("sets"))[1]).toEqual([["B22", 3], ["B", 3], ["22", 4]]);
+        expect(await ctx.getVar("single")).toEqual(["a", "a", null]);
+        expect(await ctx.getVar("empty_count")).toBe(2);
         expect(ctx.outputText).toBe("aXbX");
     });
 });

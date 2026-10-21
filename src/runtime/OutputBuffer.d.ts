@@ -16,17 +16,17 @@ export declare class OutputBufferStack {
 }
 export declare class OutputBufferRuntime {
     static functions: {
-        flush: (ctx: PHPContext) => boolean;
-        ob_start: (ctx: PHPContext) => boolean;
-        ob_get_clean: (ctx: PHPContext) => string | false;
-        ob_get_contents: (ctx: PHPContext) => string | false;
-        ob_get_length: (ctx: PHPContext) => number | false;
-        ob_get_flush: (ctx: PHPContext) => string | false;
-        ob_flush: (ctx: PHPContext) => boolean;
-        ob_end_flush: (ctx: PHPContext) => boolean;
-        ob_end_clean: (ctx: PHPContext) => boolean;
-        ob_clean: (ctx: PHPContext) => boolean;
-        ob_get_level: (ctx: PHPContext) => number;
+        flush: (ctx: PHPContext) => Promise<boolean>;
+        ob_start: (ctx: PHPContext) => Promise<boolean>;
+        ob_get_clean: (ctx: PHPContext) => Promise<string | false>;
+        ob_get_contents: (ctx: PHPContext) => Promise<string | false>;
+        ob_get_length: (ctx: PHPContext) => Promise<number | false>;
+        ob_get_flush: (ctx: PHPContext) => Promise<string | false>;
+        ob_flush: (ctx: PHPContext) => Promise<boolean>;
+        ob_end_flush: (ctx: PHPContext) => Promise<boolean>;
+        ob_end_clean: (ctx: PHPContext) => Promise<boolean>;
+        ob_clean: (ctx: PHPContext) => Promise<boolean>;
+        ob_get_level: (ctx: PHPContext) => Promise<number>;
     };
     static register(engine: PHPEngine): void;
 }

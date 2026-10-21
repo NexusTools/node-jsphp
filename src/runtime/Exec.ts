@@ -14,27 +14,27 @@ export class ExecRuntime {
    * @param returnVarObj Output variable passed by reference to receive exit status code.
    */
   public static async exec(ctx: PHPContext, commandArg?: PHPReference, outputArray?: PHPReference, returnVarObj?: PHPReference): Promise<string> {
-    const command = String(commandArg?.get() ?? "");
+    const command = String(await commandArg?.get() ?? "");
     try {
       const { stdout } = await execAsync(command, { cwd: ctx.cwd });
       const lines = stdout.trimEnd().split(/\r?\n/);
       if (outputArray && typeof outputArray.set === "function") {
-        outputArray.set(lines);
+        await outputArray.set(lines);
       }
       if (returnVarObj && typeof returnVarObj.set === "function") {
-        returnVarObj.set(0);
+        await returnVarObj.set(0);
       }
       return lines[lines.length - 1] || "";
     } catch (err: any) {
       if (returnVarObj && typeof returnVarObj.set === "function") {
-        returnVarObj.set(err.status || 1);
+        await returnVarObj.set(err.status || 1);
       }
       return "";
     }
   }
 
   public static async shell_exec(ctx: PHPContext, commandArg?: PHPReference): Promise<string | null> {
-    const command = String(commandArg?.get() ?? "");
+    const command = String(await commandArg?.get() ?? "");
     try {
       const { stdout } = await execAsync(command, { cwd: ctx.cwd });
       return stdout;
@@ -43,13 +43,13 @@ export class ExecRuntime {
     }
   }
 
-  public static escapeshellarg(ctx: PHPContext, argParam?: PHPReference): string {
-    const arg = String(argParam?.get() ?? "");
+  public static async escapeshellarg(ctx: PHPContext, argParam?: PHPReference): Promise<string> {
+    const arg = String(await argParam?.get() ?? "");
     return `'${arg.replace(/'/g, "'\\''")}'`;
   }
 
-  public static escapeshellcmd(ctx: PHPContext, cmdParam?: PHPReference): string {
-    const cmd = String(cmdParam?.get() ?? "");
+  public static async escapeshellcmd(ctx: PHPContext, cmdParam?: PHPReference): Promise<string> {
+    const cmd = String(await cmdParam?.get() ?? "");
     return cmd.replace(/([#&;`|*?~<>^()\[\]{}$\\\x0A\xFF])/g, "\\$1");
   }
 

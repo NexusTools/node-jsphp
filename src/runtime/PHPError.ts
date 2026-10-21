@@ -1,7 +1,7 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPVariable, PHPReference } from "./PHPVariable.js";
-import { SYMBOL_PHP_NAME } from "./Reflection.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_INIT, SYMBOL_PHP_NEW } from "./Reflection.js";
 
 export interface PHPStackFrame {
   file: string;
@@ -45,15 +45,14 @@ export class PHPError extends Error {
     traceArg: any = [],
     previousArg: any = null
   ) {
-    const message = String(messageArg?.get ? messageArg.get() : (messageArg ?? ""));
-    const code = Number(codeArg?.get ? codeArg.get() : (codeArg || 0));
-    const file = String(fileArg?.get ? fileArg.get() : (fileArg || ""));
-    const line = Number(lineArg?.get ? lineArg.get() : (lineArg || 0));
-    const trace = traceArg?.get ? traceArg.get() : (traceArg || []);
-    const previous = previousArg?.get ? previousArg.get() : previousArg;
+    const message = String(messageArg ?? "");
+    const code = Number(codeArg || 0);
+    const file = String(fileArg || "");
+    const line = Number(lineArg || 0);
+    const trace = traceArg || [];
+    const previous = previousArg ?? null;
 
     super(message);
-    if (message.includes("Class \"\" not found")) console.log("CRITICAL CLASS NOT FOUND STACK:\n", this.stack);
     this.name = this.constructor.name;
     this.phpCode = code;
     this.phpFile = file;
@@ -80,15 +79,9 @@ export class PHPError extends Error {
     return new PHPError(String(err ?? "Unknown error"));
   }
 
-  public static async __$$__new(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError> {
+  public static async [SYMBOL_PHP_NEW](ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<PHPError> {
     const obj = Object.create(this.prototype);
-    obj.name = this.name;
-    obj.phpCode = 0;
-    obj.phpFile = ctx?.currentFile || "";
-    obj.phpLine = ctx?.currentLine || 0;
-    obj.phpTrace = ctx?.getPHPBacktrace ? ctx.getPHPBacktrace() : [];
-    obj.previous = null;
-    obj.rawJSStack = new Error().stack || "";
+    await this[SYMBOL_PHP_INIT](ctx, obj);
     await obj.__construct(ctx, messageArg, codeArg, previousArg);
     if (obj.rawJSStack) {
       obj.stack = PHPError.virtualizeJSStack(obj.rawJSStack, obj.phpFile, obj.phpLine, obj.phpTrace);
@@ -96,37 +89,47 @@ export class PHPError extends Error {
     return obj;
   }
 
+  public static async [SYMBOL_PHP_INIT](ctx: any, obj: PHPError): Promise<void> {
+    obj.name = this.name;
+    obj.phpCode = 0;
+    obj.phpFile = ctx?.currentFile || "";
+    obj.phpLine = ctx?.currentLine || 0;
+    obj.phpTrace = ctx?.getPHPBacktrace ? ctx.getPHPBacktrace() : [];
+    obj.previous = null;
+    obj.rawJSStack = new Error().stack || "";
+  }
+
   public async __construct(ctx: any, messageArg?: any, codeArg?: any, previousArg?: any): Promise<void> {
-    const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
-    const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
-    const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
+    const msg = messageArg && typeof messageArg.get === "function" ? await messageArg.get() : messageArg ?? "";
+    const code = codeArg && typeof codeArg.get === "function" ? await codeArg.get() : codeArg ?? 0;
+    const previous = previousArg && typeof previousArg.get === "function" ? await previousArg.get() : previousArg ?? null;
     this.message = String(msg ?? "");
     this.phpCode = Number(code || 0);
     this.previous = previous;
   }
 
   public getMessage(): string {
-    return this.message || (this as any).properties?.get("message") || "";
+    return this.message || (this as any).properties?.message || "";
   }
   public getmessage(): string { return this.getMessage(); }
 
   public getCode(): number {
-    return this.phpCode || (this as any).properties?.get("code") || 0;
+    return this.phpCode || (this as any).properties?.code || 0;
   }
   public getcode(): number { return this.getCode(); }
 
   public getFile(): string {
-    return this.phpFile || (this as any).properties?.get("file") || "";
+    return this.phpFile || (this as any).properties?.file || "";
   }
   public getfile(): string { return this.getFile(); }
 
   public getLine(): number {
-    return this.phpLine || (this as any).properties?.get("line") || 0;
+    return this.phpLine || (this as any).properties?.line || 0;
   }
   public getline(): number { return this.getLine(); }
 
   public getPrevious(): PHPError | null {
-    return this.previous || (this as any).properties?.get("previous") || null;
+    return this.previous || (this as any).properties?.previous || null;
   }
   public getprevious(): PHPError | null { return this.getPrevious(); }
   public gettrace(): PHPStackFrame[] { return this.phpTrace || []; }
@@ -250,12 +253,12 @@ export class ErrorException extends PHPError {
   }
 
   public async __construct(ctx: any, messageArg?: any, codeArg?: any, severityArg?: any, fileArg?: any, lineArg?: any, previousArg?: any): Promise<void> {
-    const msg = messageArg ? (typeof messageArg.get === "function" ? messageArg.get() : messageArg) : "";
-    const code = codeArg ? (typeof codeArg.get === "function" ? codeArg.get() : codeArg) : 0;
-    const severity = severityArg ? (typeof severityArg.get === "function" ? severityArg.get() : severityArg) : 1;
-    const file = fileArg ? (typeof fileArg.get === "function" ? fileArg.get() : fileArg) : (ctx?.currentFile || "");
-    const line = lineArg ? (typeof lineArg.get === "function" ? lineArg.get() : lineArg) : (ctx?.currentLine || 0);
-    const previous = previousArg ? (typeof previousArg.get === "function" ? previousArg.get() : previousArg) : null;
+    const msg = messageArg ? (typeof messageArg.get === "function" ? await messageArg.get() : messageArg) : "";
+    const code = codeArg ? (typeof codeArg.get === "function" ? await codeArg.get() : codeArg) : 0;
+    const severity = severityArg ? (typeof severityArg.get === "function" ? await severityArg.get() : severityArg) : 1;
+    const file = fileArg ? (typeof fileArg.get === "function" ? await fileArg.get() : fileArg) : (ctx?.currentFile || "");
+    const line = lineArg ? (typeof lineArg.get === "function" ? await lineArg.get() : lineArg) : (ctx?.currentLine || 0);
+    const previous = previousArg ? (typeof previousArg.get === "function" ? await previousArg.get() : previousArg) : null;
 
     this.message = String(msg ?? "");
     this.phpCode = Number(code || 0);
@@ -272,12 +275,16 @@ export class ErrorException extends PHPError {
 export class PHPTypeError extends PHPError {
   public static [SYMBOL_PHP_NAME] = "TypeError";
 }
+export class PHPValueError extends PHPError {
+  public static [SYMBOL_PHP_NAME] = "ValueError";
+}
 export class PHPParseError extends PHPError {
   public static [SYMBOL_PHP_NAME] = "ParseError";
 }
 export class PHPFatalError extends PHPError {
   public static [SYMBOL_PHP_NAME] = "Error";
 }
+
 export class PHPNotice extends PHPError {
   public static [SYMBOL_PHP_NAME] = "Notice";
 }
@@ -297,7 +304,7 @@ export class PHPExit extends PHPError {
 
 
 export class ErrorRuntime {
-  public static debug_backtrace(ctx: PHPContext): any {
+  public static async debug_backtrace(ctx: PHPContext): Promise<any> {
     return ctx.getPHPBacktrace();
   }
 
@@ -309,24 +316,24 @@ export class ErrorRuntime {
     return trace;
   }
 
-  public static set_error_handler(ctx: PHPContext, handlerArg: any, levelsArg: any = PHPError.E_ALL): any {
-    const handler = handlerArg instanceof PHPReference ? handlerArg.get() : handlerArg;
-    const levels = levelsArg instanceof PHPReference ? levelsArg.get() : levelsArg;
+  public static async set_error_handler(ctx: PHPContext, handlerArg: any, levelsArg: any = PHPError.E_ALL): Promise<any> {
+    const handler = handlerArg instanceof PHPReference ? await handlerArg.get() : handlerArg;
+    const levels = levelsArg instanceof PHPReference ? await levelsArg.get() : levelsArg;
     return ctx.setErrorHandler(handler, levels !== undefined ? Number(levels) : PHPError.E_ALL);
   }
 
-  public static restore_error_handler(ctx: PHPContext): boolean {
+  public static async restore_error_handler(ctx: PHPContext): Promise<boolean> {
     return ctx.restoreErrorHandler();
   }
 
   public static async trigger_error(ctx: PHPContext, messageArg: any, levelArg: any = PHPError.E_USER_NOTICE): Promise<boolean> {
-    const message = messageArg instanceof PHPReference ? messageArg.get() : messageArg;
-    const level = levelArg instanceof PHPReference ? levelArg.get() : levelArg;
+    const message = messageArg instanceof PHPReference ? await messageArg.get() : messageArg;
+    const level = levelArg instanceof PHPReference ? await levelArg.get() : levelArg;
     return await ctx.triggerError(String(message ?? ""), level !== undefined ? Number(level) : PHPError.E_USER_NOTICE);
   }
 
-  public static error_reporting(ctx: PHPContext, levelArg?: any): number {
-    const level = levelArg instanceof PHPReference ? levelArg.get() : levelArg;
+  public static async error_reporting(ctx: PHPContext, levelArg?: any): Promise<number> {
+    const level = levelArg instanceof PHPReference ? await levelArg.get() : levelArg;
     const previous = ctx.errorReportingLevel;
     if (level !== undefined && level !== null) ctx.errorReportingLevel = Number(level);
     return previous;

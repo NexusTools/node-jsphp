@@ -54,7 +54,7 @@ describe("Strings Runtime Tests", () => {
       $replaced = substr_replace(array('abc', 'def'), array('X', 'Y'), array(1, 0), array(1, 2));
     `);
     expect(ctx.outputText).toBe("en_US.l10n.php;abXef;abXcdef;aXf;abcX;");
-    expect(ctx.getVar("replaced")).toEqual(["aXc", "Yf"]);
+    expect(await ctx.getVar("replaced")).toEqual(["aXc", "Yf"]);
   });
 
   test("String functions: strtolower, strtoupper, ucfirst, lcfirst, ucwords, addslashes, stripslashes, htmlspecialchars", async () => {

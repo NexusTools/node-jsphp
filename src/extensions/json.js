@@ -21,32 +21,14 @@ export class JSONExtension extends PHPExtension {
             json_partial_output_on_error: 512,
             json_preserve_zero_fraction: 1024,
             json_throw_on_error: 4194304,
-            JSON_ERROR_NONE: 0,
-            JSON_ERROR_DEPTH: 1,
-            JSON_ERROR_STATE_MISMATCH: 2,
-            JSON_ERROR_CTRL_CHAR: 3,
-            JSON_ERROR_SYNTAX: 4,
-            JSON_ERROR_UTF8: 5,
-            JSON_HEX_TAG: 1,
-            JSON_HEX_AMP: 2,
-            JSON_HEX_APOS: 4,
-            JSON_HEX_QUOT: 8,
-            JSON_FORCE_OBJECT: 16,
-            JSON_NUMERIC_CHECK: 32,
-            JSON_UNESCAPED_SLASHES: 64,
-            JSON_PRETTY_PRINT: 128,
-            JSON_UNESCAPED_UNICODE: 256,
-            JSON_PARTIAL_OUTPUT_ON_ERROR: 512,
-            JSON_PRESERVE_ZERO_FRACTION: 1024,
-            JSON_THROW_ON_ERROR: 4194304,
         };
         let lastError = 0;
         let lastErrorMsg = "No error";
         this.functions = {
-            json_encode: (ctx, valueArg, flagsArg) => {
+            json_encode: async (ctx, valueArg, flagsArg) => {
                 try {
-                    const value = valueArg?.get();
-                    const flags = Number(flagsArg?.get()) || 0;
+                    const value = await valueArg?.get();
+                    const flags = Number(await flagsArg?.get()) || 0;
                     lastError = 0;
                     lastErrorMsg = "No error";
                     const space = (flags & 128) ? 2 : undefined;
@@ -76,9 +58,9 @@ export class JSONExtension extends PHPExtension {
                     return false;
                 }
             },
-            json_decode: (ctx, jsonStrArg, assocArg) => {
+            json_decode: async (ctx, jsonStrArg, assocArg) => {
                 try {
-                    const jsonStr = String(jsonStrArg?.get() ?? "");
+                    const jsonStr = String(await jsonStrArg?.get() ?? "");
                     lastError = 0;
                     lastErrorMsg = "No error";
                     if (!jsonStr.trim())
@@ -91,8 +73,8 @@ export class JSONExtension extends PHPExtension {
                     return null;
                 }
             },
-            json_last_error: (ctx) => lastError,
-            json_last_error_msg: (ctx) => lastErrorMsg,
+            json_last_error: async (ctx) => lastError,
+            json_last_error_msg: async (ctx) => lastErrorMsg,
         };
     }
 }

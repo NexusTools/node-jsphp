@@ -1,5 +1,4 @@
 import * as fs from "fs/promises";
-import * as fsSync from "fs";
 import * as path from "path";
 import * as os from "os";
 import { glob as matchGlob } from "glob";
@@ -13,7 +12,7 @@ function resolvePath(ctx, p) {
 export class FileSystemRuntime {
     static async fileowner(ctx, filenameArg) {
         try {
-            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
+            const filename = resolvePath(ctx, String(await filenameArg?.get() ?? ""));
             return (await fs.stat(filename)).uid;
         }
         catch {
@@ -22,7 +21,7 @@ export class FileSystemRuntime {
     }
     static async fileperms(ctx, filenameArg) {
         try {
-            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
+            const filename = resolvePath(ctx, String(await filenameArg?.get() ?? ""));
             return (await fs.stat(filename)).mode;
         }
         catch {
@@ -31,8 +30,8 @@ export class FileSystemRuntime {
     }
     static async glob(ctx, patternArg, flagsArg) {
         try {
-            const pattern = String(patternArg?.get() ?? "");
-            const flags = Number(flagsArg?.get()) || 0;
+            const pattern = String(await patternArg?.get() ?? "");
+            const flags = Number(await flagsArg?.get()) || 0;
             const cwd = ctx.cwd;
             const normalizedPattern = process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
             let matches = await matchGlob(normalizedPattern, {
@@ -64,8 +63,8 @@ export class FileSystemRuntime {
     }
     static async file(ctx, filepathArg, flagsArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
-            const flags = Number(flagsArg?.get()) || 0;
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
+            const flags = Number(await flagsArg?.get()) || 0;
             const content = await fs.readFile(filepath, "utf8");
             const lines = content.split("\n").map((line, idx, arr) => (idx < arr.length - 1 ? line + "\n" : line));
             if (flags & 2) { // FILE_SKIP_EMPTY_LINES
@@ -79,7 +78,28 @@ export class FileSystemRuntime {
     }
     static async file_get_contents(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const strPath = await ctx.str(await ctx.toVal(filepathArg));
+            if (strPath.startsWith("http://") || strPath.startsWith("https://")) {
+                try {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 1000);
+                    if (typeof timer.unref === "function")
+                        timer.unref();
+                    try {
+                        const res = await fetch(strPath, { signal: controller.signal });
+                        clearTimeout(timer);
+                        return await res.text();
+                    }
+                    catch {
+                        clearTimeout(timer);
+                        return false;
+                    }
+                }
+                catch {
+                    return false;
+                }
+            }
+            const filepath = resolvePath(ctx, strPath);
             return await fs.readFile(filepath, "utf8");
         }
         catch {
@@ -88,9 +108,9 @@ export class FileSystemRuntime {
     }
     static async file_put_contents(ctx, filepathArg, dataArg, flagsArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
-            const data = dataArg?.get();
-            const flags = Number(flagsArg?.get()) || 0;
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
+            const data = await dataArg?.get();
+            const flags = Number(await flagsArg?.get()) || 0;
             const str = typeof data === "string" || Buffer.isBuffer(data) ? data : String(data ?? "");
             if (flags & 8) { // FILE_APPEND = 8
                 await fs.appendFile(filepath, str);
@@ -106,7 +126,7 @@ export class FileSystemRuntime {
     }
     static async file_exists(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             await fs.access(filepath);
             return true;
         }
@@ -116,7 +136,7 @@ export class FileSystemRuntime {
     }
     static async is_dir(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.isDirectory();
         }
@@ -126,7 +146,7 @@ export class FileSystemRuntime {
     }
     static async is_file(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.isFile();
         }
@@ -136,7 +156,7 @@ export class FileSystemRuntime {
     }
     static async is_readable(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             await fs.access(filepath, fs.constants.R_OK);
             return true;
         }
@@ -146,13 +166,13 @@ export class FileSystemRuntime {
     }
     static async is_writable(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             await fs.access(filepath, fs.constants.W_OK);
             return true;
         }
         catch {
             try {
-                const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+                const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
                 await fs.access(filepath, fs.constants.F_OK);
                 return true;
             }
@@ -163,7 +183,7 @@ export class FileSystemRuntime {
     }
     static async filesize(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return stat.size;
         }
@@ -173,7 +193,7 @@ export class FileSystemRuntime {
     }
     static async filemtime(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             const stat = await fs.stat(filepath);
             return Math.floor(stat.mtimeMs / 1000);
         }
@@ -183,16 +203,16 @@ export class FileSystemRuntime {
     }
     static async realpath(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             return await fs.realpath(filepath);
         }
         catch {
             return false;
         }
     }
-    static basename(ctx, filepathArg, suffixArg) {
-        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
-        const suffixVal = suffixArg && typeof suffixArg === "object" && typeof suffixArg.get === "function" ? suffixArg.get() : suffixArg;
+    static async basename(ctx, filepathArg, suffixArg) {
+        const filepath = String(await ctx.toVal(filepathArg) ?? "");
+        const suffixVal = await ctx.toVal(suffixArg);
         const suffix = suffixVal ? String(suffixVal) : undefined;
         const normalized = filepath.replace(/\\/g, "/");
         let base = path.basename(normalized);
@@ -201,12 +221,12 @@ export class FileSystemRuntime {
         }
         return base;
     }
-    static dirname(ctx, filepathArg) {
-        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
+    static async dirname(ctx, filepathArg) {
+        const filepath = String(await ctx.toVal(filepathArg) ?? "");
         return path.dirname(filepath);
     }
-    static pathinfo(ctx, filepathArg, flagsArg) {
-        const filepath = String((filepathArg && typeof filepathArg === "object" && typeof filepathArg.get === "function" ? filepathArg.get() : filepathArg) ?? "");
+    static async pathinfo(ctx, filepathArg, flagsArg) {
+        const filepath = String(await ctx.toVal(filepathArg) ?? "");
         const parsed = path.parse(filepath);
         return {
             dirname: parsed.dir,
@@ -217,9 +237,9 @@ export class FileSystemRuntime {
     }
     static async mkdir(ctx, dirpathArg, modeArg, recursiveArg) {
         try {
-            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
-            const mode = Number(modeArg?.get()) || 0o777;
-            const recursive = Boolean(recursiveArg?.get());
+            const dirpath = resolvePath(ctx, String(await dirpathArg?.get() ?? ""));
+            const mode = Number(await modeArg?.get()) || 0o777;
+            const recursive = Boolean(await recursiveArg?.get());
             await fs.mkdir(dirpath, { recursive, mode });
             return true;
         }
@@ -229,8 +249,8 @@ export class FileSystemRuntime {
     }
     static async chmod(ctx, filenameArg, modeArg) {
         try {
-            const filename = resolvePath(ctx, String(filenameArg?.get() ?? ""));
-            const mode = Number(modeArg?.get()) || 0o666;
+            const filename = resolvePath(ctx, String(await filenameArg?.get() ?? ""));
+            const mode = Number(await modeArg?.get()) || 0o666;
             await fs.chmod(filename, mode);
             return true;
         }
@@ -240,7 +260,7 @@ export class FileSystemRuntime {
     }
     static async rmdir(ctx, dirpathArg) {
         try {
-            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
+            const dirpath = resolvePath(ctx, String(await dirpathArg?.get() ?? ""));
             await fs.rmdir(dirpath);
             return true;
         }
@@ -250,7 +270,7 @@ export class FileSystemRuntime {
     }
     static async unlink(ctx, filepathArg) {
         try {
-            const filepath = resolvePath(ctx, String(filepathArg?.get() ?? ""));
+            const filepath = resolvePath(ctx, String(await filepathArg?.get() ?? ""));
             await fs.unlink(filepath);
             return true;
         }
@@ -260,8 +280,8 @@ export class FileSystemRuntime {
     }
     static async rename(ctx, oldnameArg, newnameArg) {
         try {
-            const oldname = resolvePath(ctx, String(oldnameArg?.get() ?? ""));
-            const newname = resolvePath(ctx, String(newnameArg?.get() ?? ""));
+            const oldname = resolvePath(ctx, String(await oldnameArg?.get() ?? ""));
+            const newname = resolvePath(ctx, String(await newnameArg?.get() ?? ""));
             await fs.rename(oldname, newname);
             return true;
         }
@@ -271,8 +291,8 @@ export class FileSystemRuntime {
     }
     static async copy(ctx, sourceArg, destArg) {
         try {
-            const source = resolvePath(ctx, String(sourceArg?.get() ?? ""));
-            const dest = resolvePath(ctx, String(destArg?.get() ?? ""));
+            const source = resolvePath(ctx, String(await sourceArg?.get() ?? ""));
+            const dest = resolvePath(ctx, String(await destArg?.get() ?? ""));
             await fs.copyFile(source, dest);
             return true;
         }
@@ -282,8 +302,8 @@ export class FileSystemRuntime {
     }
     static async tempnam(ctx, dirArg, prefixArg) {
         try {
-            const dir = resolvePath(ctx, String(dirArg?.get() ?? ""));
-            const prefix = String(prefixArg?.get() ?? "");
+            const dir = resolvePath(ctx, String(await dirArg?.get() ?? ""));
+            const prefix = String(await prefixArg?.get() ?? "");
             const name = path.join(dir, `${prefix}${Math.random().toString(36).substring(2)}`);
             await fs.writeFile(name, "");
             return name;
@@ -292,47 +312,47 @@ export class FileSystemRuntime {
             return false;
         }
     }
-    static sys_get_temp_dir(ctx) {
+    static async sys_get_temp_dir(ctx) {
         return os.tmpdir();
     }
     static async scandir(ctx, dirpathArg) {
         try {
-            const dirpath = resolvePath(ctx, String(dirpathArg?.get() ?? ""));
+            const dirpath = resolvePath(ctx, String(await dirpathArg?.get() ?? ""));
             return await fs.readdir(dirpath);
         }
         catch {
             return false;
         }
     }
-    static opendir(ctx, pathArg) {
-        const rawPath = String((pathArg && typeof pathArg === "object" && typeof pathArg.get === "function" ? pathArg.get() : pathArg) ?? "");
+    static async opendir(ctx, pathArg) {
+        const rawPath = String(await ctx.toVal(pathArg) ?? "");
         const resolved = resolvePath(ctx, rawPath);
         try {
-            if (!fsSync.existsSync(resolved) || !fsSync.statSync(resolved).isDirectory())
+            if (!(await fs.stat(resolved)).isDirectory())
                 return false;
-            const entries = fsSync.readdirSync(resolved);
+            const entries = await fs.readdir(resolved);
             return { isResource: true, resourceType: "dir", path: resolved, entries, ptr: 0 };
         }
         catch {
             return false;
         }
     }
-    static readdir(ctx, handleArg) {
-        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    static async readdir(ctx, handleArg) {
+        const handle = await ctx.toVal(handleArg);
         if (!handle || typeof handle !== "object" || !Array.isArray(handle.entries))
             return false;
         if (handle.ptr >= handle.entries.length)
             return false;
         return handle.entries[handle.ptr++];
     }
-    static closedir(ctx, handleArg) {
-        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    static async closedir(ctx, handleArg) {
+        const handle = await ctx.toVal(handleArg);
         if (handle && typeof handle === "object")
             handle.entries = [];
         return true;
     }
-    static rewinddir(ctx, handleArg) {
-        const handle = handleArg && typeof handleArg === "object" && typeof handleArg.get === "function" ? handleArg.get() : handleArg;
+    static async rewinddir(ctx, handleArg) {
+        const handle = await ctx.toVal(handleArg);
         if (handle && typeof handle === "object")
             handle.ptr = 0;
     }

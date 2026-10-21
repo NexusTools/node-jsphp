@@ -14,7 +14,7 @@ export class CurlExtension extends PHPExtension {
             curl_version_ssl: 4,
         };
         this.functions = {
-            curl_version: (ctx) => {
+            curl_version: async (ctx) => {
                 return {
                     version_number: 0x074e00,
                     version: "7.78.0",
@@ -26,17 +26,17 @@ export class CurlExtension extends PHPExtension {
                     protocols: ["http", "https"],
                 };
             },
-            curl_init: (ctx, urlArg) => {
+            curl_init: async (ctx, urlArg) => {
                 const handle = new CurlHandle();
-                const url = urlArg ? String(urlArg.get() ?? "") : undefined;
+                const url = urlArg ? String(await urlArg.get() ?? "") : undefined;
                 if (url)
                     handle.url = url;
                 return handle;
             },
-            curl_setopt: (ctx, handleArg, optionArg, valueArg) => {
-                const handle = handleArg?.get();
-                const option = Number(optionArg?.get()) || 0;
-                const value = valueArg?.get();
+            curl_setopt: async (ctx, handleArg, optionArg, valueArg) => {
+                const handle = await handleArg?.get();
+                const option = Number(await optionArg?.get()) || 0;
+                const value = await valueArg?.get();
                 if (handle) {
                     handle.options[option] = value;
                     if (option === 10002)
@@ -46,18 +46,29 @@ export class CurlExtension extends PHPExtension {
                 return false;
             },
             curl_exec: async (ctx, handleArg) => {
-                const handle = handleArg?.get();
+                const handle = await handleArg?.get();
                 if (!handle || !handle.url)
                     return false;
                 try {
-                    const res = await fetch(handle.url, { signal: AbortSignal.timeout(3000) });
-                    return await res.text();
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 1000);
+                    if (typeof timer.unref === "function")
+                        timer.unref();
+                    try {
+                        const res = await fetch(handle.url, { signal: controller.signal });
+                        clearTimeout(timer);
+                        return await res.text();
+                    }
+                    catch {
+                        clearTimeout(timer);
+                        return false;
+                    }
                 }
                 catch {
                     return false;
                 }
             },
-            curl_close: (ctx, handleArg) => true,
+            curl_close: async (ctx, handleArg) => true,
         };
     }
 }

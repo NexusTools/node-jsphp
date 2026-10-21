@@ -36,7 +36,21 @@ export class Superglobals {
         this.GET = { ...opts.get, ...opts.GET };
         this.POST = { ...opts.post, ...opts.POST };
         this.FILES = { ...opts.files, ...opts.FILES };
-        this.COOKIE = { ...opts.cookie, ...opts.COOKIE };
+        const rawCookie = { ...opts.cookie, ...opts.COOKIE };
+        this.COOKIE = {};
+        for (const [k, v] of Object.entries(rawCookie)) {
+            if (typeof v === "string") {
+                try {
+                    this.COOKIE[k] = decodeURIComponent(v.replace(/\+/g, " "));
+                }
+                catch {
+                    this.COOKIE[k] = v;
+                }
+            }
+            else {
+                this.COOKIE[k] = v;
+            }
+        }
         this.SESSION = { ...opts.session, ...opts.SESSION };
         this.REQUEST = { ...this.GET, ...this.POST, ...this.COOKIE, ...opts.request, ...opts.REQUEST };
         this.GLOBALS = {};

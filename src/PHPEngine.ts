@@ -23,34 +23,108 @@ import { ExecRuntime } from "./runtime/Exec.js";
 import { FiberRuntime } from "./runtime/Fiber.js";
 import { EnumRuntime } from "./runtime/Enum.js";
 import { ErrorRuntime, PHPError, PHPFatalError, PHPExit } from "./runtime/PHPError.js";
-import { ReflectionRuntime, SYMBOL_PHP_NAME, SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS, SYMBOL_PHP_CLASS_INTERFACES } from "./runtime/Reflection.js";
+import {
+  ReflectionRuntime,
+  SYMBOL_PHP_NAME,
+  SYMBOL_PHP_CONSTANTS,
+  SYMBOL_PHP_PROPERTIES,
+  SYMBOL_PHP_METHODS,
+  SYMBOL_PHP_CLASS,
+  SYMBOL_PHP_PARENT,
+  SYMBOL_PHP_NEW,
+  SYMBOL_PHP_INIT,
+  SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS,
+  SYMBOL_PHP_CLASS_INTERFACES,
+  SYMBOL_PHP_METHOD_THEN,
+  SYMBOL_PHP_STATIC_METHOD_PROTOTYPE,
+  SYMBOL_PHP_META,
+  encodePhpIdentifier,
+  normalizePhpRegistryName,
+  encodePhpMethodName,
+  encodePhpPropertyName,
+  decodePhpMethodName,
+  decodePhpPropertyName,
+  isEncodedPhpMethodKey,
+} from "./runtime/Reflection.js";
 import { OutputBufferRuntime } from "./runtime/OutputBuffer.js";
 
-export const PROXY_HANDLER = {
-  get(target: any, prop: any, receiver: any) {
-    if (prop === 'get' || prop === 'set' || prop === 'then' || prop === 'catch' || prop === 'finally' || typeof prop === 'symbol') return target[prop];
-    if (typeof prop === 'string' && prop.startsWith('$')) {
-      if (prop in target) return target[prop];
-      return undefined;
-    }
-    if (prop in target) return target[prop];
-    if (typeof target.__call === 'function') return async (ctx: any, ...args: any[]) => target.__call(ctx, new PHPLiteral(prop), new PHPLiteral(args));
-    return target[prop];
-  },
-  set(target: any, prop: any, value: any, receiver: any) {
-    const propWithDollar = typeof prop === 'string' && prop.startsWith('$') ? prop : '$' + prop;
-    if (propWithDollar in target) {
-      if (target[propWithDollar] instanceof PHPVariable) {
-        target[propWithDollar].set(value);
-      } else {
-        target[propWithDollar] = value;
+export function PROXY_HANDLER(ctx: PHPContext): ProxyHandler<any> {
+  return {
+    get(target, prop, receiver) {
+      if (prop === "then") return undefined;
+      if (prop === SYMBOL_PHP_METHOD_THEN || prop === SYMBOL_PHP_STATIC_METHOD_PROTOTYPE) {
+        const method = Reflect.get(target, prop, receiver);
+        if (typeof method === "function") return method;
+        if (prop === SYMBOL_PHP_METHOD_THEN && typeof target.__call === "function") {
+          return async (methodCtx: PHPContext, ...args: PHPReference[]) =>
+            target.__call(methodCtx || ctx, new PHPLiteral("then"), new PHPLiteral(args));
+        }
+        return undefined;
       }
+      if (typeof prop === "symbol") return Reflect.get(target, prop, receiver);
+      if (typeof prop !== "string") return undefined;
+
+      if (prop.startsWith("$")) {
+        if (prop in target) return Reflect.get(target, prop, receiver);
+        if (isEncodedPhpMethodKey(prop) && typeof target.__call === "function") {
+          const methodName = decodePhpMethodName(prop);
+          return async (methodCtx: PHPContext, ...args: PHPReference[]) =>
+            target.__call(methodCtx || ctx, new PHPLiteral(methodName), new PHPLiteral(args));
+        }
+        return new PHPPropertyReference(ctx, target, prop, decodePhpPropertyName(prop));
+      }
+
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      if (typeof target.__call === "function") {
+        const methodName = decodePhpMethodName(prop);
+        return async (methodCtx: PHPContext, ...args: PHPReference[]) =>
+          target.__call(methodCtx || ctx, new PHPLiteral(methodName), new PHPLiteral(args));
+      }
+      return undefined;
+    },
+    set(target, prop, value) {
+      if (typeof prop !== "string") return Reflect.set(target, prop, value);
+      if (prop.startsWith("$") && prop in target) {
+        const reference = target[prop];
+        if (reference instanceof PHPReference) void reference.set(value);
+        else target[prop] = value;
+        return true;
+      }
+      target[prop] = value;
       return true;
-    }
-    target[propWithDollar] = value;
-    return true;
-  }
-};
+    },
+  };
+}
+
+export function STATIC_PROXY_HANDLER(ctx: PHPContext): ProxyHandler<any> {
+  return {
+    get(target, prop, receiver) {
+      if (prop === "then") return undefined;
+      if (prop === SYMBOL_PHP_METHOD_THEN || prop === SYMBOL_PHP_STATIC_METHOD_PROTOTYPE) {
+        const method = Reflect.get(target, prop, receiver);
+        if (typeof method === "function") return method;
+        const callStatic = target.__callstatic;
+        if (typeof callStatic === "function") {
+          const methodName = decodePhpMethodName(prop);
+          return async (methodCtx: PHPContext, ...args: PHPReference[]) =>
+            callStatic.call(target, methodCtx || ctx, new PHPLiteral(methodName), new PHPLiteral(args));
+        }
+        return undefined;
+      }
+      if (typeof prop === "symbol") return Reflect.get(target, prop, receiver);
+      if (typeof prop !== "string") return undefined;
+      if (prop.startsWith("$") && !isEncodedPhpMethodKey(prop)) return Reflect.get(target, prop, receiver);
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      const callStatic = target.__callstatic;
+      if (typeof callStatic === "function") {
+        const methodName = decodePhpMethodName(prop);
+        return async (methodCtx: PHPContext, ...args: PHPReference[]) =>
+          callStatic.call(target, methodCtx || ctx, new PHPLiteral(methodName), new PHPLiteral(args));
+      }
+      return undefined;
+    },
+  };
+}
 
 import { MySQLiExtension } from "./extensions/mysqli.js";
 import { PDOExtension } from "./extensions/pdo.js";
@@ -66,7 +140,7 @@ import { HashExtension } from "./extensions/hash.js";
 import { OpenSSLExtension } from "./extensions/openssl.js";
 import { CoreRuntime } from "./runtime/CoreRuntime.js";
 
-export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
+export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => Promise<any>;
 
 export interface PHPEngineOptions {
   extensions?: PHPExtension[];
@@ -96,14 +170,14 @@ export function getDefaultExtensions(): PHPExtension[] {
 }
 
 export class PHPEngine {
-  public static readonly REVISION = 444;
+  public static readonly REVISION = 447;
   public static readonly VERSION = "8.5.0";
 
   public static readonly TRUE = new PHPLiteral(true);
   public static readonly FALSE = new PHPLiteral(false);
   public static readonly NULL = new PHPLiteral(null);
 
-  public extensions: Map<string, PHPExtension> = new Map();
+  public extensions: Record<string, PHPExtension> = Object.create(null);
   public constants: Record<string, any> = {};
   public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
@@ -115,18 +189,33 @@ export class PHPEngine {
     PHPFatalError,
     PHPError,
     SYMBOL_PHP_NAME,
+    SYMBOL_PHP_META,
+    SYMBOL_PHP_CONSTANTS,
+    SYMBOL_PHP_PROPERTIES,
+    SYMBOL_PHP_METHODS,
+    SYMBOL_PHP_CLASS,
+    SYMBOL_PHP_PARENT,
+    SYMBOL_PHP_NEW,
+    SYMBOL_PHP_INIT,
     SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS,
     SYMBOL_PHP_CLASS_INTERFACES,
+    SYMBOL_PHP_METHOD_THEN,
+    SYMBOL_PHP_STATIC_METHOD_PROTOTYPE,
+    encodePhpIdentifier,
+    normalizePhpRegistryName,
+    encodePhpMethodName,
+    encodePhpPropertyName,
     PHPReference,
     PHPInterface,
     PHPPropertyReference,
     PHPArrayOffsetReference,
     PROXY_HANDLER,
+    STATIC_PROXY_HANDLER,
   };
 
   private classResolvers: Array<(ctx: PHPContext, className: string) => any> = [];
-  private resolvingClasses = new Map<PHPContext, Set<string>>();
-  private compiledCache: Map<string, Function> = new Map();
+  private resolvingClasses: { context: PHPContext; names: Set<string> }[] = [];
+  private compiledCache: Record<string, Function> = Object.create(null);
   private watcher?: chokidar.FSWatcher;
   private transpiler: JSTranspiler;
   private cacheDir?: string | null;
@@ -177,18 +266,14 @@ export class PHPEngine {
     // Set core PHP constants
     Object.assign(this.constants, PHPEngine.coreConstants);
 
-    if (options.constants) {
-      Object.assign(this.constants, options.constants);
-    }
+    if (options.constants) this.registerConstants(options.constants);
 
     if (options.functions) {
       this.registerFunctions(options.functions);
     }
 
     if (options.classes) {
-      for (const [key, value] of Object.entries(options.classes)) {
-        this.classes[key.toLowerCase()] = value;
-      }
+      Object.assign(this.classes, options.classes);
     }
 
     this.registerRuntimeImplementations();
@@ -215,18 +300,12 @@ export class PHPEngine {
     this.internalVars[name] = value;
   }
 
-  /**
-   * Registers a function. The `name` parameter must be provided in lowercase.
-   */
-  public registerFunction(name: string, fn: Function): void {
-    this.functions[name] = fn as PHPFunction;
+  public registerFunction(name: string, fn: PHPFunction): void {
+    this.functions[name] = fn;
   }
 
-  /**
-   * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
-   */
   public registerFunctions(functions: Record<string, PHPFunction>): void {
-    Object.assign(this.functions, functions)
+    Object.assign(this.functions, functions);
   }
 
   public registerConstant(name: string, value: any): void {
@@ -242,7 +321,7 @@ export class PHPEngine {
   }
 
   public registerClasses(classes: Record<string, any>): void {
-    Object.assign(this.classes, classes)
+    Object.assign(this.classes, classes);
   }
 
   /**
@@ -257,11 +336,15 @@ export class PHPEngine {
    */
   public async resolveClass(name: string, originalName: string, ctx: PHPContext): Promise<any> {
     const orig = originalName || name;
-    const shortLower = String(name).split("\\").pop() || String(name);
+    const registryName = normalizePhpRegistryName(name);
+    const shortLower = registryName.split("$$").pop() || registryName;
 
-    let resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
-    if (!resolved && !shortLower.includes("\\")) {
-      const suffix = "\\" + shortLower;
+    let resolved = ctx.classes[registryName] || ctx.interfaces[registryName];
+    if (!resolved && !registryName.includes("$$")) {
+      resolved = ctx.classes[shortLower] || ctx.interfaces[shortLower];
+    }
+    if (!resolved && !registryName.includes("$$")) {
+      const suffix = "$$" + shortLower;
       for (const k of Object.keys(ctx.classes)) {
         if (k.endsWith(suffix)) {
           resolved = ctx.classes[k];
@@ -279,28 +362,32 @@ export class PHPEngine {
     }
     if (resolved) return resolved;
 
-    let resolvingClasses = this.resolvingClasses.get(ctx);
-    if (!resolvingClasses) {
-      resolvingClasses = new Set();
-      this.resolvingClasses.set(ctx, resolvingClasses);
+    let resolvingState = this.resolvingClasses.find((state) => state.context === ctx);
+    if (!resolvingState) {
+      resolvingState = { context: ctx, names: new Set() };
+      this.resolvingClasses.push(resolvingState);
     }
-    if (resolvingClasses.has(name)) return undefined;
-    resolvingClasses.add(name);
+    const resolvingClasses = resolvingState.names;
+    if (resolvingClasses.has(registryName)) return undefined;
+    resolvingClasses.add(registryName);
 
     try {
       for (const resolver of this.classResolvers) {
         await resolver(ctx, orig);
-        resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
+        resolved = ctx.classes[registryName] || ctx.interfaces[registryName];
+        if (!resolved && !registryName.includes("$$")) resolved = ctx.classes[shortLower] || ctx.interfaces[shortLower];
         if (!resolved && orig.toLowerCase() === "deferredclass") {
           await resolver(ctx, "DeferredClass");
-          resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
+          resolved = ctx.classes[registryName] || ctx.interfaces[registryName];
+          if (!resolved && !registryName.includes("$$")) resolved = ctx.classes[shortLower] || ctx.interfaces[shortLower];
         }
-        if (!resolved && orig !== name) {
-          await resolver(ctx, name);
-          resolved = ctx.classes[name] || ctx.interfaces[name] || ctx.classes[shortLower] || ctx.interfaces[shortLower];
+        if (!resolved && orig !== registryName) {
+          await resolver(ctx, registryName);
+          resolved = ctx.classes[registryName] || ctx.interfaces[registryName];
+          if (!resolved && !registryName.includes("$$")) resolved = ctx.classes[shortLower] || ctx.interfaces[shortLower];
         }
-        if (!resolved && !shortLower.includes("\\")) {
-          const suffix = "\\" + shortLower;
+        if (!resolved && !registryName.includes("$$")) {
+          const suffix = "$$" + shortLower;
           for (const k of Object.keys(ctx.classes)) {
             if (k.endsWith(suffix)) {
               resolved = ctx.classes[k];
@@ -311,7 +398,11 @@ export class PHPEngine {
         if (resolved) return resolved;
       }
     } finally {
-      resolvingClasses.delete(name);
+      resolvingClasses.delete(registryName);
+      if (resolvingClasses.size === 0) {
+        const index = this.resolvingClasses.indexOf(resolvingState);
+        if (index !== -1) this.resolvingClasses.splice(index, 1);
+      }
     }
 
     return undefined;
@@ -362,7 +453,7 @@ export class PHPEngine {
     EnumRuntime.register(this);
 
     class __cls_stdClass {
-      static async __$$__new(ctx: any, ...args: any[]) {
+      static async [SYMBOL_PHP_NEW](ctx: any, ...args: any[]) {
         const instance = Object.create(this.prototype);
         Object.defineProperty(instance, "__ctx", { value: ctx, writable: true, configurable: true, enumerable: false });
         return instance;
@@ -374,7 +465,7 @@ export class PHPEngine {
   }
 
   public registerExtension(extension: PHPExtension): void {
-    this.extensions.set(extension.name.toLowerCase(), extension);
+    this.extensions[extension.name.toLowerCase()] = extension;
     extension.onInit(this);
 
     if (extension.constants) this.registerConstants(extension.constants);
@@ -383,21 +474,21 @@ export class PHPEngine {
   }
 
   public getConfigurationSHA1(): string {
-    const sortedExts = Array.from(this.extensions.keys())
+    const sortedExts = Object.keys(this.extensions)
       .sort()
-      .map((k) => `${k}@${this.extensions.get(k)?.version || PHPEngine.VERSION}`)
+      .map((k) => `${k}@${this.extensions[k]?.version || PHPEngine.VERSION}`)
       .join(",");
     return crypto.createHash("sha1").update(`v${PHPEngine.REVISION}|${sortedExts}`).digest("hex");
   }
 
   public clearCompiledCache(): void {
-    this.compiledCache.clear();
+    this.compiledCache = Object.create(null);
   }
 
   public async compileFile(filepath: string): Promise<Function> {
     const resolvedPath = path.resolve(filepath);
-    if (this.compiledCache.has(resolvedPath)) {
-      return this.compiledCache.get(resolvedPath)!;
+    if (Object.hasOwn(this.compiledCache, resolvedPath)) {
+      return this.compiledCache[resolvedPath];
     }
 
     let source: string;
@@ -408,7 +499,7 @@ export class PHPEngine {
     }
 
     const func = await this.compileCode(source, resolvedPath);
-    this.compiledCache.set(resolvedPath, func);
+    this.compiledCache[resolvedPath] = func;
 
     if (this.watcher) {
       this.watcher.add(resolvedPath);
@@ -419,7 +510,7 @@ export class PHPEngine {
 
   public async compileCode(code: string, filepath: string = "eval"): Promise<Function> {
     const transpiler = new JSTranspiler();
-    const transpilation = transpiler.transpile(code, filepath, {
+    const transpilation = await transpiler.transpile(code, filepath, {
       engineSHA1: this.getConfigurationSHA1(),
       cacheDir: filepath === "eval" ? undefined : (this.cacheDir || undefined),
       engine: this,
@@ -441,12 +532,6 @@ export class PHPEngine {
           new vm.Script(jsCode);
         } catch (scriptErr: any) {
           console.error(`SYNTAX_ERR in ${filepath}: ${scriptErr.message}\nSTACK:\n${scriptErr.stack}`);
-          const codeLines = jsCode.split("\n");
-          const match = (scriptErr.stack || "").match(/evalmachine\.<anonymous>:(\d+)/);
-          if (match) {
-            const lineNum = parseInt(match[1], 10);
-            console.error(`EXACT_ERROR_LINE ${lineNum}: ${codeLines[lineNum - 1]}`);
-          }
         }
       }
       throw err;
@@ -465,12 +550,12 @@ export class PHPEngine {
     this.watcher = chokidar.watch([], { ignoreInitial: true });
     this.watcher.on("change", (changedPath) => {
       const resolved = path.resolve(changedPath);
-      this.compiledCache.delete(resolved);
+      delete this.compiledCache[resolved];
     });
   }
 
   public clearCache(): void {
-    this.compiledCache.clear();
+    this.compiledCache = Object.create(null);
     if (typeof (globalThis as any).gc === "function") {
       try { (globalThis as any).gc(); } catch (e) {}
     }
@@ -481,8 +566,8 @@ export class PHPEngine {
       await ctx.destroy();
     }
     this.contexts.clear();
-    this.compiledCache.clear();
-    for (const ext of this.extensions.values()) {
+    this.compiledCache = Object.create(null);
+    for (const ext of Object.values(this.extensions)) {
       if (typeof (ext as any).onClose === "function") {
         try { await (ext as any).onClose(this); } catch {}
       }

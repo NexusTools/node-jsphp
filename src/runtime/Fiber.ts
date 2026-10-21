@@ -1,6 +1,7 @@
 import type { PHPContext } from "../PHPContext.js";
 import type { PHPEngine } from "../PHPEngine.js";
 import { PHPReference } from "./PHPVariable.js";
+import { SYMBOL_PHP_NEW } from "./Reflection.js";
 
 export class PHPFiberError extends Error {}
 export class PHPFiberExit extends Error {}
@@ -17,7 +18,7 @@ export class PHPFiber {
     if (callback) this.callback = callback;
   }
 
-  public static async __$$__new(ctx: PHPContext, callbackArg?: PHPReference): Promise<PHPFiber> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, callbackArg?: PHPReference): Promise<PHPFiber> {
     const obj = Object.create(this.prototype);
     obj.running = false;
     obj.started = false;
@@ -29,7 +30,7 @@ export class PHPFiber {
   }
 
   public async __construct(ctx: PHPContext, callbackArg?: PHPReference): Promise<void> {
-    const cb = callbackArg?.get ? callbackArg.get() : callbackArg;
+    const cb = await callbackArg?.get();
     this.callback = cb;
   }
 
@@ -38,7 +39,7 @@ export class PHPFiber {
     this.started = true;
     this.running = true;
     try {
-      const cb = this.callback instanceof PHPReference ? this.callback.get() : this.callback;
+      const cb = this.callback instanceof PHPReference ? await this.callback.get() : this.callback;
       if (typeof cb === "function") {
         this.value = await cb(ctx, ...args);
       } else if (ctx && typeof (ctx as any).callUserFunction === "function") {

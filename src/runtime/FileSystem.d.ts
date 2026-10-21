@@ -1,12 +1,12 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
-import type { PHPReference } from "./PHPVariable.js";
+import { PHPReference } from "./PHPVariable.js";
 export declare class FileSystemRuntime {
     static fileowner(ctx: PHPContext, filenameArg?: PHPReference): Promise<number | false>;
     static fileperms(ctx: PHPContext, filenameArg?: PHPReference): Promise<number | false>;
     static glob(ctx: PHPContext, patternArg?: PHPReference, flagsArg?: PHPReference): Promise<string[] | false>;
     static file(ctx: PHPContext, filepathArg?: PHPReference, flagsArg?: PHPReference): Promise<string[] | false>;
-    static file_get_contents(ctx: PHPContext, filepathArg?: PHPReference): Promise<string | false>;
+    static file_get_contents(ctx: PHPContext, filepathArg?: any): Promise<string | false>;
     static file_put_contents(ctx: PHPContext, filepathArg?: PHPReference, dataArg?: PHPReference, flagsArg?: PHPReference): Promise<number | false>;
     static file_exists(ctx: PHPContext, filepathArg?: PHPReference): Promise<boolean>;
     static is_dir(ctx: PHPContext, filepathArg?: PHPReference): Promise<boolean>;
@@ -16,9 +16,9 @@ export declare class FileSystemRuntime {
     static filesize(ctx: PHPContext, filepathArg?: PHPReference): Promise<number | false>;
     static filemtime(ctx: PHPContext, filepathArg?: PHPReference): Promise<number | false>;
     static realpath(ctx: PHPContext, filepathArg?: PHPReference): Promise<string | false>;
-    static basename(ctx: PHPContext, filepathArg?: any, suffixArg?: any): string;
-    static dirname(ctx: PHPContext, filepathArg?: any): string;
-    static pathinfo(ctx: PHPContext, filepathArg?: any, flagsArg?: any): Record<string, string>;
+    static basename(ctx: PHPContext, filepathArg?: any, suffixArg?: any): Promise<string>;
+    static dirname(ctx: PHPContext, filepathArg?: any): Promise<string>;
+    static pathinfo(ctx: PHPContext, filepathArg?: any, flagsArg?: any): Promise<Record<string, string>>;
     static mkdir(ctx: PHPContext, dirpathArg?: PHPReference, modeArg?: PHPReference, recursiveArg?: PHPReference): Promise<boolean>;
     static chmod(ctx: PHPContext, filenameArg?: PHPReference, modeArg?: PHPReference): Promise<boolean>;
     static rmdir(ctx: PHPContext, dirpathArg?: PHPReference): Promise<boolean>;
@@ -26,12 +26,12 @@ export declare class FileSystemRuntime {
     static rename(ctx: PHPContext, oldnameArg?: PHPReference, newnameArg?: PHPReference): Promise<boolean>;
     static copy(ctx: PHPContext, sourceArg?: PHPReference, destArg?: PHPReference): Promise<boolean>;
     static tempnam(ctx: PHPContext, dirArg?: PHPReference, prefixArg?: PHPReference): Promise<string | false>;
-    static sys_get_temp_dir(ctx?: PHPContext): string;
+    static sys_get_temp_dir(ctx?: PHPContext): Promise<string>;
     static scandir(ctx: PHPContext, dirpathArg?: PHPReference): Promise<string[] | false>;
-    static opendir(ctx: PHPContext, pathArg?: any): any;
-    static readdir(ctx: PHPContext, handleArg?: any): string | false;
-    static closedir(ctx: PHPContext, handleArg?: any): boolean;
-    static rewinddir(ctx: PHPContext, handleArg?: any): void;
+    static opendir(ctx: PHPContext, pathArg?: any): Promise<any>;
+    static readdir(ctx: PHPContext, handleArg?: any): Promise<string | false>;
+    static closedir(ctx: PHPContext, handleArg?: any): Promise<boolean>;
+    static rewinddir(ctx: PHPContext, handleArg?: any): Promise<void>;
     static constants: {
         glob_err: number;
         glob_mark: number;

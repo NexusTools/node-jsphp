@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { fileURLToPath } from "url";
 import { runPhpToJS } from "../../src/cli/php-to-js.js";
 import { PHPEngine } from "../../src/PHPEngine.js";
@@ -19,6 +20,10 @@ describe("php-to-js CLI Tool Tests", () => {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch (e) {}
+    const defaultCacheDir = process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache");
+    if (fs.existsSync(defaultCacheDir)) {
+      try { fs.rmSync(defaultCacheDir, { recursive: true, force: true }); } catch (e) {}
+    }
   });
 
   test("php-to-js transpiles PHP file with explicit output file argument and runs with PHPEngine/PHPContext", async () => {

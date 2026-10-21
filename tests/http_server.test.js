@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 import { fileURLToPath } from "url";
 import { runHTTPServer, runHTTPServerCLI } from "../index.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -46,7 +47,7 @@ function cause_error() {
 }
 cause_error();
 `);
-        fs.writeFileSync(path.join(docRoot, "unexpected_error.php"), "<?php $value = 1; $value['invalid'] = 2;");
+        fs.writeFileSync(path.join(docRoot, "unexpected_error.php"), "<?php throw new \\Error('Unexpected runtime failure');");
         fs.writeFileSync(path.join(docRoot, "ext_test.php"), `<?php
 echo "NODEJS: " . (function_exists('njs_import') || function_exists('nodejs_require') ? 'YES' : 'NO') . "\\n";
 echo "MYSQLI: " . (function_exists('mysqli_connect') ? 'YES' : 'NO') . "\\n";
@@ -55,16 +56,34 @@ echo "PCRE: " . (function_exists('preg_match') ? 'YES' : 'NO') . "\\n";
         server = await runHTTPServer(testPort, docRoot);
     });
     afterAll((done) => {
-        if (server) {
-            server.close(() => {
-                if (fs.existsSync(docRoot)) {
+        const cleanup = () => {
+            if (fs.existsSync(docRoot)) {
+                try {
                     fs.rmSync(docRoot, { recursive: true, force: true });
                 }
-                done();
-            });
+                catch (e) { }
+            }
+            const testCacheDir = path.join(__dirname, "../.test_cache");
+            if (fs.existsSync(testCacheDir)) {
+                try {
+                    fs.rmSync(testCacheDir, { recursive: true, force: true });
+                }
+                catch (e) { }
+            }
+            const defaultCacheDir = process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache");
+            if (fs.existsSync(defaultCacheDir)) {
+                try {
+                    fs.rmSync(defaultCacheDir, { recursive: true, force: true });
+                }
+                catch (e) { }
+            }
+            done();
+        };
+        if (server) {
+            server.close(cleanup);
         }
         else {
-            done();
+            cleanup();
         }
     });
     function makeRequest(urlPath, method = "GET", postData = "") {

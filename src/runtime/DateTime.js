@@ -1,35 +1,35 @@
-import { PHPLiteral, PHPReference } from "./PHPVariable.js";
-import { SYMBOL_PHP_NAME } from "./Reflection.js";
+import { PHPLiteral } from "./PHPVariable.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_NEW } from "./Reflection.js";
 export class PHPDateTimeZone {
     static [SYMBOL_PHP_NAME] = "DateTimeZone";
-    static __php_constants = new Map([
-        ["africa", 1],
-        ["america", 2],
-        ["antarctica", 4],
-        ["arctic", 8],
-        ["asia", 16],
-        ["atlantic", 32],
-        ["australia", 64],
-        ["europe", 128],
-        ["indian", 256],
-        ["pacific", 512],
-        ["utc", 1024],
-        ["all", 2047],
-        ["all_with_bc", 4095],
-        ["per_country", 4096],
-    ]);
+    static [SYMBOL_PHP_CONSTANTS] = {
+        africa: 1,
+        america: 2,
+        antarctica: 4,
+        arctic: 8,
+        asia: 16,
+        atlantic: 32,
+        australia: 64,
+        europe: 128,
+        indian: 256,
+        pacific: 512,
+        utc: 1024,
+        all: 2047,
+        all_with_bc: 4095,
+        per_country: 4096,
+    };
     timezone = "UTC";
     constructor(timezone = "UTC") {
         this.timezone = timezone;
     }
-    static async __$$__new(ctx, timezoneArg) {
+    static async [SYMBOL_PHP_NEW](ctx, timezoneArg) {
         const obj = Object.create(this.prototype);
         obj.timezone = "UTC";
         await obj.__construct(ctx, timezoneArg);
         return obj;
     }
     async __construct(ctx, timezoneArg) {
-        const tz = timezoneArg?.get ? timezoneArg.get() : timezoneArg;
+        const tz = timezoneArg?.get ? await timezoneArg.get() : timezoneArg;
         this.timezone = String(tz ?? "UTC");
     }
     getName() {
@@ -49,23 +49,23 @@ export class PHPDateTime {
         this.date = timeStr === "now" ? new Date() : new Date(Date.parse(timeStr) || Date.now());
         this.timezone = timezone;
     }
-    static async __$$__new(ctx, timeStrArg, timezoneArg) {
+    static async [SYMBOL_PHP_NEW](ctx, timeStrArg, timezoneArg) {
         const obj = Object.create(this.prototype);
         obj.date = new Date();
         await obj.__construct(ctx, timeStrArg, timezoneArg);
         return obj;
     }
     async __construct(ctx, timeStrArg, timezoneArg) {
-        const timeStr = timeStrArg?.get ? timeStrArg.get() : timeStrArg;
-        const tz = timezoneArg?.get ? timezoneArg.get() : timezoneArg;
+        const timeStr = await ctx.toVal(timeStrArg);
+        const tz = await ctx.toVal(timezoneArg);
         this.date = !timeStr || timeStr === "now" ? new Date() : new Date(Date.parse(String(timeStr)) || Date.now());
         if (tz instanceof PHPDateTimeZone) {
             this.timezone = tz;
         }
     }
-    format(ctxOrFormat, formatArg) {
+    async format(ctxOrFormat, formatArg) {
         const fmt = typeof ctxOrFormat === "string" ? ctxOrFormat : String(formatArg?.get ? formatArg.get() : (formatArg || "Y-m-d H:i:s"));
-        return DateTimeRuntime.date(null, new PHPLiteral(fmt), new PHPLiteral(Math.floor(this.date.getTime() / 1000)));
+        return await DateTimeRuntime.date(null, new PHPLiteral(fmt), new PHPLiteral(Math.floor(this.date.getTime() / 1000)));
     }
     modify(ctxOrMod, modArg) {
         const modStr = String(modArg?.get ? modArg.get() : (modArg || ctxOrMod || ""));
@@ -168,10 +168,10 @@ export class PHPDateTimeImmutable extends PHPDateTime {
 }
 export class DateTimeRuntime {
     static defaultTimezone = "UTC";
-    static checkdate(ctx, monthArg, dayArg, yearArg) {
-        const month = Number(monthArg?.get !== undefined ? monthArg.get() : monthArg);
-        const day = Number(dayArg?.get !== undefined ? dayArg.get() : dayArg);
-        const year = Number(yearArg?.get !== undefined ? yearArg.get() : yearArg);
+    static async checkdate(ctx, monthArg, dayArg, yearArg) {
+        const month = Number(await (monthArg?.get !== undefined ? monthArg.get() : monthArg));
+        const day = Number(await (dayArg?.get !== undefined ? dayArg.get() : dayArg));
+        const year = Number(await (yearArg?.get !== undefined ? yearArg.get() : yearArg));
         if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year))
             return false;
         if (year < 1 || year > 32767 || month < 1 || month > 12 || day < 1)
@@ -179,11 +179,11 @@ export class DateTimeRuntime {
         const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         return day <= daysInMonth[month - 1];
     }
-    static time(ctx) {
+    static async time(ctx) {
         return Math.floor(Date.now() / 1000);
     }
-    static microtime(ctx, getAsFloatArg) {
-        const getAsFloat = Boolean(getAsFloatArg?.get());
+    static async microtime(ctx, getAsFloatArg) {
+        const getAsFloat = Boolean(await getAsFloatArg?.get());
         const now = Date.now();
         const sec = Math.floor(now / 1000);
         const msec = (now % 1000) / 1000;
@@ -191,9 +191,10 @@ export class DateTimeRuntime {
             return sec + msec;
         return `${msec.toFixed(8)} ${sec}`;
     }
-    static date(ctx, formatArg, timestampArg) {
-        const format = String(formatArg?.get() ?? "");
-        const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : undefined;
+    static async date(ctx, formatArg, timestampArg) {
+        const format = String(await formatArg?.get() ?? "");
+        const timestampValue = await timestampArg?.get();
+        const timestamp = timestampValue !== undefined ? Number(timestampValue) : undefined;
         const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
         let res = "";
         for (let i = 0; i < format.length; i++) {
@@ -227,10 +228,11 @@ export class DateTimeRuntime {
         }
         return res;
     }
-    static strtotime(ctx, timeStrArg, nowArg) {
+    static async strtotime(ctx, timeStrArg, nowArg) {
         try {
-            const timeStr = String(timeStrArg?.get() ?? "");
-            const now = nowArg?.get() !== undefined ? Number(nowArg.get()) : undefined;
+            const timeStr = String(await timeStrArg?.get() ?? "");
+            const nowValue = await nowArg?.get();
+            const now = nowValue !== undefined ? Number(nowValue) : undefined;
             const base = now !== undefined ? new Date(now * 1000) : new Date();
             const parsed = Date.parse(timeStr);
             if (!Number.isNaN(parsed))
@@ -241,20 +243,21 @@ export class DateTimeRuntime {
             return false;
         }
     }
-    static date_default_timezone_get(ctx) {
+    static async date_default_timezone_get(ctx) {
         return DateTimeRuntime.defaultTimezone;
     }
-    static date_default_timezone_set(ctx, timezoneIdArg) {
-        const timezoneId = String(timezoneIdArg?.get() ?? "");
+    static async date_default_timezone_set(ctx, timezoneIdArg) {
+        const timezoneId = String(await timezoneIdArg?.get() ?? "");
         DateTimeRuntime.defaultTimezone = timezoneId;
         return true;
     }
-    static timezone_identifiers_list(ctx, timezoneGroupArg, countryCodeArg) {
-        return Array.from(PHPDateTimeZone.__php_constants.keys()).map(k => "UTC");
+    static async timezone_identifiers_list(ctx, timezoneGroupArg, countryCodeArg) {
+        return Object.keys(PHPDateTimeZone[SYMBOL_PHP_CONSTANTS]).map(() => "UTC");
     }
-    static gmdate(ctx, formatArg, timestampArg) {
-        const format = String(formatArg?.get() ?? "");
-        const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : Math.floor(Date.now() / 1000);
+    static async gmdate(ctx, formatArg, timestampArg) {
+        const format = String(await formatArg?.get() ?? "");
+        const timestampValue = await timestampArg?.get();
+        const timestamp = timestampValue !== undefined ? Number(timestampValue) : Math.floor(Date.now() / 1000);
         const d = new Date(timestamp * 1000);
         let res = "";
         for (let i = 0; i < format.length; i++) {
@@ -288,25 +291,21 @@ export class DateTimeRuntime {
         }
         return res;
     }
-    static date_create(ctx, datetimeArg, timezoneArg) {
-        let dtStr = datetimeArg?.get !== undefined ? datetimeArg.get() : datetimeArg;
-        while (dtStr instanceof PHPReference)
-            dtStr = dtStr.get();
-        let tz = timezoneArg?.get !== undefined ? timezoneArg.get() : timezoneArg;
-        while (tz instanceof PHPReference)
-            tz = tz.get();
+    static async date_create(ctx, datetimeArg, timezoneArg) {
+        const dtStr = await ctx.toVal(datetimeArg);
+        const tz = await ctx.toVal(timezoneArg);
         const d = new PHPDateTime();
         if (tz instanceof PHPDateTimeZone)
             d.timezone = tz;
-        const str = ctx.str(dtStr || "now");
+        const str = await ctx.str(dtStr || "now");
         const ts = Date.parse(str === "now" ? new Date().toISOString() : str);
         if (!isNaN(ts)) {
             d.date = new Date(ts);
         }
         return d;
     }
-    static date_create_immutable(ctx, datetimeArg, timezoneArg) {
-        const dt = DateTimeRuntime.date_create(ctx, datetimeArg, timezoneArg);
+    static async date_create_immutable(ctx, datetimeArg, timezoneArg) {
+        const dt = await DateTimeRuntime.date_create(ctx, datetimeArg, timezoneArg);
         if (!dt)
             return false;
         const imm = Object.create(PHPDateTimeImmutable.prototype);
@@ -314,10 +313,10 @@ export class DateTimeRuntime {
         imm.timezone = dt.timezone;
         return imm;
     }
-    static date_create_from_format(ctx, formatArg, datetimeArg, timezoneArg) {
+    static async date_create_from_format(ctx, formatArg, datetimeArg, timezoneArg) {
         return PHPDateTime.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
     }
-    static date_create_immutable_from_format(ctx, formatArg, datetimeArg, timezoneArg) {
+    static async date_create_immutable_from_format(ctx, formatArg, datetimeArg, timezoneArg) {
         return PHPDateTimeImmutable.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
     }
     static functions = {

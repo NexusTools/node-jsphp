@@ -8,8 +8,75 @@ export const SYMBOL_PHP_CONSTANTS = Symbol.for("php.constants");
 export const SYMBOL_PHP_PROPERTIES = Symbol.for("php.properties");
 export const SYMBOL_PHP_METHODS = Symbol.for("php.methods");
 export const SYMBOL_PHP_CLASS = Symbol.for("php.class");
+export const SYMBOL_PHP_PARENT = Symbol.for("php.parent");
+export const SYMBOL_PHP_NEW = Symbol.for("php.new");
+export const SYMBOL_PHP_INIT = Symbol.for("php.init");
 export const SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS = Symbol.for("php.hasMagicMethods");
 export const SYMBOL_PHP_CLASS_INTERFACES = Symbol.for("php.interfaces");
+export const SYMBOL_PHP_METHOD_THEN = Symbol.for("php.method.then");
+export const SYMBOL_PHP_STATIC_METHOD_PROTOTYPE = Symbol.for("php.staticMethod.prototype");
+
+const HEX = "0123456789ABCDEF";
+const UTF8_ENCODER = new TextEncoder();
+const UTF8_DECODER = new TextDecoder();
+
+export function normalizePhpRegistryName(name: string): string {
+  return String(name ?? "").replace(/^\\+/, "").split("\\").join("$$").toLowerCase();
+}
+
+export function encodePhpIdentifier(name: string): string {
+  let encoded = "";
+  for (const char of name) {
+    const code = char.charCodeAt(0);
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 95) {
+      encoded += char;
+      continue;
+    }
+    for (const byte of UTF8_ENCODER.encode(char)) {
+      encoded += `$${HEX[byte >>> 4]}${HEX[byte & 0x0f]}`;
+    }
+  }
+  return encoded;
+}
+
+export function encodePhpMethodName(name: string, isStatic = false): string | symbol {
+  const lower = name.toLowerCase();
+  if (lower === "then") return SYMBOL_PHP_METHOD_THEN;
+  if (isStatic && lower === "prototype") return SYMBOL_PHP_STATIC_METHOD_PROTOTYPE;
+  return encodePhpIdentifier(lower);
+}
+
+export function encodePhpPropertyName(name: string): string {
+  return `$${encodePhpIdentifier(name.startsWith("$") ? name.slice(1) : name)}`;
+}
+
+export function decodePhpIdentifier(name: string): string {
+  const bytes: number[] = [];
+  for (let i = 0; i < name.length;) {
+    if (name[i] === "$" && /^[0-9A-Fa-f]{2}$/.test(name.slice(i + 1, i + 3))) {
+      bytes.push(Number.parseInt(name.slice(i + 1, i + 3), 16));
+      i += 3;
+      continue;
+    }
+    for (const byte of UTF8_ENCODER.encode(name[i])) bytes.push(byte);
+    i++;
+  }
+  return UTF8_DECODER.decode(new Uint8Array(bytes));
+}
+
+export function decodePhpPropertyName(name: string): string {
+  return decodePhpIdentifier(name.startsWith("$") ? name.slice(1) : name);
+}
+
+export function decodePhpMethodName(name: string | symbol): string {
+  if (name === SYMBOL_PHP_METHOD_THEN) return "then";
+  if (name === SYMBOL_PHP_STATIC_METHOD_PROTOTYPE) return "prototype";
+  return decodePhpIdentifier(String(name));
+}
+
+export function isEncodedPhpMethodKey(name: string): boolean {
+  return name.startsWith("$") && encodePhpIdentifier(decodePhpIdentifier(name).toLowerCase()) === name;
+}
 
 export interface PHPParameterMetadata {
   name: string;
@@ -27,7 +94,10 @@ export interface PHPPropertyMetadata {
   isStatic: boolean;
   isReadOnly: boolean;
   defaultValue?: any;
+  encodedName?: string;
 }
+
+export type PHPPropertyMetadataRecord = Record<string, PHPPropertyMetadata>;
 
 export interface PHPMethodMetadata {
   name: string;
@@ -197,8 +267,8 @@ function parseSimpleLiteral(valStr: string): any {
 }
 
 export class Reflection {
-  public static getModifierNames(ctx: PHPContext, modifiersArg?: PHPReference): string[] {
-    const modifiers = Number(modifiersArg?.get()) || 0;
+  public static async getModifierNames(ctx: PHPContext, modifiersArg?: PHPReference): Promise<string[]> {
+    const modifiers = Number(await modifiersArg?.get()) || 0;
     const res: string[] = [];
     if (modifiers & 1) res.push("public");
     if (modifiers & 2) res.push("protected");
@@ -215,15 +285,15 @@ export class ReflectionType {
   public typeName!: string;
   public allowsNullFlag!: boolean;
 
-  public static async __$$__new(ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<ReflectionType> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<ReflectionType> {
     const obj = Object.create(ReflectionType.prototype);
     await ReflectionType.__construct.call(obj, ctx, typeNameArg, allowsNullFlagArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionType, ctx: PHPContext, typeNameArg?: PHPReference, allowsNullFlagArg?: PHPReference): Promise<void> {
-    this.typeName = typeNameArg ? String(typeNameArg.get() ?? "") : "mixed";
-    this.allowsNullFlag = allowsNullFlagArg ? Boolean(allowsNullFlagArg.get()) : true;
+    this.typeName = typeNameArg ? String(await typeNameArg.get() ?? "") : "mixed";
+    this.allowsNullFlag = allowsNullFlagArg ? Boolean(await allowsNullFlagArg.get()) : true;
   }
 
   public allowsNull(ctx: PHPContext): boolean { return this.allowsNullFlag; }
@@ -237,17 +307,17 @@ export class ReflectionParameter {
   public defaultValue: any;
   public hasDefault!: boolean;
 
-  public static async __$$__new(ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<ReflectionParameter> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<ReflectionParameter> {
     const obj = Object.create(ReflectionParameter.prototype);
     await ReflectionParameter.__construct.call(obj, ctx, nameArg, positionArg, defaultValueArg, hasDefaultArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionParameter, ctx: PHPContext, nameArg?: PHPReference, positionArg?: PHPReference, defaultValueArg?: PHPReference, hasDefaultArg?: PHPReference): Promise<void> {
-    this.paramName = nameArg ? String(nameArg.get() ?? "") : "";
-    this.paramPosition = positionArg ? Number(positionArg.get()) || 0 : 0;
-    this.defaultValue = defaultValueArg ? defaultValueArg.get() : undefined;
-    this.hasDefault = hasDefaultArg ? Boolean(hasDefaultArg.get()) : false;
+    this.paramName = nameArg ? String(await nameArg.get() ?? "") : "";
+    this.paramPosition = positionArg ? Number(await positionArg.get()) || 0 : 0;
+    this.defaultValue = defaultValueArg ? await defaultValueArg.get() : undefined;
+    this.hasDefault = hasDefaultArg ? Boolean(await hasDefaultArg.get()) : false;
   }
 
   public getName(ctx: PHPContext): string { return this.paramName; }
@@ -257,7 +327,7 @@ export class ReflectionParameter {
   public getDefaultValue(ctx: PHPContext): any { return this.defaultValue; }
   public isPassedByReference(ctx: PHPContext): boolean { return false; }
   public async getType(ctx: PHPContext): Promise<ReflectionType> {
-    return await ReflectionType.__$$__new(ctx);
+    return await ReflectionType[SYMBOL_PHP_NEW](ctx);
   }
 }
 
@@ -267,41 +337,41 @@ export class ReflectionProperty {
   public meta?: PHPPropertyMetadata;
   public isAccessible = true;
 
-  public static async __$$__new(ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<ReflectionProperty> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<ReflectionProperty> {
     const obj = Object.create(ReflectionProperty.prototype);
     await ReflectionProperty.__construct.call(obj, ctx, classArg, nameArg, metaArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionProperty, ctx: PHPContext, classArg?: PHPReference, nameArg?: PHPReference, metaArg?: PHPReference): Promise<void> {
-    this.declaringClassName = classArg ? String(classArg.get() ?? "") : "";
-    this.name = nameArg ? String(nameArg.get() ?? "") : "";
-    this.meta = metaArg ? metaArg.get() : undefined;
+    this.declaringClassName = classArg ? String(await classArg.get() ?? "") : "";
+    this.name = nameArg ? String(await nameArg.get() ?? "") : "";
+    this.meta = metaArg ? await metaArg.get() : undefined;
   }
 
   public getName(ctx: PHPContext): string { return this.name; }
   public async getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass> {
-    return await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.declaringClassName));
+    return await ReflectionClass[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.declaringClassName));
   }
   public isPublic(ctx: PHPContext): boolean { return !this.meta || this.meta.visibility === "public"; }
   public isProtected(ctx: PHPContext): boolean { return this.meta?.visibility === "protected"; }
   public isPrivate(ctx: PHPContext): boolean { return this.meta?.visibility === "private"; }
   public isStatic(ctx: PHPContext): boolean { return this.meta?.isStatic || false; }
   public isReadOnly(ctx: PHPContext): boolean { return this.meta?.isReadOnly || false; }
-  public setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): void {
-    this.isAccessible = accessibleArg ? Boolean(accessibleArg.get()) : true;
+  public async setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): Promise<void> {
+    this.isAccessible = accessibleArg ? Boolean(await accessibleArg.get()) : true;
   }
   public async getValue(ctx: PHPContext, objArg?: PHPReference): Promise<any> {
-    const obj = objArg?.get();
+    const obj = await objArg?.get();
     if (obj && typeof obj === "object") {
       return await ctx.getProperty(obj, this.name);
     }
     return undefined;
   }
   public async setValue(ctx: PHPContext, objArg?: PHPReference, valArg?: PHPReference): Promise<void> {
-    const obj = objArg?.get();
+    const obj = await objArg?.get();
     if (obj && typeof obj === "object") {
-      await ctx.setProperty(obj, this.name, valArg?.get());
+      await ctx.setProperty(obj, this.name, await valArg?.get());
     }
   }
 }
@@ -311,15 +381,15 @@ export class ReflectionMethod {
   public methodName!: string;
   public meta!: PHPMethodMetadata;
 
-  public static async __$$__new(ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<ReflectionMethod> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<ReflectionMethod> {
     const obj = Object.create(ReflectionMethod.prototype);
     await ReflectionMethod.__construct.call(obj, ctx, classArg, methodArg, metaArg, fnArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionMethod, ctx: PHPContext, classArg?: PHPReference, methodArg?: PHPReference, metaArg?: PHPReference, fnArg?: PHPReference): Promise<void> {
-    const cls = classArg ? String(classArg.get() ?? "") : "";
-    const methodName = methodArg ? String(methodArg.get() ?? "") : "";
+    const cls = classArg ? String(await classArg.get() ?? "") : "";
+    const methodName = methodArg ? String(await methodArg.get() ?? "") : "";
     if (!methodName && cls.includes("::")) {
       const parts = cls.split("::");
       this.className = parts[0];
@@ -328,14 +398,14 @@ export class ReflectionMethod {
       this.className = cls;
       this.methodName = methodName;
     }
-    const meta = metaArg ? metaArg.get() : undefined;
-    const fn = fnArg ? fnArg.get() : undefined;
+    const meta = metaArg ? await metaArg.get() : undefined;
+    const fn = fnArg ? await fnArg.get() : undefined;
     this.meta = meta || parseJSFunctionMetadata(fn || meta?.fn, this.methodName);
   }
 
   public getName(ctx: PHPContext): string { return this.methodName; }
   public async getDeclaringClass(ctx: PHPContext): Promise<ReflectionClass> {
-    return await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.className));
+    return await ReflectionClass[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.className));
   }
   public isPublic(ctx: PHPContext): boolean { return !this.meta || this.meta.visibility === "public"; }
   public isProtected(ctx: PHPContext): boolean { return this.meta?.visibility === "protected"; }
@@ -352,13 +422,13 @@ export class ReflectionMethod {
     const params: ReflectionParameter[] = [];
     for (let idx = 0; idx < this.meta.parameters.length; idx++) {
       const p = this.meta.parameters[idx];
-      params.push(await ReflectionParameter.__$$__new(ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
+      params.push(await ReflectionParameter[SYMBOL_PHP_NEW](ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
     }
     return params;
   }
   public setAccessible(ctx: PHPContext, accessibleArg?: PHPReference): void {}
   public async invoke(ctx: PHPContext, objectArg?: PHPReference, ...args: PHPReference[]): Promise<any> {
-    const object = objectArg?.get();
+    const object = await objectArg?.get();
     const lower = this.methodName.toLowerCase();
     if (object && typeof object === "object") {
       if (typeof object[lower] === "function") return await object[lower](ctx, ...args);
@@ -368,8 +438,8 @@ export class ReflectionMethod {
     return undefined;
   }
   public async invokeArgs(ctx: PHPContext, objectArg?: PHPReference, argsArg?: PHPReference): Promise<any> {
-    const object = objectArg?.get();
-    const args = argsArg ? argsArg.get() : [];
+    const object = await objectArg?.get();
+    const args = argsArg ? await argsArg.get() : [];
     const lower = this.methodName.toLowerCase();
     if (object && typeof object === "object") {
       const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
@@ -385,29 +455,32 @@ export class ReflectionFunction {
   public name!: string;
   public meta!: any;
 
-  public static async __$$__new(ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<ReflectionFunction> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<ReflectionFunction> {
     const obj = Object.create(ReflectionFunction.prototype);
     await ReflectionFunction.__construct.call(obj, ctx, nameArg, fnOrCtxArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionFunction, ctx: PHPContext, nameArg?: PHPReference, fnOrCtxArg?: PHPReference): Promise<void> {
-    this.name = nameArg ? String(nameArg.get() ?? "") : "";
+    this.name = nameArg ? String(await nameArg.get() ?? "") : "";
     let targetFn: Function | undefined;
-    const fnOrCtx = fnOrCtxArg ? fnOrCtxArg.get() : undefined;
+    const fnOrCtx = fnOrCtxArg ? await fnOrCtxArg.get() : undefined;
 
     if (typeof fnOrCtx === "function") {
       targetFn = fnOrCtx;
     } else if (ctx.engine) {
-      targetFn = ctx.engine.functions[this.name.toLowerCase()];
+      targetFn = ctx.engine.functions[normalizePhpRegistryName(this.name)];
     }
 
-    this.meta = (targetFn as any)?.phpMeta || parseJSFunctionMetadata(targetFn, this.name);
+    this.meta = parseJSFunctionMetadata(targetFn, this.name);
   }
 
   public getName(ctx: PHPContext): string { return this.name; }
-  public getNamespaceName(ctx: PHPContext): string { return ""; }
-  public inNamespace(ctx: PHPContext): boolean { return false; }
+  public getNamespaceName(ctx: PHPContext): string {
+    const parts = this.name.replace(/^\\+/, "").split("\\");
+    return parts.length > 1 ? parts.slice(0, -1).join("\\") : "";
+  }
+  public inNamespace(ctx: PHPContext): boolean { return this.getNamespaceName(ctx).length > 0; }
   public getNumberOfParameters(ctx: PHPContext): number { return this.meta?.numberOfParameters ?? 0; }
   public getNumberOfRequiredParameters(ctx: PHPContext): number { return this.meta?.numberOfRequiredParameters ?? 0; }
   public async getParameters(ctx: PHPContext): Promise<ReflectionParameter[]> {
@@ -415,18 +488,18 @@ export class ReflectionFunction {
     const params: ReflectionParameter[] = [];
     for (let idx = 0; idx < this.meta.parameters.length; idx++) {
       const p = this.meta.parameters[idx];
-      params.push(await ReflectionParameter.__$$__new(ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
+      params.push(await ReflectionParameter[SYMBOL_PHP_NEW](ctx, new PHPLiteral(p.name), new PHPLiteral(idx), new PHPLiteral(p.defaultValue), new PHPLiteral(p.hasDefault)));
     }
     return params;
   }
   public async invoke(ctx: PHPContext, ...args: PHPReference[]): Promise<any> {
-    const fn = ctx.functions[this.name.toLowerCase()] || ctx.functionMissing(this.name);
+    const fn = ctx.functions[normalizePhpRegistryName(this.name)] || ctx.functionMissing(this.name);
     return await fn(ctx, ...args);
   }
   public async invokeArgs(ctx: PHPContext, argsArg?: PHPReference): Promise<any> {
-    const args = argsArg ? argsArg.get() : [];
+    const args = argsArg ? await argsArg.get() : [];
     const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
-    const fn = ctx.functions[this.name.toLowerCase()] || ctx.functionMissing(this.name);
+    const fn = ctx.functions[normalizePhpRegistryName(this.name)] || ctx.functionMissing(this.name);
     return await fn(ctx, ...callArgs);
   }
 }
@@ -434,24 +507,33 @@ export class ReflectionFunction {
 export class ReflectionClass {
   public name!: string;
   private phpClass?: any;
+  private classConstructor?: any;
+  private interfaceFlag = false;
 
-  public static async __$$__new(ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<ReflectionClass> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<ReflectionClass> {
     const obj = Object.create(ReflectionClass.prototype);
     await ReflectionClass.__construct.call(obj, ctx, nameOrInstanceArg);
     return obj;
   }
 
   public static async __construct(this: ReflectionClass, ctx: PHPContext, nameOrInstanceArg?: PHPReference): Promise<void> {
-    const nameOrInstance = nameOrInstanceArg?.get();
+    const nameOrInstance = await nameOrInstanceArg?.get();
     if (typeof nameOrInstance === "string") {
-      this.name = nameOrInstance;
-      const lower = this.name.toLowerCase();
-      this.phpClass = ctx.classes[this.name] || ctx.classes[lower] || ctx.engine.classes[this.name] || ctx.engine.classes[lower];
+      const lower = normalizePhpRegistryName(nameOrInstance);
+      this.classConstructor = ctx.classes[lower] || ctx.engine.classes[lower];
+      this.interfaceFlag = Boolean(ctx.interfaces[lower] || ctx.engine.interfaces[lower]);
+      this.phpClass = this.classConstructor?.phpClass;
+      this.name = this.classConstructor?.[SYMBOL_PHP_NAME] || nameOrInstance;
     } else if (nameOrInstance?.phpClass) {
       this.phpClass = nameOrInstance.phpClass;
       this.name = this.phpClass?.name || "Object";
+      this.classConstructor = nameOrInstance[SYMBOL_PHP_CLASS] || nameOrInstance.constructor;
     } else {
-      this.name = nameOrInstance?.name || "Object";
+      this.classConstructor = typeof nameOrInstance === "function"
+        ? nameOrInstance
+        : nameOrInstance?.[SYMBOL_PHP_CLASS] || nameOrInstance?.constructor;
+      this.name = this.classConstructor?.[SYMBOL_PHP_NAME] || nameOrInstance?.name || "Object";
+      this.phpClass = this.classConstructor?.phpClass;
     }
   }
 
@@ -466,79 +548,111 @@ export class ReflectionClass {
   }
   public inNamespace(ctx: PHPContext): boolean { return this.getNamespaceName(ctx).length > 0; }
   public async getParentClass(ctx: PHPContext): Promise<ReflectionClass | false> {
-    return this.phpClass?.parentClass ? await ReflectionClass.__$$__new(ctx, new PHPLiteral(this.phpClass.parentClass.name)) : false;
+    const parent = this.classConstructor?.[SYMBOL_PHP_PARENT] || this.phpClass?.parentClass;
+    if (!parent) return false;
+    const parentName = parent[SYMBOL_PHP_NAME] || parent.name;
+    return ReflectionClass[SYMBOL_PHP_NEW](ctx, new PHPLiteral(parentName));
   }
-  public isInterface(ctx: PHPContext): boolean { return false; }
+  public isInterface(ctx: PHPContext): boolean { return this.interfaceFlag; }
   public isAbstract(ctx: PHPContext): boolean { return this.phpClass?.isAbstract || false; }
   public isFinal(ctx: PHPContext): boolean { return this.phpClass?.isFinal || false; }
   public isInstantiable(ctx: PHPContext): boolean { return !this.isAbstract(ctx) && !this.isInterface(ctx); }
-  public isSubclassOf(ctx: PHPContext, classNameArg?: PHPReference): boolean {
-    const className = String(classNameArg?.get() ?? "");
+  public async isSubclassOf(ctx: PHPContext, classNameArg?: PHPReference): Promise<boolean> {
+    const className = String(await classNameArg?.get() ?? "");
     return this.phpClass ? this.phpClass.isSubclassOf(className) : false;
   }
 
-  public hasMethod(ctx: PHPContext, nameArg?: PHPReference): boolean {
-    const name = String(nameArg?.get() ?? "");
-    return this.phpClass ? this.phpClass.methods.has(name.toLowerCase()) : true;
+  public async hasMethod(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean> {
+    const name = String(await nameArg?.get() ?? "");
+    const methods = this.classConstructor?.[SYMBOL_PHP_METHODS];
+    if (Object.hasOwn(methods || {}, encodePhpMethodName(name)) || Object.hasOwn(methods || {}, encodePhpMethodName(name, true))) return true;
+    return Object.hasOwn(this.phpClass?.methods || {}, name.toLowerCase());
   }
   public async getMethod(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionMethod> {
-    const name = String(nameArg?.get() ?? "");
-    const meta = this.phpClass?.methods.get(name.toLowerCase());
-    return await ReflectionMethod.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(name), new PHPLiteral(meta), new PHPLiteral(meta?.fn));
+    const name = String(await nameArg?.get() ?? "");
+    const methods = this.classConstructor?.[SYMBOL_PHP_METHODS];
+    const meta = methods?.[encodePhpMethodName(name)]
+      || methods?.[encodePhpMethodName(name, true)]
+      || this.phpClass?.methods?.[name.toLowerCase()];
+    return ReflectionMethod[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.name), new PHPLiteral(meta?.name || name), new PHPLiteral(meta), new PHPLiteral(meta?.fn));
   }
   public async getMethods(ctx: PHPContext): Promise<ReflectionMethod[]> {
-    if (!this.phpClass) return [];
     const methods: ReflectionMethod[] = [];
-    for (const [m, meta] of this.phpClass.methods.entries()) {
-      methods.push(await ReflectionMethod.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(m), new PHPLiteral(meta), new PHPLiteral(meta?.fn)));
+    const metadata = this.classConstructor?.[SYMBOL_PHP_METHODS] || this.phpClass?.methods;
+    if (!metadata) return methods;
+    const entries = [...Object.entries(metadata), ...Object.getOwnPropertySymbols(metadata).map((key) => [key, metadata[key]] as [symbol, any])];
+    for (const [methodKey, meta] of entries) {
+      const methodName = meta?.name || methodKey;
+      methods.push(await ReflectionMethod[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.name), new PHPLiteral(methodName), new PHPLiteral(meta), new PHPLiteral(meta?.fn)));
     }
     return methods;
   }
 
-  public hasProperty(ctx: PHPContext, nameArg?: PHPReference): boolean {
-    const name = String(nameArg?.get() ?? "");
-    return this.phpClass ? this.phpClass.properties.has(name) : true;
+  public async hasProperty(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean> {
+    const name = String(await nameArg?.get() ?? "");
+    const properties = this.classConstructor?.[SYMBOL_PHP_PROPERTIES];
+    if (properties != null) {
+      return Object.hasOwn(properties, name);
+    }
+    return Object.hasOwn(this.phpClass?.properties || {}, name);
   }
   public async getProperty(ctx: PHPContext, nameArg?: PHPReference): Promise<ReflectionProperty> {
-    const name = String(nameArg?.get() ?? "");
-    const meta = this.phpClass?.properties.get(name);
-    return await ReflectionProperty.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(name), new PHPLiteral(meta));
+    const name = String(await nameArg?.get() ?? "");
+    const properties = this.classConstructor?.[SYMBOL_PHP_PROPERTIES];
+    const meta = properties?.[name] || this.phpClass?.properties?.[name];
+    return ReflectionProperty[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.name), new PHPLiteral(name), new PHPLiteral(meta));
   }
   public async getProperties(ctx: PHPContext): Promise<ReflectionProperty[]> {
-    if (!this.phpClass) return [];
     const props: ReflectionProperty[] = [];
-    for (const [p, meta] of this.phpClass.properties.entries()) {
-      props.push(await ReflectionProperty.__$$__new(ctx, new PHPLiteral(this.name), new PHPLiteral(p), new PHPLiteral(meta)));
+    const metadata = (this.classConstructor?.[SYMBOL_PHP_PROPERTIES] || this.phpClass?.properties) as Record<string, PHPPropertyMetadata> | undefined;
+    if (!metadata) return props;
+    for (const [propertyName, meta] of Object.entries(metadata)) {
+      const p = meta?.name || propertyName;
+      props.push(await ReflectionProperty[SYMBOL_PHP_NEW](ctx, new PHPLiteral(this.name), new PHPLiteral(p), new PHPLiteral(meta)));
     }
     return props;
   }
 
-  public hasConstant(ctx: PHPContext, nameArg?: PHPReference): boolean {
-    const name = String(nameArg?.get() ?? "");
-    return this.phpClass ? this.phpClass.constants.has(name) : false;
+  public async hasConstant(ctx: PHPContext, nameArg?: PHPReference): Promise<boolean> {
+    const name = String(await nameArg?.get() ?? "");
+    const constants = this.classConstructor?.[SYMBOL_PHP_CONSTANTS];
+    if (constants) return Object.hasOwn(constants, name.toLowerCase());
+    return Object.hasOwn(this.phpClass?.constants || {}, name);
   }
-  public getConstant(ctx: PHPContext, nameArg?: PHPReference): any {
-    const name = String(nameArg?.get() ?? "");
-    return this.phpClass ? this.phpClass.constants.get(name) : undefined;
+  public async getConstant(ctx: PHPContext, nameArg?: PHPReference): Promise<any> {
+    const name = String(await nameArg?.get() ?? "");
+    const constant = this.classConstructor?.[SYMBOL_PHP_CONSTANTS]?.[name.toLowerCase()];
+    if (constant !== undefined) return constant && typeof constant === "object" && "value" in constant ? constant.value : constant;
+    return this.phpClass?.constants?.[name];
   }
-  public getConstants(ctx: PHPContext): Record<string, any> {
+  public async getConstants(ctx: PHPContext): Promise<Record<string, any>> {
+    const metadata = this.classConstructor?.[SYMBOL_PHP_CONSTANTS] as Record<string, any> | undefined;
+    if (metadata) {
+      const constants: Record<string, any> = {};
+      for (const [key, entry] of Object.entries(metadata)) {
+        const constantName = entry && typeof entry === "object" && "name" in entry ? entry.name : key;
+        constants[constantName] = entry && typeof entry === "object" && "value" in entry ? entry.value : entry;
+      }
+      return constants;
+    }
     if (!this.phpClass) return {};
-    return Object.fromEntries(this.phpClass.constants);
+    return { ...this.phpClass.constants };
   }
 
   public async newInstance(ctx: PHPContext, ...args: PHPReference[]): Promise<any> {
     return await ctx.createObject(this.name, args);
   }
   public async newInstanceArgs(ctx: PHPContext, argsArg?: PHPReference): Promise<any> {
-    const args = argsArg ? argsArg.get() : [];
+    const args = argsArg ? await argsArg.get() : [];
     const callArgs = Array.isArray(args) ? args.map(a => new PHPLiteral(a)) : Object.values(args || {}).map(a => new PHPLiteral(a));
     return await ctx.createObject(this.name, callArgs);
   }
   public async newInstanceWithoutConstructor(ctx: PHPContext): Promise<any> {
-    const cls = this.phpClass || ctx.classes[this.name] || ctx.classes[this.name.toLowerCase()] || ctx.engine.classes[this.name] || ctx.engine.classes[this.name.toLowerCase()];
-    if (cls && typeof cls.__$$__init === "function") {
+    const className = normalizePhpRegistryName(this.name);
+    const cls = this.phpClass || ctx.classes[className] || ctx.engine.classes[className];
+    if (cls?.[SYMBOL_PHP_INIT]) {
       const obj = Object.create(cls.prototype);
-      await cls.__$$__init(ctx, obj);
+      await cls[SYMBOL_PHP_INIT](ctx, obj);
       return obj;
     }
     return {};

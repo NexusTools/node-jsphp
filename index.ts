@@ -1,5 +1,5 @@
 export { PHPEngine, getDefaultExtensions } from "./src/PHPEngine.js";
-export type { PHPEngineOptions } from "./src/PHPEngine.js";
+export type { PHPEngineOptions, PHPFunction } from "./src/PHPEngine.js";
 export { PHPContext } from "./src/PHPContext.js";
 export type { PHPContextOptions } from "./src/PHPContext.js";
 export { PHPExtension } from "./src/PHPExtension.js";
@@ -23,8 +23,17 @@ export {
   SYMBOL_PHP_PROPERTIES,
   SYMBOL_PHP_METHODS,
   SYMBOL_PHP_CLASS,
+  SYMBOL_PHP_PARENT,
+  SYMBOL_PHP_NEW,
+  SYMBOL_PHP_INIT,
   SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS,
   SYMBOL_PHP_CLASS_INTERFACES,
+  SYMBOL_PHP_METHOD_THEN,
+  SYMBOL_PHP_STATIC_METHOD_PROTOTYPE,
+  encodePhpIdentifier,
+  normalizePhpRegistryName,
+  encodePhpMethodName,
+  encodePhpPropertyName,
   Reflection,
   ReflectionClass,
   ReflectionMethod,

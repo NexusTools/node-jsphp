@@ -1,9 +1,9 @@
-import { SYMBOL_PHP_CLASS_INTERFACES } from "./Reflection.js";
+import { SYMBOL_PHP_CLASS_INTERFACES, normalizePhpRegistryName } from "./Reflection.js";
 
 export class PHPInterface {
   public readonly name: string;
   public readonly parentInterfaces: PHPInterface[];
-  public readonly constants: Map<string, any> = new Map();
+  public readonly constants: Record<string, any> = Object.create(null);
   public readonly methods: Set<string> = new Set();
 
   constructor(name: string, parentInterfaces: PHPInterface[] = []) {
@@ -12,8 +12,8 @@ export class PHPInterface {
   }
 
   public isSubinterfaceOf(interfaceName: string): boolean {
-    const lower = interfaceName.toLowerCase();
-    if (this.name.toLowerCase() === lower) return true;
+    const lower = normalizePhpRegistryName(interfaceName);
+    if (normalizePhpRegistryName(this.name) === lower) return true;
     return this.parentInterfaces.some((iface) => iface.isSubinterfaceOf(lower));
   }
 }

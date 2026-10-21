@@ -1,33 +1,33 @@
 import type { PHPEngine } from "../PHPEngine.js";
 import type { PHPContext } from "../PHPContext.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "./PHPVariable.js";
-import { SYMBOL_PHP_NAME } from "./Reflection.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_CONSTANTS, SYMBOL_PHP_NEW } from "./Reflection.js";
 
 export class PHPDateTimeZone {
   public static [SYMBOL_PHP_NAME] = "DateTimeZone";
-  public static __php_constants = new Map([
-    ["africa", 1],
-    ["america", 2],
-    ["antarctica", 4],
-    ["arctic", 8],
-    ["asia", 16],
-    ["atlantic", 32],
-    ["australia", 64],
-    ["europe", 128],
-    ["indian", 256],
-    ["pacific", 512],
-    ["utc", 1024],
-    ["all", 2047],
-    ["all_with_bc", 4095],
-    ["per_country", 4096],
-  ]);
+  public static [SYMBOL_PHP_CONSTANTS] = {
+    africa: 1,
+    america: 2,
+    antarctica: 4,
+    arctic: 8,
+    asia: 16,
+    atlantic: 32,
+    australia: 64,
+    europe: 128,
+    indian: 256,
+    pacific: 512,
+    utc: 1024,
+    all: 2047,
+    all_with_bc: 4095,
+    per_country: 4096,
+  };
   public timezone: string = "UTC";
 
   constructor(timezone: string = "UTC") {
     this.timezone = timezone;
   }
 
-  public static async __$$__new(ctx: PHPContext, timezoneArg?: PHPReference): Promise<PHPDateTimeZone> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, timezoneArg?: PHPReference): Promise<PHPDateTimeZone> {
     const obj = Object.create(this.prototype);
     obj.timezone = "UTC";
     await obj.__construct(ctx, timezoneArg);
@@ -35,7 +35,7 @@ export class PHPDateTimeZone {
   }
 
   public async __construct(ctx: PHPContext, timezoneArg?: PHPReference): Promise<void> {
-    const tz = timezoneArg?.get ? timezoneArg.get() : timezoneArg;
+    const tz = timezoneArg?.get ? await timezoneArg.get() : timezoneArg;
     this.timezone = String(tz ?? "UTC");
   }
 
@@ -60,7 +60,7 @@ export class PHPDateTime {
     this.timezone = timezone;
   }
 
-  public static async __$$__new(ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<PHPDateTime> {
+  public static async [SYMBOL_PHP_NEW](ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<PHPDateTime> {
     const obj = Object.create(this.prototype);
     obj.date = new Date();
     await obj.__construct(ctx, timeStrArg, timezoneArg);
@@ -68,17 +68,17 @@ export class PHPDateTime {
   }
 
   public async __construct(ctx: PHPContext, timeStrArg?: PHPReference, timezoneArg?: PHPReference): Promise<void> {
-    const timeStr = timeStrArg?.get ? timeStrArg.get() : timeStrArg;
-    const tz = timezoneArg?.get ? timezoneArg.get() : timezoneArg;
+    const timeStr = await ctx.toVal(timeStrArg);
+    const tz = await ctx.toVal(timezoneArg);
     this.date = !timeStr || timeStr === "now" ? new Date() : new Date(Date.parse(String(timeStr)) || Date.now());
     if (tz instanceof PHPDateTimeZone) {
       this.timezone = tz;
     }
   }
 
-  public format(ctxOrFormat?: any, formatArg?: any): string {
+  public async format(ctxOrFormat?: any, formatArg?: any): Promise<string> {
     const fmt = typeof ctxOrFormat === "string" ? ctxOrFormat : String(formatArg?.get ? formatArg.get() : (formatArg || "Y-m-d H:i:s"));
-    return DateTimeRuntime.date(null as any, new PHPLiteral(fmt), new PHPLiteral(Math.floor(this.date.getTime() / 1000)));
+    return await DateTimeRuntime.date(null, new PHPLiteral(fmt), new PHPLiteral(Math.floor(this.date.getTime() / 1000)));
   }
 
   public modify(ctxOrMod?: any, modArg?: any): PHPDateTime {
@@ -188,22 +188,22 @@ export class PHPDateTimeImmutable extends PHPDateTime {
 export class DateTimeRuntime {
   private static defaultTimezone = "UTC";
 
-  public static checkdate(ctx: PHPContext, monthArg?: any, dayArg?: any, yearArg?: any): boolean {
-    const month = Number(monthArg?.get !== undefined ? monthArg.get() : monthArg);
-    const day = Number(dayArg?.get !== undefined ? dayArg.get() : dayArg);
-    const year = Number(yearArg?.get !== undefined ? yearArg.get() : yearArg);
+  public static async checkdate(ctx: PHPContext, monthArg?: any, dayArg?: any, yearArg?: any): Promise<boolean> {
+    const month = Number(await (monthArg?.get !== undefined ? monthArg.get() : monthArg));
+    const day = Number(await (dayArg?.get !== undefined ? dayArg.get() : dayArg));
+    const year = Number(await (yearArg?.get !== undefined ? yearArg.get() : yearArg));
     if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return false;
     if (year < 1 || year > 32767 || month < 1 || month > 12 || day < 1) return false;
     const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     return day <= daysInMonth[month - 1];
   }
 
-  public static time(ctx?: PHPContext): number {
+  public static async time(ctx?: PHPContext): Promise<number> {
     return Math.floor(Date.now() / 1000);
   }
 
-  public static microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): string | number {
-    const getAsFloat = Boolean(getAsFloatArg?.get());
+  public static async microtime(ctx?: PHPContext, getAsFloatArg?: PHPReference): Promise<string | number> {
+    const getAsFloat = Boolean(await getAsFloatArg?.get());
     const now = Date.now();
     const sec = Math.floor(now / 1000);
     const msec = (now % 1000) / 1000;
@@ -211,9 +211,10 @@ export class DateTimeRuntime {
     return `${msec.toFixed(8)} ${sec}`;
   }
 
-  public static date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string {
-    const format = String(formatArg?.get() ?? "");
-    const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : undefined;
+  public static async date(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): Promise<string> {
+    const format = String(await formatArg?.get() ?? "");
+    const timestampValue = await timestampArg?.get();
+    const timestamp = timestampValue !== undefined ? Number(timestampValue) : undefined;
     const d = timestamp !== undefined ? new Date(timestamp * 1000) : new Date();
     let res = "";
     for (let i = 0; i < format.length; i++) {
@@ -232,10 +233,11 @@ export class DateTimeRuntime {
     return res;
   }
 
-  public static strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): number | false {
+  public static async strtotime(ctx: PHPContext | null, timeStrArg?: PHPReference, nowArg?: PHPReference): Promise<number | false> {
     try {
-      const timeStr = String(timeStrArg?.get() ?? "");
-      const now = nowArg?.get() !== undefined ? Number(nowArg.get()) : undefined;
+      const timeStr = String(await timeStrArg?.get() ?? "");
+      const nowValue = await nowArg?.get();
+      const now = nowValue !== undefined ? Number(nowValue) : undefined;
       const base = now !== undefined ? new Date(now * 1000) : new Date();
       const parsed = Date.parse(timeStr);
       if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
@@ -245,23 +247,24 @@ export class DateTimeRuntime {
     }
   }
 
-  public static date_default_timezone_get(ctx?: PHPContext): string {
+  public static async date_default_timezone_get(ctx?: PHPContext): Promise<string> {
     return DateTimeRuntime.defaultTimezone;
   }
 
-  public static date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): boolean {
-    const timezoneId = String(timezoneIdArg?.get() ?? "");
+  public static async date_default_timezone_set(ctx: PHPContext | null, timezoneIdArg?: PHPReference): Promise<boolean> {
+    const timezoneId = String(await timezoneIdArg?.get() ?? "");
     DateTimeRuntime.defaultTimezone = timezoneId;
     return true;
   }
 
-  public static timezone_identifiers_list(ctx: PHPContext | null, timezoneGroupArg?: PHPReference, countryCodeArg?: PHPReference): string[] {
-    return Array.from(PHPDateTimeZone.__php_constants.keys()).map(k => "UTC");
+  public static async timezone_identifiers_list(ctx: PHPContext | null, timezoneGroupArg?: PHPReference, countryCodeArg?: PHPReference): Promise<string[]> {
+    return Object.keys(PHPDateTimeZone[SYMBOL_PHP_CONSTANTS]).map(() => "UTC");
   }
 
-  public static gmdate(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): string {
-    const format = String(formatArg?.get() ?? "");
-    const timestamp = timestampArg?.get() !== undefined ? Number(timestampArg.get()) : Math.floor(Date.now() / 1000);
+  public static async gmdate(ctx: PHPContext | null, formatArg?: PHPReference, timestampArg?: PHPReference): Promise<string> {
+    const format = String(await formatArg?.get() ?? "");
+    const timestampValue = await timestampArg?.get();
+    const timestamp = timestampValue !== undefined ? Number(timestampValue) : Math.floor(Date.now() / 1000);
     const d = new Date(timestamp * 1000);
     let res = "";
     for (let i = 0; i < format.length; i++) {
@@ -280,16 +283,14 @@ export class DateTimeRuntime {
     return res;
   }
 
-  public static date_create(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false {
-    let dtStr = datetimeArg?.get !== undefined ? datetimeArg.get() : datetimeArg;
-    while (dtStr instanceof PHPReference) dtStr = dtStr.get();
-    let tz = timezoneArg?.get !== undefined ? timezoneArg.get() : timezoneArg;
-    while (tz instanceof PHPReference) tz = tz.get();
+  public static async date_create(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTime | false> {
+    const dtStr = await ctx.toVal(datetimeArg);
+    const tz = await ctx.toVal(timezoneArg);
 
     const d = new PHPDateTime();
     if (tz instanceof PHPDateTimeZone) d.timezone = tz;
 
-    const str = ctx.str(dtStr || "now");
+    const str = await ctx.str(dtStr || "now");
     const ts = Date.parse(str === "now" ? new Date().toISOString() : str);
     if (!isNaN(ts)) {
       d.date = new Date(ts);
@@ -297,8 +298,8 @@ export class DateTimeRuntime {
     return d;
   }
 
-  public static date_create_immutable(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false {
-    const dt = DateTimeRuntime.date_create(ctx, datetimeArg, timezoneArg);
+  public static async date_create_immutable(ctx: PHPContext, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTimeImmutable | false> {
+    const dt = await DateTimeRuntime.date_create(ctx, datetimeArg, timezoneArg);
     if (!dt) return false;
     const imm = Object.create(PHPDateTimeImmutable.prototype);
     imm.date = new Date(dt.date.getTime());
@@ -306,11 +307,11 @@ export class DateTimeRuntime {
     return imm;
   }
 
-  public static date_create_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTime | false {
+  public static async date_create_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTime | false> {
     return PHPDateTime.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
   }
 
-  public static date_create_immutable_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): PHPDateTimeImmutable | false {
+  public static async date_create_immutable_from_format(ctx: PHPContext, formatArg?: any, datetimeArg?: any, timezoneArg?: any): Promise<PHPDateTimeImmutable | false> {
     return PHPDateTimeImmutable.createFromFormat(ctx, formatArg, datetimeArg, timezoneArg);
   }
 

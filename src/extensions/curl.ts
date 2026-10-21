@@ -21,7 +21,7 @@ export class CurlExtension extends PHPExtension {
     };
 
     this.functions = {
-      curl_version: (ctx: PHPContext) => {
+      curl_version: async (ctx: PHPContext) => {
         return {
           version_number: 0x074e00,
           version: "7.78.0",
@@ -33,16 +33,16 @@ export class CurlExtension extends PHPExtension {
           protocols: ["http", "https"],
         };
       },
-      curl_init: (ctx: PHPContext, urlArg?: PHPReference) => {
+      curl_init: async (ctx: PHPContext, urlArg?: PHPReference) => {
         const handle = new CurlHandle();
-        const url = urlArg ? String(urlArg.get() ?? "") : undefined;
+        const url = urlArg ? String(await urlArg.get() ?? "") : undefined;
         if (url) handle.url = url;
         return handle;
       },
-      curl_setopt: (ctx: PHPContext, handleArg?: PHPReference, optionArg?: PHPReference, valueArg?: PHPReference) => {
-        const handle = handleArg?.get();
-        const option = Number(optionArg?.get()) || 0;
-        const value = valueArg?.get();
+      curl_setopt: async (ctx: PHPContext, handleArg?: PHPReference, optionArg?: PHPReference, valueArg?: PHPReference) => {
+        const handle = await handleArg?.get();
+        const option = Number(await optionArg?.get()) || 0;
+        const value = await valueArg?.get();
         if (handle) {
           handle.options[option] = value;
           if (option === 10002) handle.url = String(value ?? "");
@@ -51,16 +51,25 @@ export class CurlExtension extends PHPExtension {
         return false;
       },
       curl_exec: async (ctx: PHPContext, handleArg?: PHPReference) => {
-        const handle = handleArg?.get();
+        const handle = await handleArg?.get();
         if (!handle || !handle.url) return false;
         try {
-          const res = await fetch(handle.url, { signal: AbortSignal.timeout(3000) });
-          return await res.text();
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 1000);
+          if (typeof timer.unref === "function") timer.unref();
+          try {
+            const res = await fetch(handle.url, { signal: controller.signal });
+            clearTimeout(timer);
+            return await res.text();
+          } catch {
+            clearTimeout(timer);
+            return false;
+          }
         } catch {
           return false;
         }
       },
-      curl_close: (ctx: PHPContext, handleArg?: PHPReference) => true,
+      curl_close: async (ctx: PHPContext, handleArg?: PHPReference) => true,
     };
   }
 }

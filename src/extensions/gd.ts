@@ -26,20 +26,20 @@ export class GDExtension extends PHPExtension {
     };
 
     this.functions = {
-      imagecreatetruecolor: (ctx: PHPContext, widthArg?: PHPReference, heightArg?: PHPReference) => {
-        const width = Number(widthArg?.get()) || 0;
-        const height = Number(heightArg?.get()) || 0;
+      imagecreatetruecolor: async (ctx: PHPContext, widthArg?: PHPReference, heightArg?: PHPReference) => {
+        const width = Number(await widthArg?.get()) || 0;
+        const height = Number(await heightArg?.get()) || 0;
         return new GDImage(width, height);
       },
-      imagesx: (ctx: PHPContext, imgArg?: PHPReference) => {
-        const img = imgArg?.get();
+      imagesx: async (ctx: PHPContext, imgArg?: PHPReference) => {
+        const img = await imgArg?.get();
         return img?.width || 0;
       },
-      imagesy: (ctx: PHPContext, imgArg?: PHPReference) => {
-        const img = imgArg?.get();
+      imagesy: async (ctx: PHPContext, imgArg?: PHPReference) => {
+        const img = await imgArg?.get();
         return img?.height || 0;
       },
-      gd_info: () => ({
+      gd_info: async () => ({
         "GD Version": "2.3.3",
         "FreeType Support": true,
         "GIF Read Support": true,

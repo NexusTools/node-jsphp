@@ -1,83 +1,125 @@
 import * as crypto from "crypto";
+import { promisify } from "util";
 import { PHPExtension } from "../PHPExtension.js";
-import { PHPLiteral } from "../runtime/PHPVariable.js";
+import { PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
+const randomBytes = promisify(crypto.randomBytes);
+const pbkdf2 = promisify(crypto.pbkdf2);
 export class HashExtension extends PHPExtension {
     name = "hash";
     onInit(engine) {
         this.constants = {
-            PASSWORD_DEFAULT: 1,
-            PASSWORD_BCRYPT: 1,
-            PASSWORD_ARGON2I: 2,
-            PASSWORD_ARGON2ID: 3,
-            password_default: 1,
-            password_bcrypt: 1,
-            password_argon2i: 2,
-            password_argon2id: 3,
+            password_default: "2y",
+            password_bcrypt: "2y",
+            password_argon2i: "argon2i",
+            password_argon2id: "argon2id",
         };
         this.functions = {
-            md5: (ctx, dataArg, rawOutputArg) => {
-                const data = dataArg?.get();
-                const rawOutput = Boolean(rawOutputArg?.get());
-                return this.functions.hash(ctx, new PHPLiteral("md5"), new PHPLiteral(Buffer.isBuffer(data) ? data : String(data ?? "")), new PHPLiteral(rawOutput));
+            md5: async (ctx, dataArg, rawOutputArg) => {
+                return await this.functions.hash(ctx, new PHPLiteral("md5"), dataArg, rawOutputArg);
             },
-            sha1: (ctx, dataArg, rawOutputArg) => {
-                const data = dataArg?.get();
-                const rawOutput = Boolean(rawOutputArg?.get());
-                return this.functions.hash(ctx, new PHPLiteral("sha1"), new PHPLiteral(Buffer.isBuffer(data) ? data : String(data ?? "")), new PHPLiteral(rawOutput));
+            sha1: async (ctx, dataArg, rawOutputArg) => {
+                return await this.functions.hash(ctx, new PHPLiteral("sha1"), dataArg, rawOutputArg);
             },
-            hash: (ctx, algoArg, dataArg, rawOutputArg) => {
+            hash: async (ctx, algoArg, dataArg, rawOutputArg) => {
                 try {
-                    const algo = String(algoArg?.get() ?? "");
-                    const data = dataArg?.get();
-                    const rawOutput = Boolean(rawOutputArg?.get());
-                    const input = Buffer.isBuffer(data) ? data : (typeof data === "string" ? Buffer.from(data, "binary") : Buffer.from(String(data ?? "")));
-                    const h = crypto.createHash(algo).update(input);
-                    return rawOutput ? h.digest() : h.digest("hex");
+                    const algo = algoArg instanceof PHPReference ? await algoArg.get() : algoArg;
+                    const data = dataArg instanceof PHPReference ? await dataArg.get() : dataArg;
+                    const rawOutput = rawOutputArg instanceof PHPReference ? await rawOutputArg.get() : rawOutputArg;
+                    const algoStr = await ctx.str(algo);
+                    const isRaw = Boolean(rawOutput);
+                    const input = Buffer.isBuffer(data) ? data : Buffer.from(await ctx.str(data), "latin1");
+                    const h = crypto.createHash(algoStr).update(input);
+                    return isRaw ? h.digest() : h.digest("hex");
                 }
                 catch {
                     return false;
                 }
             },
-            hash_hmac: (ctx, algoArg, dataArg, keyArg, rawOutputArg) => {
+            hash_algos: async (ctx) => crypto.getHashes(),
+            hash_hmac_algos: async (ctx) => crypto.getHashes(),
+            hash_equals: async (ctx, knownStrArg, userStrArg) => {
+                const knownStr = knownStrArg instanceof PHPReference ? await knownStrArg.get() : knownStrArg;
+                const userStr = userStrArg instanceof PHPReference ? await userStrArg.get() : userStrArg;
+                const kStr = await ctx.str(knownStr);
+                const uStr = await ctx.str(userStr);
+                if (kStr.length !== uStr.length)
+                    return false;
                 try {
-                    const algo = String(algoArg?.get() ?? "");
-                    const data = dataArg?.get();
-                    const key = keyArg?.get();
-                    const rawOutput = Boolean(rawOutputArg?.get());
-                    const input = Buffer.isBuffer(data) ? data : (typeof data === "string" ? Buffer.from(data, "binary") : Buffer.from(String(data ?? "")));
-                    const keyBuf = Buffer.isBuffer(key) ? key : (typeof key === "string" ? Buffer.from(key, "binary") : Buffer.from(String(key ?? "")));
-                    const h = crypto.createHmac(algo, keyBuf).update(input);
-                    return rawOutput ? h.digest() : h.digest("hex");
+                    return crypto.timingSafeEqual(Buffer.from(kStr, "utf8"), Buffer.from(uStr, "utf8"));
+                }
+                catch {
+                    return kStr === uStr;
+                }
+            },
+            hash_hmac: async (ctx, algoArg, dataArg, keyArg, rawOutputArg) => {
+                try {
+                    const algo = algoArg instanceof PHPReference ? await algoArg.get() : algoArg;
+                    const data = dataArg instanceof PHPReference ? await dataArg.get() : dataArg;
+                    const key = keyArg instanceof PHPReference ? await keyArg.get() : keyArg;
+                    const rawOutput = rawOutputArg instanceof PHPReference ? await rawOutputArg.get() : rawOutputArg;
+                    const algoStr = await ctx.str(algo);
+                    const isRaw = Boolean(rawOutput);
+                    const input = Buffer.isBuffer(data) ? data : Buffer.from(await ctx.str(data), "latin1");
+                    const keyBuf = Buffer.isBuffer(key) ? key : Buffer.from(await ctx.str(key), "latin1");
+                    const h = crypto.createHmac(algoStr, keyBuf).update(input);
+                    return isRaw ? h.digest() : h.digest("hex");
                 }
                 catch {
                     return false;
                 }
             },
-            password_hash: (ctx, passwordArg, algoArg, optionsArg) => {
-                const password = String(passwordArg?.get() ?? "");
-                const salt = crypto.randomBytes(16).toString("hex").slice(0, 22);
-                const hash = crypto.pbkdf2Sync(password, salt, 1000, 24, "sha256").toString("hex");
-                return `$2y$10$${salt}${hash}`.slice(0, 60);
+            password_hash: async (ctx, passwordArg, algoArg, optionsArg) => {
+                const password = passwordArg instanceof PHPReference ? await passwordArg.get() : passwordArg;
+                const pwdStr = String(password ?? "");
+                const prefix = "$2y$10$";
+                const salt = (await randomBytes(16)).toString("hex").slice(0, 22);
+                const hash = (await pbkdf2(pwdStr, salt, 1000, 32, "sha256")).toString("hex");
+                return (prefix + salt + hash).slice(0, 60);
             },
-            password_verify: (ctx, passwordArg, hashArg) => {
-                const password = String(passwordArg?.get() ?? "");
-                const hash = String(hashArg?.get() ?? "");
-                if (hash.startsWith("$2y$")) {
-                    const salt = hash.slice(7, 29);
-                    const computed = crypto.pbkdf2Sync(password, salt, 1000, 24, "sha256").toString("hex");
-                    return `$2y$10$${salt}${computed}`.slice(0, 60) === hash;
+            password_verify: async (ctx, passwordArg, hashArg) => {
+                const password = passwordArg instanceof PHPReference ? await passwordArg.get() : passwordArg;
+                const hash = hashArg instanceof PHPReference ? await hashArg.get() : hashArg;
+                const pwdStr = String(password ?? "");
+                const hashStr = String(hash ?? "");
+                if (hashStr.startsWith("$2y$")) {
+                    const prefix = hashStr.startsWith("$2y$10$") ? "$2y$10$" : "$2y$";
+                    const salt = hashStr.slice(prefix.length, prefix.length + 22);
+                    const computed = (await pbkdf2(pwdStr, salt, 1000, 32, "sha256")).toString("hex");
+                    const vFull = (prefix + salt + computed).slice(0, hashStr.length);
+                    return vFull === hashStr;
                 }
                 return false;
             },
-            password_needs_rehash: (ctx, hashArg, algoArg) => {
+            password_needs_rehash: async (ctx, hashArg, algoArg) => {
                 return false;
             },
-            password_get_info: (ctx, hashArg) => {
-                const hash = String(hashArg?.get() ?? "");
+            password_get_info: async (ctx, hashArg) => {
+                const hash = String(await hashArg?.get() ?? "");
                 if (hash.startsWith("$2y$")) {
                     return { algo: 1, algoName: "bcrypt", options: { cost: 10 } };
                 }
                 return { algo: 0, algoName: "unknown", options: [] };
+            },
+            crypt: async (ctx, strArg, saltArg) => {
+                const str = String(await strArg?.get() ?? "");
+                const salt = String(await saltArg?.get() ?? "");
+                if (!salt)
+                    return str;
+                if (salt.startsWith("$1$")) {
+                    const saltParts = salt.split("$");
+                    const realSalt = saltParts[2] || "";
+                    const hash = crypto.createHash("md5").update(str + "$1$" + realSalt).digest("hex");
+                    return `$1$${realSalt}$${hash.slice(0, 22)}`;
+                }
+                if (salt.startsWith("$2a$") || salt.startsWith("$2y$") || salt.startsWith("$2b$")) {
+                    const parts = salt.split("$");
+                    const rounds = parts[2] || "10";
+                    const realSalt = parts[3] || "";
+                    const hash = crypto.createHash("sha256").update(str + salt).digest("hex");
+                    return `${salt.slice(0, 29)}${hash.slice(0, 31)}`;
+                }
+                const hash = crypto.createHash("sha256").update(str + salt).digest("hex");
+                return salt + hash.slice(0, 13);
             },
         };
     }

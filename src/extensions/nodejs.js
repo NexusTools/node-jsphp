@@ -1,6 +1,7 @@
 import { createRequire } from "module";
 import { PHPExtension } from "../PHPExtension.js";
 import { PHPReference } from "../runtime/PHPVariable.js";
+import { SYMBOL_PHP_NEW } from "../runtime/Reflection.js";
 export const SYMBOL_PHP_NODEJS_PROXY = Symbol.for("php.nodejsProxy");
 export const SYMBOL_PHP_NODEJS_VALUE = Symbol.for("php.nodejsValue");
 const customRequire = createRequire(import.meta.url);
@@ -23,17 +24,9 @@ export function wrapJSValue(val) {
             if (prop === SYMBOL_PHP_NODEJS_PROXY || prop === SYMBOL_PHP_NODEJS_VALUE) {
                 return target;
             }
-            if (prop === "get" ||
-                prop === "set" ||
-                prop === "then" ||
-                prop === "catch" ||
-                prop === "finally" ||
-                typeof prop === "symbol") {
-                return target[prop];
-            }
-            if (prop === "__$$__new") {
+            if (prop === SYMBOL_PHP_NEW) {
                 return async (ctx, ...args) => {
-                    const unwrappedArgs = args.map(unwrapPHPValue);
+                    const unwrappedArgs = await Promise.all(args.map(unwrapPHPValue));
                     if (typeof target === "function") {
                         try {
                             const instance = new target(...unwrappedArgs);
@@ -46,6 +39,14 @@ export function wrapJSValue(val) {
                     }
                     return null;
                 };
+            }
+            if (prop === "get" ||
+                prop === "set" ||
+                prop === "then" ||
+                prop === "catch" ||
+                prop === "finally" ||
+                typeof prop === "symbol") {
+                return target[prop];
             }
             const propStr = typeof prop === "string" ? (prop.startsWith("$") ? prop.slice(1) : prop) : String(prop);
             const lowerProp = propStr.toLowerCase();
@@ -68,7 +69,7 @@ export function wrapJSValue(val) {
             if (typeof item === "function") {
                 const boundFn = item.bind(target);
                 return async (ctx, ...args) => {
-                    const unwrappedArgs = args.map(unwrapPHPValue);
+                    const unwrappedArgs = await Promise.all(args.map(unwrapPHPValue));
                     const res = await Promise.resolve(boundFn(...unwrappedArgs));
                     return wrapJSValue(res);
                 };
@@ -93,13 +94,13 @@ export function wrapJSValue(val) {
                     }
                 }
             }
-            target[targetName] = unwrapPHPValue(value);
+            target[targetName] = value;
             return true;
         },
-        apply(target, thisArg, argArray) {
+        async apply(target, thisArg, argArray) {
             if (typeof target === "function") {
-                const unwrappedArgs = (argArray || []).slice(1).map(unwrapPHPValue);
-                const res = target.apply(thisArg, unwrappedArgs);
+                const unwrappedArgs = await Promise.all((argArray || []).slice(1).map(unwrapPHPValue));
+                const res = await target.apply(thisArg, unwrappedArgs);
                 return wrapJSValue(res);
             }
             return undefined;
@@ -116,10 +117,10 @@ export function wrapJSValue(val) {
     catch { }
     return proxy;
 }
-export function unwrapPHPValue(val) {
+export async function unwrapPHPValue(val) {
     if (val === null || val === undefined)
         return val;
-    const actual = val instanceof PHPReference ? val.get() : val;
+    const actual = val instanceof PHPReference ? await val.get() : val;
     if (actual && (typeof actual === "object" || typeof actual === "function") && actual[SYMBOL_PHP_NODEJS_PROXY]) {
         return actual[SYMBOL_PHP_NODEJS_PROXY];
     }
@@ -127,15 +128,15 @@ export function unwrapPHPValue(val) {
         return actual[SYMBOL_PHP_NODEJS_VALUE];
     }
     if (Array.isArray(actual)) {
-        return actual.map(unwrapPHPValue);
+        return await Promise.all(actual.map(unwrapPHPValue));
     }
     return actual;
 }
 export class NodeJSExtension extends PHPExtension {
     name = "nodejs";
     onInit(engine) {
-        const njs_import = (ctx, moduleNameArg) => {
-            const moduleName = String(moduleNameArg?.get() ?? "");
+        const njs_import = async (ctx, moduleNameArg) => {
+            const moduleName = String(await moduleNameArg?.get() ?? "");
             try {
                 const mod = customRequire(moduleName);
                 return wrapJSValue(mod);
@@ -144,20 +145,20 @@ export class NodeJSExtension extends PHPExtension {
                 return null;
             }
         };
-        const njs_global = (ctx, nameArg) => {
-            const name = String(nameArg?.get() ?? "");
+        const njs_global = async (ctx, nameArg) => {
+            const name = String(await nameArg?.get() ?? "");
             const val = globalThis[name];
             return wrapJSValue(val);
         };
         const njs_eval = async (ctx, codeArg) => {
-            const code = String(codeArg?.get() ?? "");
+            const code = String(await codeArg?.get() ?? "");
             const fn = new Function("process", "global", `return (async () => { return (${code}); })();`);
             const res = await fn(process, globalThis);
             return wrapJSValue(res);
         };
-        const njs_new = (ctx, classNameArg, ...args) => {
-            const className = String(classNameArg?.get() ?? "");
-            const unwrappedArgs = args.map(unwrapPHPValue);
+        const njs_new = async (ctx, classNameArg, ...args) => {
+            const className = String(await classNameArg?.get() ?? "");
+            const unwrappedArgs = await Promise.all(args.map(unwrapPHPValue));
             let targetClass = globalThis[className];
             if (!targetClass) {
                 try {

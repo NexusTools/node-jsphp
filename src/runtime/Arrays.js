@@ -2,8 +2,9 @@ import { PHPValueError } from "./PHPError.js";
 import { PHPLiteral, PHPReference, PHPArrayOffsetReference } from "./PHPVariable.js";
 import { CoreRuntime } from "./CoreRuntime.js";
 import { isPlainObject } from "./Variables.js";
-function unwrap(arg) {
-    return arg instanceof PHPReference ? arg.get() : arg;
+import { normalizePhpRegistryName } from "./Reflection.js";
+async function unwrap(arg) {
+    return arg instanceof PHPReference ? await arg.get() : arg;
 }
 function isPureSequentialArray(arr) {
     if (!Array.isArray(arr))
@@ -18,8 +19,8 @@ function isPureSequentialArray(arr) {
     return true;
 }
 export class ArrayRuntime {
-    static count(ctx, arrayOrCountableArg) {
-        const arrayOrCountable = unwrap(arrayOrCountableArg);
+    static async count(ctx, arrayOrCountableArg) {
+        const arrayOrCountable = await unwrap(arrayOrCountableArg);
         if (!arrayOrCountable)
             return 0;
         if (Array.isArray(arrayOrCountable)) {
@@ -33,8 +34,8 @@ export class ArrayRuntime {
             return Object.keys(arrayOrCountable).length;
         return 1;
     }
-    static array_keys(ctx, inputArg) {
-        const input = unwrap(inputArg);
+    static async array_keys(ctx, inputArg) {
+        const input = await unwrap(inputArg);
         if (!input || typeof input !== "object")
             return [];
         if (Array.isArray(input)) {
@@ -46,8 +47,8 @@ export class ArrayRuntime {
         }
         return Object.keys(input).map((k) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : k));
     }
-    static array_values(ctx, inputArg) {
-        const input = unwrap(inputArg);
+    static async array_values(ctx, inputArg) {
+        const input = await unwrap(inputArg);
         if (!input || typeof input !== "object")
             return [];
         if (Array.isArray(input)) {
@@ -59,8 +60,8 @@ export class ArrayRuntime {
         }
         return Object.values(input);
     }
-    static array_flip(ctx, inputArg) {
-        const input = unwrap(inputArg);
+    static async array_flip(ctx, inputArg) {
+        const input = await unwrap(inputArg);
         const res = {};
         if (!input || typeof input !== "object")
             return res;
@@ -69,16 +70,16 @@ export class ArrayRuntime {
         }
         return res;
     }
-    static array_reverse(ctx, arrayArg) {
-        const array = unwrap(arrayArg);
+    static async array_reverse(ctx, arrayArg) {
+        const array = await unwrap(arrayArg);
         if (!Array.isArray(array))
             return [];
         return [...array].reverse();
     }
-    static in_array(ctx, needleArg, haystackArg, strictArg) {
-        const needle = unwrap(needleArg);
-        const haystack = unwrap(haystackArg);
-        const strict = Boolean(unwrap(strictArg));
+    static async in_array(ctx, needleArg, haystackArg, strictArg) {
+        const needle = await unwrap(needleArg);
+        const haystack = await unwrap(haystackArg);
+        const strict = Boolean(await unwrap(strictArg));
         if (!haystack)
             return false;
         const values = Array.isArray(haystack) ? haystack : Object.values(haystack);
@@ -87,10 +88,10 @@ export class ArrayRuntime {
         }
         return values.some((v) => v == needle);
     }
-    static array_search(ctx, needleArg, haystackArg, strictArg) {
-        const needle = unwrap(needleArg);
-        const haystack = unwrap(haystackArg);
-        const strict = Boolean(unwrap(strictArg));
+    static async array_search(ctx, needleArg, haystackArg, strictArg) {
+        const needle = await unwrap(needleArg);
+        const haystack = await unwrap(haystackArg);
+        const strict = Boolean(await unwrap(strictArg));
         if (!haystack || typeof haystack !== "object")
             return false;
         const entries = Array.isArray(haystack)
@@ -103,15 +104,15 @@ export class ArrayRuntime {
         }
         return false;
     }
-    static array_key_exists(ctx, keyArg, searchArg) {
-        const key = unwrap(keyArg);
-        const search = unwrap(searchArg);
+    static async array_key_exists(ctx, keyArg, searchArg) {
+        const key = await unwrap(keyArg);
+        const search = await unwrap(searchArg);
         if (!search || typeof search !== "object")
             return false;
         return key in search;
     }
-    static array_merge(ctx, ...arraysArgs) {
-        const arrays = arraysArgs.map(unwrap);
+    static async array_merge(ctx, ...arraysArgs) {
+        const arrays = await Promise.all(arraysArgs.map(unwrap));
         let allPure = true;
         for (const arr of arrays) {
             if (!isPureSequentialArray(arr)) {
@@ -156,9 +157,9 @@ export class ArrayRuntime {
         }
         return isResultArr ? resultArr : resultObj;
     }
-    static array_combine(ctx, keysArg, valuesArg) {
-        const keys = unwrap(keysArg);
-        const values = unwrap(valuesArg);
+    static async array_combine(ctx, keysArg, valuesArg) {
+        const keys = await unwrap(keysArg);
+        const values = await unwrap(valuesArg);
         if (!Array.isArray(keys) || !Array.isArray(values) || keys.length !== values.length) {
             return false;
         }
@@ -168,11 +169,11 @@ export class ArrayRuntime {
         });
         return res;
     }
-    static array_fill(ctx, startIndexArg, countArg, valueArg) {
-        const startIndex = Math.floor(Number(startIndexArg?.get()) || 0);
-        const rawCount = Number(countArg?.get());
+    static async array_fill(ctx, startIndexArg, countArg, valueArg) {
+        const startIndex = Math.floor(Number(await startIndexArg?.get()) || 0);
+        const rawCount = Number(await countArg?.get());
         const count = Number.isNaN(rawCount) ? 0 : Math.floor(rawCount);
-        const value = valueArg?.get();
+        const value = await valueArg?.get();
         if (count < 0)
             throw new PHPValueError("array_fill(): Argument #2 ($count) must be greater than or equal to 0");
         if (count === 0)
@@ -188,9 +189,9 @@ export class ArrayRuntime {
             result[startIndex + offset] = value;
         return result;
     }
-    static array_fill_keys(ctx, keysArg, valueArg) {
-        const keys = keysArg?.get();
-        const value = valueArg?.get();
+    static async array_fill_keys(ctx, keysArg, valueArg) {
+        const keys = await keysArg?.get();
+        const value = await valueArg?.get();
         const result = {};
         if (!keys || typeof keys !== "object")
             return result;
@@ -199,9 +200,9 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_intersect(ctx, arrayArg, ...othersArgs) {
-        const array = arrayArg?.get();
-        const others = othersArgs.map((a) => a?.get());
+    static async array_intersect(ctx, arrayArg, ...othersArgs) {
+        const array = await arrayArg?.get();
+        const others = await Promise.all(othersArgs.map((arg) => arg?.get()));
         if (!array || typeof array !== "object")
             return [];
         const values = others.map((other) => new Set(Object.values(other || {})));
@@ -218,9 +219,9 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_diff(ctx, arrayArg, ...othersArgs) {
-        const array = arrayArg?.get();
-        const others = othersArgs.map((a) => a?.get());
+    static async array_diff(ctx, arrayArg, ...othersArgs) {
+        const array = await arrayArg?.get();
+        const others = await Promise.all(othersArgs.map((arg) => arg?.get()));
         if (!array || typeof array !== "object")
             return Array.isArray(array) ? [] : {};
         const values = others.map((other) => {
@@ -243,9 +244,9 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_intersect_key(ctx, arrayArg, ...othersArgs) {
-        const array = arrayArg?.get();
-        const others = othersArgs.map((a) => a?.get());
+    static async array_intersect_key(ctx, arrayArg, ...othersArgs) {
+        const array = await arrayArg?.get();
+        const others = await Promise.all(othersArgs.map((arg) => arg?.get()));
         if (!array || typeof array !== "object")
             return Array.isArray(array) ? [] : {};
         const keySets = others.map((other) => new Set(Object.keys(other || {}).map(String)));
@@ -261,9 +262,9 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_diff_key(ctx, arrayArg, ...othersArgs) {
-        const array = arrayArg?.get();
-        const others = othersArgs.map((a) => a?.get());
+    static async array_diff_key(ctx, arrayArg, ...othersArgs) {
+        const array = await arrayArg?.get();
+        const others = await Promise.all(othersArgs.map((arg) => arg?.get()));
         if (!array || typeof array !== "object")
             return Array.isArray(array) ? [] : {};
         const keySets = others.map((other) => new Set(Object.keys(other || {}).map(String)));
@@ -279,11 +280,12 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_slice(ctx, arrayArg, offsetArg, lengthArg, preserveKeysArg) {
-        const array = arrayArg?.get();
-        let offset = Number(offsetArg?.get()) || 0;
-        const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
-        const preserveKeys = Boolean(preserveKeysArg?.get());
+    static async array_slice(ctx, arrayArg, offsetArg, lengthArg, preserveKeysArg) {
+        const array = await arrayArg?.get();
+        let offset = Number(await offsetArg?.get()) || 0;
+        const lengthValue = await lengthArg?.get();
+        const length = lengthValue !== undefined ? Number(lengthValue) : undefined;
+        const preserveKeys = Boolean(await preserveKeysArg?.get());
         if (!array || typeof array !== "object")
             return Array.isArray(array) ? [] : {};
         const keys = Object.keys(array);
@@ -306,11 +308,11 @@ export class ArrayRuntime {
         }
         return res;
     }
-    static array_change_key_case(ctx, arrayArg, caseArg) {
-        const array = arrayArg?.get();
+    static async array_change_key_case(ctx, arrayArg, caseArg) {
+        const array = await arrayArg?.get();
         if (!array || typeof array !== "object")
             return null;
-        const toUpper = Number(caseArg?.get()) === 1;
+        const toUpper = Number(await caseArg?.get()) === 1;
         const res = {};
         for (const [k, v] of Object.entries(array)) {
             const newKey = toUpper ? String(k).toUpperCase() : String(k).toLowerCase();
@@ -319,8 +321,8 @@ export class ArrayRuntime {
         return res;
     }
     static async usort(ctx, arrayArg, callbackArg) {
-        const array = arrayArg?.get();
-        const callback = callbackArg?.get();
+        const array = await arrayArg?.get();
+        const callback = await callbackArg?.get();
         if (!array || typeof array !== "object")
             return false;
         const isArr = Array.isArray(array);
@@ -347,13 +349,13 @@ export class ArrayRuntime {
             entries.forEach((e, idx) => { array[idx] = e.val; });
         }
         if (arrayArg && typeof arrayArg.set === "function") {
-            arrayArg.set(array);
+            await arrayArg.set(array);
         }
         return true;
     }
     static async uasort(ctx, arrayArg, callbackArg) {
-        const array = arrayArg?.get();
-        const callback = callbackArg?.get();
+        const array = await arrayArg?.get();
+        const callback = await callbackArg?.get();
         if (!array || typeof array !== "object")
             return false;
         const entries = Object.entries(array).map(([k, v]) => ({ key: k, val: v }));
@@ -377,24 +379,24 @@ export class ArrayRuntime {
             entries.forEach((e) => { array[e.key] = e.val; });
         }
         if (arrayArg && typeof arrayArg.set === "function") {
-            arrayArg.set(array);
+            await arrayArg.set(array);
         }
         return true;
     }
     static async uksort(ctx, arrayArg, callbackArg) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
-        let callback = callbackArg?.get !== undefined ? callbackArg.get() : callbackArg;
+            array = await array.get();
+        let callback = callbackArg?.get !== undefined ? await callbackArg.get() : callbackArg;
         while (callback instanceof PHPReference)
-            callback = callback.get();
+            callback = await callback.get();
         if (!array || typeof array !== "object")
             return false;
         const entries = Object.entries(array).map(([k, v]) => ({ key: k, val: v }));
         for (let i = 0; i < entries.length; i++) {
             for (let j = i + 1; j < entries.length; j++) {
                 const rawCmp = await CoreRuntime.functions.call_user_func(ctx, new PHPLiteral(callback), new PHPLiteral(entries[i].key), new PHPLiteral(entries[j].key));
-                const cmp = Number(rawCmp?.get ? rawCmp.get() : rawCmp) || 0;
+                const cmp = Number(rawCmp?.get ? await rawCmp.get() : rawCmp) || 0;
                 if (cmp > 0) {
                     const temp = entries[i];
                     entries[i] = entries[j];
@@ -414,16 +416,16 @@ export class ArrayRuntime {
         }
         return true;
     }
-    static array_push(ctx, arrayArg, ...varargsArgs) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async array_push(ctx, arrayArg, ...varargsArgs) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
-        const varargs = varargsArgs.map((a) => {
-            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
+            array = await array.get();
+        const varargs = await Promise.all(varargsArgs.map(async (a) => {
+            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? await a.get() : a;
             while (unwrap instanceof PHPReference)
-                unwrap = unwrap.get();
+                unwrap = await unwrap.get();
             return unwrap;
-        });
+        }));
         if (!Array.isArray(array))
             return 0;
         for (const item of varargs) {
@@ -431,10 +433,10 @@ export class ArrayRuntime {
         }
         return array.length;
     }
-    static array_pop(ctx, arrayArg) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async array_pop(ctx, arrayArg) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
+            array = await array.get();
         if (Array.isArray(array))
             return array.pop();
         if (!isPlainObject(array))
@@ -447,10 +449,10 @@ export class ArrayRuntime {
         delete array[lastKey];
         return value;
     }
-    static array_shift(ctx, arrayArg) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async array_shift(ctx, arrayArg) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
+            array = await array.get();
         if (Array.isArray(array))
             return array.shift();
         if (!isPlainObject(array))
@@ -471,23 +473,23 @@ export class ArrayRuntime {
         }
         return value;
     }
-    static array_unshift(ctx, arrayArg, ...varargsArgs) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async array_unshift(ctx, arrayArg, ...varargsArgs) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
-        const varargs = varargsArgs.map((a) => {
-            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
+            array = await array.get();
+        const varargs = await Promise.all(varargsArgs.map(async (a) => {
+            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? await a.get() : a;
             while (unwrap instanceof PHPReference)
-                unwrap = unwrap.get();
+                unwrap = await unwrap.get();
             return unwrap;
-        });
+        }));
         if (!Array.isArray(array))
             return 0;
         array.unshift(...varargs);
         return array.length;
     }
-    static array_unique(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async array_unique(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         if (!array || typeof array !== "object") {
             return Array.isArray(array) ? [] : {};
         }
@@ -504,102 +506,100 @@ export class ArrayRuntime {
         }
         return res;
     }
-    static array_column(ctx, arrayArg, columnKeyArg) {
-        const array = arrayArg?.get();
-        const columnKey = columnKeyArg?.get();
+    static async array_column(ctx, arrayArg, columnKeyArg) {
+        const array = await arrayArg?.get();
+        const columnKey = await columnKeyArg?.get();
         if (!Array.isArray(array))
             return [];
         return array.map((item) => item?.[columnKey]).filter((v) => v !== undefined);
     }
-    static sort(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async sort(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         if (!Array.isArray(array))
             return false;
         array.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
         return true;
     }
-    static rsort(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async rsort(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         if (!Array.isArray(array))
             return false;
         array.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
         return true;
     }
-    static asort(ctx, arrayArg, flagsArg) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async asort(ctx, arrayArg, flagsArg) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
+            array = await array.get();
         if (!array || typeof array !== "object")
             return false;
-        let flagsVal = flagsArg?.get !== undefined ? flagsArg.get() : flagsArg;
+        let flagsVal = flagsArg?.get !== undefined ? await flagsArg.get() : flagsArg;
         while (flagsVal instanceof PHPReference)
-            flagsVal = flagsVal.get();
-        const entries = Object.entries(array).sort(([, a], [, b]) => {
-            let valA = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
-            while (valA instanceof PHPReference)
-                valA = valA.get();
-            let valB = b && typeof b === "object" && typeof b.get === "function" ? b.get() : b;
-            while (valB instanceof PHPReference)
-                valB = valB.get();
-            if (valA > valB)
+            flagsVal = await flagsVal.get();
+        const entries = await Promise.all(Object.entries(array).map(async ([key, value]) => ({
+            key,
+            value,
+            sortValue: await unwrap(value),
+        })));
+        entries.sort((a, b) => {
+            if (a.sortValue > b.sortValue)
                 return 1;
-            if (valA < valB)
+            if (a.sortValue < b.sortValue)
                 return -1;
             return 0;
         });
         if (Array.isArray(array)) {
             array.length = 0;
-            for (const [k, v] of entries) {
-                array[k] = v;
+            for (const { key, value } of entries) {
+                array[key] = value;
             }
         }
         else {
             for (const key of Object.keys(array))
                 delete array[key];
-            for (const [key, value] of entries)
-                array[key] = value;
+            for (const entry of entries)
+                array[entry.key] = entry.value;
         }
         return true;
     }
-    static arsort(ctx, arrayArg, flagsArg) {
-        let array = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+    static async arsort(ctx, arrayArg, flagsArg) {
+        let array = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
+            array = await array.get();
         if (!array || typeof array !== "object")
             return false;
-        let flagsVal = flagsArg?.get !== undefined ? flagsArg.get() : flagsArg;
+        let flagsVal = flagsArg?.get !== undefined ? await flagsArg.get() : flagsArg;
         while (flagsVal instanceof PHPReference)
-            flagsVal = flagsVal.get();
-        const entries = Object.entries(array).sort(([, a], [, b]) => {
-            let valA = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
-            while (valA instanceof PHPReference)
-                valA = valA.get();
-            let valB = b && typeof b === "object" && typeof b.get === "function" ? b.get() : b;
-            while (valB instanceof PHPReference)
-                valB = valB.get();
-            if (valA < valB)
+            flagsVal = await flagsVal.get();
+        const entries = await Promise.all(Object.entries(array).map(async ([key, value]) => ({
+            key,
+            value,
+            sortValue: await unwrap(value),
+        })));
+        entries.sort((a, b) => {
+            if (a.sortValue < b.sortValue)
                 return 1;
-            if (valA > valB)
+            if (a.sortValue > b.sortValue)
                 return -1;
             return 0;
         });
         if (Array.isArray(array)) {
             array.length = 0;
-            for (const [k, v] of entries) {
-                array[k] = v;
+            for (const { key, value } of entries) {
+                array[key] = value;
             }
         }
         else {
             for (const key of Object.keys(array))
                 delete array[key];
-            for (const [key, value] of entries)
-                array[key] = value;
+            for (const entry of entries)
+                array[entry.key] = entry.value;
         }
         return true;
     }
-    static ksort(ctx, arrayArg, flagsArg) {
-        const array = arrayArg?.get();
-        const flags = Number(flagsArg?.get()) || 0;
+    static async ksort(ctx, arrayArg, flagsArg) {
+        const array = await arrayArg?.get();
+        const flags = Number(await flagsArg?.get()) || 0;
         if (!array || typeof array !== "object")
             return false;
         const entries = Object.entries(array).sort(([left], [right]) => {
@@ -617,9 +617,9 @@ export class ArrayRuntime {
             array[key] = value;
         return true;
     }
-    static krsort(ctx, arrayArg, flagsArg) {
-        const array = arrayArg?.get();
-        const flags = Number(flagsArg?.get()) || 0;
+    static async krsort(ctx, arrayArg, flagsArg) {
+        const array = await arrayArg?.get();
+        const flags = Number(await flagsArg?.get()) || 0;
         if (!array || typeof array !== "object")
             return false;
         const entries = Object.entries(array).sort(([left], [right]) => {
@@ -638,8 +638,8 @@ export class ArrayRuntime {
         return true;
     }
     static async array_map(ctx, callbackArg, ...arraysArgs) {
-        const callback = callbackArg?.get();
-        const arrays = arraysArgs.map((a) => a?.get());
+        const callback = await callbackArg?.get();
+        const arrays = await Promise.all(arraysArgs.map((arg) => arg?.get()));
         if (!callback)
             return arrays[0] || [];
         const arr = arrays[0] || [];
@@ -655,12 +655,12 @@ export class ArrayRuntime {
                 mapped = await callback.apply(ctx, [ctx, ...wrapArgs]);
             }
             else if (typeof callback === "string") {
-                const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                const fn = ctx.functions[normalizePhpRegistryName(callback)] || ctx.functionMissing(callback);
                 mapped = await fn(ctx, ...wrapArgs);
             }
             else if (Array.isArray(callback) && callback.length === 2) {
-                const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
-                const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
+                const obj = callback[0] instanceof PHPReference ? await callback[0].get() : callback[0];
+                const m = String(callback[1] instanceof PHPReference ? await callback[1].get() : callback[1]).toLowerCase();
                 mapped = await obj[m](ctx, ...wrapArgs);
             }
             else {
@@ -675,13 +675,8 @@ export class ArrayRuntime {
         }
         return res;
     }
-    static array_replace(ctx, ...arraysArgs) {
-        const arrays = arraysArgs.map((a) => {
-            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
-            while (unwrap instanceof PHPReference)
-                unwrap = unwrap.get();
-            return unwrap;
-        });
+    static async array_replace(ctx, ...arraysArgs) {
+        const arrays = await Promise.all(arraysArgs.map(unwrap));
         const first = arrays[0];
         if (!first || typeof first !== "object")
             return {};
@@ -697,8 +692,8 @@ export class ArrayRuntime {
         }
         return result;
     }
-    static array_replace_recursive(ctx, ...arraysArgs) {
-        const mergeRecursive = (target, source) => {
+    static async array_replace_recursive(ctx, ...arraysArgs) {
+        const mergeRecursive = async (target, source) => {
             if (!source || typeof source !== "object")
                 return source;
             if (!target || typeof target !== "object")
@@ -707,9 +702,9 @@ export class ArrayRuntime {
             const res = isArr ? [...target] : { ...target };
             for (const [k, v] of Object.entries(source)) {
                 const targetVal = res[k];
-                const sourceVal = v && typeof v === "object" && typeof v.get === "function" ? v.get() : v;
+                const sourceVal = await unwrap(v);
                 if (targetVal && typeof targetVal === "object" && sourceVal && typeof sourceVal === "object" && !Array.isArray(sourceVal)) {
-                    res[k] = mergeRecursive(targetVal, sourceVal);
+                    res[k] = await mergeRecursive(targetVal, sourceVal);
                 }
                 else {
                     res[k] = sourceVal;
@@ -717,28 +712,23 @@ export class ArrayRuntime {
             }
             return res;
         };
-        const arrays = arraysArgs.map((a) => {
-            let unwrap = a && typeof a === "object" && typeof a.get === "function" ? a.get() : a;
-            while (unwrap instanceof PHPReference)
-                unwrap = unwrap.get();
-            return unwrap;
-        });
+        const arrays = await Promise.all(arraysArgs.map(unwrap));
         let res = arrays[0] || {};
         for (let i = 1; i < arrays.length; i++) {
-            res = mergeRecursive(res, arrays[i]);
+            res = await mergeRecursive(res, arrays[i]);
         }
         return res;
     }
     static async array_filter(ctx, arrayArg, callbackArg, modeArg) {
-        let array = arrayArg?.get !== undefined ? arrayArg.get() : arrayArg;
+        let array = arrayArg?.get !== undefined ? await arrayArg.get() : arrayArg;
         while (array instanceof PHPReference)
-            array = array.get();
-        let callback = callbackArg?.get !== undefined ? callbackArg.get() : callbackArg;
+            array = await array.get();
+        let callback = callbackArg?.get !== undefined ? await callbackArg.get() : callbackArg;
         while (callback instanceof PHPReference)
-            callback = callback.get();
-        let modeVal = modeArg?.get !== undefined ? modeArg.get() : modeArg;
+            callback = await callback.get();
+        let modeVal = modeArg?.get !== undefined ? await modeArg.get() : modeArg;
         while (modeVal instanceof PHPReference)
-            modeVal = modeVal.get();
+            modeVal = await modeVal.get();
         const mode = Number(modeVal) || 0;
         if (!array || typeof array !== "object")
             return Array.isArray(array) ? [] : {};
@@ -758,7 +748,7 @@ export class ArrayRuntime {
                 continue;
             const k = entry[0];
             const v = entry[1];
-            let val = v instanceof PHPReference ? v.get() : v;
+            let val = v instanceof PHPReference ? await v.get() : v;
             let keep = false;
             if (!callback) {
                 keep = Boolean(val);
@@ -769,12 +759,12 @@ export class ArrayRuntime {
                     keep = Boolean(await callback.apply(ctx, [ctx, ...args]));
                 }
                 else if (typeof callback === "string") {
-                    const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                    const fn = ctx.functions[normalizePhpRegistryName(callback)] || ctx.functionMissing(callback);
                     keep = Boolean(await fn(ctx, ...args));
                 }
                 else if (Array.isArray(callback) && callback.length === 2) {
-                    const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
-                    const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
+                    const obj = callback[0] instanceof PHPReference ? await callback[0].get() : callback[0];
+                    const m = String(callback[1] instanceof PHPReference ? await callback[1].get() : callback[1]).toLowerCase();
                     if (obj && typeof obj[m] === "function") {
                         keep = Boolean(await obj[m](ctx, ...args));
                     }
@@ -790,104 +780,94 @@ export class ArrayRuntime {
         return result;
     }
     static async array_all(ctx, arrayArg, callbackArg) {
-        let array = arrayArg?.get !== undefined ? arrayArg.get() : arrayArg;
-        while (array instanceof PHPReference)
-            array = array.get();
-        let callback = callbackArg?.get !== undefined ? callbackArg.get() : callbackArg;
-        while (callback instanceof PHPReference)
-            callback = callback.get();
+        const array = await ctx.toVal(arrayArg);
+        const callback = await ctx.toVal(callbackArg);
         if (!array || typeof array !== "object")
             return true;
         const entries = Array.isArray(array) ? array.map((v, i) => [i, v]) : Object.entries(array);
         for (const [k, v] of entries) {
-            let val = v instanceof PHPReference ? v.get() : v;
+            const val = await ctx.toVal(v);
             let rawRes = false;
             const args = [new PHPLiteral(val), new PHPLiteral(k)];
             if (typeof callback === "function") {
                 rawRes = await callback.apply(ctx, [ctx, ...args]);
             }
             else if (typeof callback === "string") {
-                const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                const fn = ctx.functions[normalizePhpRegistryName(callback)] || ctx.functionMissing(callback);
                 rawRes = await fn(ctx, ...args);
             }
             else if (Array.isArray(callback) && callback.length === 2) {
-                const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
-                const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
+                const obj = await ctx.toVal(callback[0]);
+                const m = String(await ctx.toVal(callback[1])).toLowerCase();
                 if (obj && typeof obj[m] === "function") {
                     rawRes = await obj[m](ctx, ...args);
                 }
             }
-            if (!ctx.isTruthy(rawRes))
+            if (!(await ctx.isTruthy(rawRes)))
                 return false;
         }
         return true;
     }
-    static iterator_to_array(ctx, iteratorArg, preserveKeysArg) {
-        let iterator = iteratorArg instanceof PHPReference ? iteratorArg.get() : iteratorArg;
-        while (iterator instanceof PHPReference)
-            iterator = iterator.get();
-        const preserveKeys = preserveKeysArg === undefined || ctx.isTruthy(preserveKeysArg);
+    static async iterator_to_array(ctx, iteratorArg, preserveKeysArg) {
+        const iterator = await ctx.toVal(iteratorArg);
+        const preserveKeys = preserveKeysArg === undefined || (await ctx.isTruthy(preserveKeysArg));
         if (Array.isArray(iterator)) {
-            return preserveKeys ? iterator.slice() : iterator.map((value) => value instanceof PHPReference ? value.get() : value);
+            return preserveKeys ? iterator.slice() : Promise.all(iterator.map((value) => ctx.toVal(value)));
         }
         if (!iterator || typeof iterator !== "object")
             return [];
         const entries = Object.entries(iterator);
         if (!preserveKeys)
-            return entries.map(([, value]) => value instanceof PHPReference ? value.get() : value);
+            return Promise.all(entries.map(([, value]) => ctx.toVal(value)));
         return Object.fromEntries(entries);
     }
     static async array_any(ctx, arrayArg, callbackArg) {
-        let array = arrayArg?.get !== undefined ? arrayArg.get() : arrayArg;
-        while (array instanceof PHPReference)
-            array = array.get();
-        let callback = callbackArg?.get !== undefined ? callbackArg.get() : callbackArg;
-        while (callback instanceof PHPReference)
-            callback = callback.get();
+        const array = await ctx.toVal(arrayArg);
+        const callback = await ctx.toVal(callbackArg);
         if (!array || typeof array !== "object")
             return false;
         const entries = Array.isArray(array) ? array.map((v, i) => [i, v]) : Object.entries(array);
         for (const [k, v] of entries) {
-            let val = v instanceof PHPReference ? v.get() : v;
+            const val = await ctx.toVal(v);
             let rawRes = false;
             const args = [new PHPLiteral(val), new PHPLiteral(k)];
             if (typeof callback === "function") {
                 rawRes = await callback.apply(ctx, [ctx, ...args]);
             }
             else if (typeof callback === "string") {
-                const fn = ctx.functions[callback.toLowerCase()] || ctx.functionMissing(callback);
+                const fn = ctx.functions[normalizePhpRegistryName(callback)] || ctx.functionMissing(callback);
                 rawRes = await fn(ctx, ...args);
             }
             else if (Array.isArray(callback) && callback.length === 2) {
-                const obj = callback[0] instanceof PHPReference ? callback[0].get() : callback[0];
-                const m = String(callback[1] instanceof PHPReference ? callback[1].get() : callback[1]).toLowerCase();
+                const obj = await ctx.toVal(callback[0]);
+                const m = String(await ctx.toVal(callback[1])).toLowerCase();
                 if (obj && typeof obj[m] === "function") {
                     rawRes = await obj[m](ctx, ...args);
                 }
             }
-            if (ctx.isTruthy(rawRes))
+            if (await ctx.isTruthy(rawRes))
                 return true;
         }
         return false;
     }
     static async array_reduce(ctx, arrayArg, callbackArg, initialArg) {
-        const array = arrayArg?.get();
-        const callback = callbackArg?.get();
-        let carry = initialArg?.get();
+        const array = await arrayArg?.get();
+        const callback = await callbackArg?.get();
+        let carry = await initialArg?.get();
         if (!array || typeof array !== "object")
             return null;
         const values = Array.isArray(array) ? array : Object.values(array);
-        const cb = callback && typeof callback === "object" && typeof callback.get === "function" ? callback.get() : callback;
+        const cb = callback;
         for (const item of values) {
             if (typeof cb === "string") {
-                const fn = ctx.functions[cb.toLowerCase()] || ctx.functionMissing(cb);
+                const fn = ctx.functions[normalizePhpRegistryName(cb)] || ctx.functionMissing(cb);
                 carry = await fn(ctx, new PHPLiteral(carry), new PHPLiteral(item));
             }
             else if (Array.isArray(cb) && cb.length === 2) {
-                const target0 = cb[0] instanceof PHPReference ? cb[0].get() : cb[0];
-                const mName = String(cb[1] instanceof PHPReference ? cb[1].get() : cb[1]).toLowerCase();
+                const target0 = await ctx.toVal(cb[0]);
+                const mName = String(await ctx.toVal(cb[1])).toLowerCase();
                 if (typeof target0 === "string") {
-                    const clsName = target0.toLowerCase();
+                    const clsName = normalizePhpRegistryName(target0);
                     const cls = ctx.classes[clsName] || ctx.engine.classes[clsName] || (await ctx.resolveClass(clsName, target0));
                     if (cls && typeof cls[mName] === "function") {
                         carry = await cls[mName](ctx, new PHPLiteral(carry), new PHPLiteral(item));
@@ -908,8 +888,8 @@ export class ArrayRuntime {
         }
         return carry;
     }
-    static array_key_first(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async array_key_first(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         if (!array || typeof array !== "object")
             return null;
         if (Array.isArray(array))
@@ -917,8 +897,8 @@ export class ArrayRuntime {
         const keys = Object.keys(array);
         return keys.length > 0 ? keys[0] : null;
     }
-    static array_key_last(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async array_key_last(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         if (!array || typeof array !== "object")
             return null;
         if (Array.isArray(array))
@@ -931,8 +911,8 @@ export class ArrayRuntime {
             return [];
         return Object.entries(array).map(([k, v]) => [(!isNaN(Number(k)) && String(Number(k)) === String(k)) ? Number(k) : k, v]);
     }
-    static reset(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async reset(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -940,8 +920,8 @@ export class ArrayRuntime {
             Object.defineProperty(array, "__ptr", { value: 0, writable: true, configurable: true, enumerable: false });
         return entries[0][1];
     }
-    static current(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async current(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -950,8 +930,8 @@ export class ArrayRuntime {
             return false;
         return entries[ptr][1];
     }
-    static next(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async next(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -963,8 +943,8 @@ export class ArrayRuntime {
             return false;
         return entries[nextPtr][1];
     }
-    static prev(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async prev(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -976,8 +956,8 @@ export class ArrayRuntime {
             return false;
         return entries[prevPtr][1];
     }
-    static end(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async end(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -986,8 +966,8 @@ export class ArrayRuntime {
             Object.defineProperty(array, "__ptr", { value: lastPtr, writable: true, configurable: true, enumerable: false });
         return entries[lastPtr][1];
     }
-    static key(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async key(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return null;
@@ -996,8 +976,8 @@ export class ArrayRuntime {
             return null;
         return entries[ptr][0];
     }
-    static each(ctx, arrayArg) {
-        const array = arrayArg?.get();
+    static async each(ctx, arrayArg) {
+        const array = await arrayArg?.get();
         const entries = ArrayRuntime.getEntries(array);
         if (!entries.length)
             return false;
@@ -1010,11 +990,11 @@ export class ArrayRuntime {
         return { 1: v, value: v, 0: k, key: k };
     }
     static async array_walk(ctx, arrayArg, callbackArg, userdataArg) {
-        const target = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+        const target = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         if (!target || typeof target !== "object")
             return false;
-        const cb = callbackArg?.get ? callbackArg.get() : callbackArg;
-        const userdata = userdataArg?.get ? userdataArg.get() : userdataArg;
+        const cb = callbackArg?.get ? await callbackArg.get() : callbackArg;
+        const userdata = userdataArg?.get ? await userdataArg.get() : userdataArg;
         const entries = Array.isArray(target) ? Array.from(target.entries()) : Object.entries(target);
         for (const [k, v] of entries) {
             const valRef = new PHPArrayOffsetReference(target, k);
@@ -1030,20 +1010,20 @@ export class ArrayRuntime {
                 return;
             const entries = Array.isArray(target) ? Array.from(target.entries()) : Object.entries(target);
             for (const [k, v] of entries) {
-                const item = v instanceof PHPReference ? v.get() : v;
+                const item = v instanceof PHPReference ? await v.get() : v;
                 if (item && typeof item === "object") {
                     await walk(item);
                 }
                 else {
                     const valRef = new PHPArrayOffsetReference(target, k);
                     const keyLit = new PHPLiteral(k);
-                    const userLit = new PHPLiteral(userdataArg?.get ? userdataArg.get() : userdataArg);
-                    const cb = callbackArg?.get ? callbackArg.get() : callbackArg;
+                    const userLit = new PHPLiteral(userdataArg?.get ? await userdataArg.get() : userdataArg);
+                    const cb = callbackArg?.get ? await callbackArg.get() : callbackArg;
                     await CoreRuntime.functions.call_user_func(ctx, new PHPLiteral(cb), valRef, keyLit, userLit);
                 }
             }
         };
-        const targetArr = arrayArg instanceof PHPReference ? arrayArg.get() : arrayArg;
+        const targetArr = arrayArg instanceof PHPReference ? await arrayArg.get() : arrayArg;
         await walk(targetArr);
         return true;
     }

@@ -1,6 +1,7 @@
 import type { PHPContext } from "../PHPContext.js";
 import type { PHPEngine } from "../PHPEngine.js";
 import { PHPReference } from "./PHPVariable.js";
+import { SYMBOL_PHP_NEW } from "./Reflection.js";
 export declare class PHPFiberError extends Error {
 }
 export declare class PHPFiberExit extends Error {
@@ -13,7 +14,7 @@ export declare class PHPFiber {
     private suspended;
     private value;
     constructor(callback?: Function);
-    static __$$__new(ctx: PHPContext, callbackArg?: PHPReference): Promise<PHPFiber>;
+    static [SYMBOL_PHP_NEW](ctx: PHPContext, callbackArg?: PHPReference): Promise<PHPFiber>;
     __construct(ctx: PHPContext, callbackArg?: PHPReference): Promise<void>;
     start(ctx: PHPContext, ...args: any[]): Promise<any>;
     isStarted(): boolean;

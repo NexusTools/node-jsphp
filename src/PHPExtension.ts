@@ -1,5 +1,5 @@
-import { PHPEngine, PHPFunction } from "./PHPEngine.js";
-import { defineFunction, FunctionMetaOptions } from "./runtime/Reflection.js";
+import { PHPEngine } from "./PHPEngine.js";
+import type { PHPFunction } from "./PHPEngine.js";
 
 export abstract class PHPExtension {
   public abstract readonly name: string;
@@ -8,15 +8,7 @@ export abstract class PHPExtension {
   public functions: Record<string, PHPFunction> = {};
   public classes: Record<string, any> = {};
 
-  public registerFunction(
-    name: string,
-    fn: PHPFunction,
-    params: { name: string; isOptional?: boolean; defaultValue?: any; type?: string }[] = [],
-    visibility: "public" | "protected" | "private" = "public"
-  ): void {
-    const fnWithMeta = defineFunction(fn, { name, visibility, parameters: params });
-    this.functions[name.toLowerCase()] = fnWithMeta;
-  }
+  public registerFunction(name: string, fn: PHPFunction): void { this.functions[name] = fn; }
 
   public abstract onInit(engine: PHPEngine): void | Promise<void>
 }

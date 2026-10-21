@@ -1,8 +1,8 @@
 import { Writable } from "stream";
-import { PHPEngine } from "./PHPEngine.js";
+import { PHPEngine, type PHPFunction } from "./PHPEngine.js";
 import { Superglobals, SuperglobalsOptions } from "./runtime/Superglobals.js";
 import { OutputBufferStack } from "./runtime/OutputBuffer.js";
-import { PHPVariable, PHPReference } from "./runtime/PHPVariable.js";
+import { PHPReference } from "./runtime/PHPVariable.js";
 export interface PHPContextOptions {
     cwd?: string;
     root?: string;
@@ -37,14 +37,14 @@ export declare class PHPContext {
     env: Record<string, string>;
     vars: Record<string, any>;
     constants: Record<string, any>;
-    functions: Record<string, Function>;
+    functions: Record<string, PHPFunction>;
     classes: Record<string, any>;
     interfaces: Record<string, any>;
     internalVars: Record<string, any>;
     private scopes;
     private globalBindings;
     private staticBindings;
-    staticVars: Map<string, any>;
+    staticVars: Record<string, any>;
     superglobals: Superglobals;
     outputBuffer: OutputBufferStack;
     response: PHPResponse;
@@ -56,15 +56,12 @@ export declare class PHPContext {
     lastError: Record<string, any> | null;
     currentDir: string;
     executionDepth: number;
-    tickCount: number;
-    private phpCallStack;
     private stdout;
     private stderr;
     private outputChunks;
     get outputText(): string;
     get symbols(): Record<string, any>;
     set outputText(val: string);
-    checkLoop(filepath: string, line: number): Promise<void>;
     constructor(engine: PHPEngine, options?: PHPContextOptions);
     currentClassStack: any[];
     close(): void;
@@ -72,18 +69,16 @@ export declare class PHPContext {
     get currentClassName(): string;
     get currentParentClassName(): string;
     toLiteral(val: any): PHPReference;
-    toVal(val: any): any;
-    add(left: any, right: any): any;
-    equals(left: any, right: any, strict?: boolean, negate?: boolean): boolean;
+    toVal(val: any): Promise<any>;
+    add(left: any, right: any): Promise<any>;
+    equals(left: any, right: any, strict?: boolean, negate?: boolean): Promise<boolean>;
     /**
      * Checks if an object is an instance of a class or interface.
      * @param className Class or interface name in lowercase.
      */
-    isInstanceOf(objArg: any, className: string): boolean;
-    /** Gets virtualized PHP stack trace frames for error handling and backtraces. */
+    isInstanceOf(objArg: any, className: string): Promise<boolean>;
+    /** Converts native JavaScript stack frames to PHP backtrace entries. */
     getPHPBacktrace(): any[];
-    pushPHPFrame(functionName: string, file: string, line: number): void;
-    popPHPFrame(): void;
     /** Sets a user-defined error handler function. */
     setErrorHandler(handler: any, levels?: number): any;
     /** Restores the previous error handler from the stack. */
@@ -101,7 +96,7 @@ export declare class PHPContext {
     /** Flushes response headers to the client. */
     flushHeaders(): void;
     /** Converts a value to a PHP string according to PHP type casting rules (false/null -> "", true -> "1"). */
-    str(v: any): string;
+    str(v: any): Promise<string>;
     /** Writes output text to stdout or active output buffer. */
     echo(data: any): Promise<void>;
     writeStdout(str: string): void;
@@ -114,43 +109,48 @@ export declare class PHPContext {
     private globalsProxy?;
     private getGlobalPHPVar;
     private getGlobalsProxy;
-    getPHPVar(name: string): PHPVariable;
+    getPHPVar(name: string): PHPReference;
+    argPHPVar(name: string, value: any, byReference?: boolean, variadic?: boolean): Promise<PHPReference>;
     /** Gets a variable value from the current or global scope. */
-    getVar(name: string): any;
+    getVar(name: string): Promise<any>;
     /** Sets a variable value in the current scope. */
-    setVar(name: string, value: any): any;
+    setVar(name: string, value: any): Promise<any>;
     /** Binds a variable name to global scope. */
-    bindGlobal(name: string): void;
+    bindGlobal(name: string): PHPReference;
+    unsetVar(name: string): void;
     private scopeArgs;
     /** Pushes a new variable scope. */
-    pushScope(args?: any[]): void;
+    pushScope(args?: ArrayLike<any>, offset?: number): void;
     /** Pops the current variable scope. */
     popScope(): void;
     getCurrentFunctionArgs(): any[];
+    getCurrentFunctionArgCount(): number;
+    getCurrentFunctionArg(index: number): any;
     /** Sets a single array offset on a variable. */
-    setVarOffset(name: string, key: any, value: any): any;
+    setVarOffset(name: string, key: any, value: any): Promise<any>;
     /** Sets global variable offsets. */
-    setGlobalVar(name: string, keys: any[], value: any): any;
+    setGlobalVar(name: string, keys: any[], value: any): Promise<any>;
     /** Sets nested array offsets on a variable. */
-    setVarOffsets(name: string, keys: any[], value: any): any;
+    setVarOffsets(name: string, keys: any[], value: any): Promise<any>;
     /** Unsets nested array offsets on a variable. */
-    unsetVarOffsets(name: string, keys: any[]): void;
+    unsetVarOffsets(name: string, keys: any[]): Promise<void>;
     /** Gets nested array offsets on a variable. */
-    getVarOffsets(name: string, keys: any[]): any;
+    getVarOffsets(name: string, keys: any[]): Promise<any>;
     private assignOffsets;
     private assignOffset;
     /** Initializes a static variable in function scope. */
-    initStaticVar(scope: string, name: string, value: any): void;
+    initStaticVar(scope: string, name: string, value: any): PHPReference;
     /** Clones an object or class instance in PHP. */
     cloneObject(objArg: any): Promise<any>;
     /** Evaluates whether a value is truthy in PHP. */
-    isTruthy(valArg: any): boolean;
+    isTruthy(valArg: any): Promise<boolean>;
     /** Implements PHP's array-union assignment and numeric addition. */
     addAssign(left: any, right: any): any;
     /** Evaluates PHP isset operands without raising on missing properties or offsets. */
     isset(...getters: Array<() => any>): Promise<boolean>;
     /** Evaluates PHP empty() while suppressing missing-property warnings. */
     isEmpty(getter: () => any): Promise<boolean>;
+    getPropertyReference(objArg: any, propArg: any): Promise<PHPReference>;
     /**
      * Gets a property on an object or array.
      * @param prop Property name in lowercase.
@@ -192,7 +192,7 @@ export declare class PHPContext {
      * @param name Constant name in lowercase.
      * @param originalClassName Class name in original casing.
      */
-    getClassConstant(className: string, name: string, originalClassName?: string): Promise<any>;
+    getClassConstant(classRef: any, name: string, originalClassName?: string): Promise<any>;
     /**
      * Gets a static class property.
      * @param className Class name in lowercase.

@@ -64,9 +64,9 @@ describe("Networking Runtime Tests", () => {
       parse_str('__proto__[polluted]=yes', $safe);
     `);
     expect(ctx.outputText).toBe("hello world;two;safe;new");
-    expect(ctx.getVar("query").items).toEqual(["one", "two"]);
+    expect((await ctx.getVar("query")).items).toEqual(["one", "two"]);
     expect(({} as any).polluted).toBeUndefined();
-    expect(ctx.getVar("safe")["__proto__"].polluted).toBe("yes");
+    expect((await ctx.getVar("safe"))["__proto__"].polluted).toBe("yes");
   });
 
   test("URL encoding distinguishes form spaces from raw URL encoding", async () => {

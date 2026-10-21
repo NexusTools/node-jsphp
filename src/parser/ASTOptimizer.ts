@@ -10,7 +10,9 @@ export class ASTOptimizer {
         const opt = ASTOptimizer.optimize(item, engine);
         if (opt !== null && opt !== undefined) {
           if (Array.isArray(opt) && (opt as any).__unwrapped) {
-            optimizedArray.push(...opt);
+            for (const subItem of opt) {
+              optimizedArray.push(subItem);
+            }
           } else {
             optimizedArray.push(opt);
           }
@@ -40,7 +42,7 @@ export class ASTOptimizer {
       if (ast.arguments && ast.arguments.length === 1 && ast.arguments[0].kind === "string") {
         const name = String(ast.arguments[0].value);
         if (funcName === "extension_loaded") {
-          return { kind: "boolean", value: engine.extensions.has(name.toLowerCase()), loc: ast.loc };
+          return { kind: "boolean", value: Object.hasOwn(engine.extensions, name.toLowerCase()), loc: ast.loc };
         }
       }
 

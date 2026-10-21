@@ -9,27 +9,27 @@ export class ExecRuntime {
      * @param returnVarObj Output variable passed by reference to receive exit status code.
      */
     static async exec(ctx, commandArg, outputArray, returnVarObj) {
-        const command = String(commandArg?.get() ?? "");
+        const command = String(await commandArg?.get() ?? "");
         try {
             const { stdout } = await execAsync(command, { cwd: ctx.cwd });
             const lines = stdout.trimEnd().split(/\r?\n/);
             if (outputArray && typeof outputArray.set === "function") {
-                outputArray.set(lines);
+                await outputArray.set(lines);
             }
             if (returnVarObj && typeof returnVarObj.set === "function") {
-                returnVarObj.set(0);
+                await returnVarObj.set(0);
             }
             return lines[lines.length - 1] || "";
         }
         catch (err) {
             if (returnVarObj && typeof returnVarObj.set === "function") {
-                returnVarObj.set(err.status || 1);
+                await returnVarObj.set(err.status || 1);
             }
             return "";
         }
     }
     static async shell_exec(ctx, commandArg) {
-        const command = String(commandArg?.get() ?? "");
+        const command = String(await commandArg?.get() ?? "");
         try {
             const { stdout } = await execAsync(command, { cwd: ctx.cwd });
             return stdout;
@@ -38,12 +38,12 @@ export class ExecRuntime {
             return null;
         }
     }
-    static escapeshellarg(ctx, argParam) {
-        const arg = String(argParam?.get() ?? "");
+    static async escapeshellarg(ctx, argParam) {
+        const arg = String(await argParam?.get() ?? "");
         return `'${arg.replace(/'/g, "'\\''")}'`;
     }
-    static escapeshellcmd(ctx, cmdParam) {
-        const cmd = String(cmdParam?.get() ?? "");
+    static async escapeshellcmd(ctx, cmdParam) {
+        const cmd = String(await cmdParam?.get() ?? "");
         return cmd.replace(/([#&;`|*?~<>^()\[\]{}$\\\x0A\xFF])/g, "\\$1");
     }
     static functions = {

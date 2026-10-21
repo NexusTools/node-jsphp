@@ -8,18 +8,20 @@ import { defineFunction } from "./Reflection.js";
 export class StringRuntime {
 
   /** Gets string length. */
-  public static strlen(ctx: PHPContext, strArg?: any): number {
-    const str = strArg instanceof PHPReference ? strArg.get() : strArg;
+  public static async strlen(ctx: PHPContext, strArg?: any): Promise<number>{
+    const str = await ctx.toVal(strArg);
     if (Buffer.isBuffer(str)) return str.length;
     return String(str ?? "").length;
   }
 
   /** Count the number of substring occurrences. */
-  public static substr_count(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number {
-    const offset = Number(offsetArg?.get()) || 0;
-    const length = lengthArg?.get() !== undefined ? Number(lengthArg.get()) : undefined;
-    const source = String(haystackArg?.get() ?? "").slice(offset, length === undefined ? undefined : offset + length);
-    const search = String(needleArg?.get() ?? "");
+  public static async substr_count(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): Promise<number>{
+    const rawOffset = await offsetArg?.get();
+    const rawLength = await lengthArg?.get();
+    const offset = Number(rawOffset) || 0;
+    const length = rawLength !== undefined ? Number(rawLength) : undefined;
+    const source = String(await haystackArg?.get() ?? "").slice(offset, length === undefined ? undefined : offset + length);
+    const search = String(await needleArg?.get() ?? "");
     if (!search) return 0;
     let count = 0;
     let position = 0;
@@ -31,17 +33,11 @@ export class StringRuntime {
   }
 
   /** Return part of a string. */
-  public static substr(ctx: PHPContext, strArg?: any, startArg?: any, lengthArg?: any): string {
-    let sVal = strArg?.get !== undefined ? strArg.get() : strArg;
-    while (sVal instanceof PHPReference) sVal = sVal.get();
-    const s = ctx.str(sVal);
-
-    let startVal = startArg?.get !== undefined ? startArg.get() : startArg;
-    while (startVal instanceof PHPReference) startVal = startVal.get();
+  public static async substr(ctx: PHPContext, strArg?: any, startArg?: any, lengthArg?: any): Promise<string>{
+    const s = await ctx.str(await ctx.toVal(strArg));
+    const startVal = await ctx.toVal(startArg);
     let start = Number(startVal) || 0;
-
-    let lenVal = lengthArg?.get !== undefined ? lengthArg.get() : lengthArg;
-    while (lenVal instanceof PHPReference) lenVal = lenVal.get();
+    const lenVal = await ctx.toVal(lengthArg);
     const length = lenVal !== undefined && lenVal !== null ? Number(lenVal) : undefined;
 
     if (start < 0) start = s.length + start;
@@ -53,20 +49,24 @@ export class StringRuntime {
   }
 
   /** Replace text within a portion of a string. */
-  public static substr_replace(ctx: PHPContext, subjectArg?: PHPReference, replacementArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): string | string[] {
-    const subject = subjectArg?.get();
-    const replacement = replacementArg?.get();
-    const offset = offsetArg?.get();
-    const length = lengthArg?.get();
+  public static async substr_replace(ctx: PHPContext, subjectArg?: PHPReference, replacementArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): Promise<string | string[]>{
+    const subject = await subjectArg?.get();
+    const replacement = await replacementArg?.get();
+    const offset = await offsetArg?.get();
+    const length = await lengthArg?.get();
 
     if (Array.isArray(subject)) {
-      return subject.map((value, index) => StringRuntime.substr_replace(
-        ctx,
-        new PHPLiteral(value),
-        new PHPLiteral(Array.isArray(replacement) ? replacement[index] ?? "" : replacement),
-        new PHPLiteral(Array.isArray(offset) ? offset[index] ?? 0 : offset),
-        new PHPLiteral(Array.isArray(length) ? length[index] : length)
-      ) as string);
+      const results: string[] = [];
+      for (let index = 0; index < subject.length; index++) {
+        results.push(String(await StringRuntime.substr_replace(
+          ctx,
+          new PHPLiteral(subject[index]),
+          new PHPLiteral(Array.isArray(replacement) ? replacement[index] ?? "" : replacement),
+          new PHPLiteral(Array.isArray(offset) ? offset[index] ?? 0 : offset),
+          new PHPLiteral(Array.isArray(length) ? length[index] : length)
+        )));
+      }
+      return results;
     }
     const source = String(subject ?? "");
     const startValue = Math.trunc(Number(offset) || 0);
@@ -80,56 +80,56 @@ export class StringRuntime {
   }
 
   /** Find the position of the first occurrence of a substring in a string. */
-  public static strpos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): number | false {
-    const haystack = String(haystackArg?.get() ?? "");
-    const needle = String(needleArg?.get() ?? "");
-    const offset = Number(offsetArg?.get()) || 0;
+  public static async strpos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): Promise<number | false>{
+    const haystack = String(await haystackArg?.get() ?? "");
+    const needle = String(await needleArg?.get() ?? "");
+    const offset = Number(await offsetArg?.get()) || 0;
     const idx = haystack.indexOf(needle, offset);
     return idx === -1 ? false : idx;
   }
 
   /** Find the position of the first occurrence of a case-insensitive substring in a string. */
-  public static stripos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): number | false {
-    const haystack = String(haystackArg?.get() ?? "").toLowerCase();
-    const needle = String(needleArg?.get() ?? "").toLowerCase();
-    const offset = Number(offsetArg?.get()) || 0;
+  public static async stripos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): Promise<number | false>{
+    const haystack = String(await haystackArg?.get() ?? "").toLowerCase();
+    const needle = String(await needleArg?.get() ?? "").toLowerCase();
+    const offset = Number(await offsetArg?.get()) || 0;
     const idx = haystack.indexOf(needle, offset);
     return idx === -1 ? false : idx;
   }
 
   /** Find the position of the last occurrence of a substring in a string. */
-  public static strrpos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): number | false {
-    const haystack = String(haystackArg?.get() ?? "");
-    const needle = String(needleArg?.get() ?? "");
-    const offset = Number(offsetArg?.get()) || 0;
+  public static async strrpos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): Promise<number | false>{
+    const haystack = String(await haystackArg?.get() ?? "");
+    const needle = String(await needleArg?.get() ?? "");
+    const offset = Number(await offsetArg?.get()) || 0;
     const idx = haystack.lastIndexOf(needle, offset || undefined);
     return idx === -1 ? false : idx;
   }
 
   /** Find the position of the last occurrence of a case-insensitive substring in a string. */
-  public static strripos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): number | false {
-    const haystack = String(haystackArg?.get() ?? "").toLowerCase();
-    const needle = String(needleArg?.get() ?? "").toLowerCase();
-    const offset = Number(offsetArg?.get()) || 0;
+  public static async strripos(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, offsetArg?: PHPReference): Promise<number | false>{
+    const haystack = String(await haystackArg?.get() ?? "").toLowerCase();
+    const needle = String(await needleArg?.get() ?? "").toLowerCase();
+    const offset = Number(await offsetArg?.get()) || 0;
     const idx = haystack.lastIndexOf(needle, offset || undefined);
     return idx === -1 ? false : idx;
   }
 
   /** Find the first occurrence of a string. */
-  public static strstr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): string | false {
-    const s = String(haystackArg?.get() ?? "");
-    const n = String(needleArg?.get() ?? "");
-    const beforeNeedle = Boolean(beforeNeedleArg?.get());
+  public static async strstr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): Promise<string | false>{
+    const s = String(await haystackArg?.get() ?? "");
+    const n = String(await needleArg?.get() ?? "");
+    const beforeNeedle = Boolean(await beforeNeedleArg?.get());
     const idx = s.indexOf(n);
     if (idx === -1) return false;
     return beforeNeedle ? s.substring(0, idx) : s.substring(idx);
   }
 
   /** Find the first case-insensitive occurrence of a string. */
-  public static stristr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): string | false {
-    const s = String(haystackArg?.get() ?? "");
-    const n = String(needleArg?.get() ?? "");
-    const beforeNeedle = Boolean(beforeNeedleArg?.get());
+  public static async stristr(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference, beforeNeedleArg?: PHPReference): Promise<string | false>{
+    const s = String(await haystackArg?.get() ?? "");
+    const n = String(await needleArg?.get() ?? "");
+    const beforeNeedle = Boolean(await beforeNeedleArg?.get());
     const idx = s.toLowerCase().indexOf(n.toLowerCase());
     if (idx === -1) return false;
     return beforeNeedle ? s.substring(0, idx) : s.substring(idx);
@@ -139,15 +139,15 @@ export class StringRuntime {
    * Replace all occurrences of the search string with the replacement string.
    * @param countRef Output variable passed by reference to receive replacement count.
    */
-  public static str_replace(ctx: PHPContext, searchArg?: PHPReference, replaceArg?: PHPReference, subjectArg?: PHPReference, countRef?: PHPReference): any {
-    const search = searchArg?.get();
-    const replace = replaceArg?.get();
-    const subject = subjectArg?.get();
+  public static async str_replace(ctx: PHPContext, searchArg?: PHPReference, replaceArg?: PHPReference, subjectArg?: PHPReference, countRef?: PHPReference): Promise<any>{
+    const search = await searchArg?.get();
+    const replace = await replaceArg?.get();
+    const subject = await subjectArg?.get();
     var replaceCount = 0;
 
     if (Array.isArray(subject)) {
-      const res = subject.map((s) => StringRuntime.str_replace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef));
-      if (countRef && typeof countRef.set === "function") countRef.set(replaceCount);
+      const res = await Promise.all(subject.map((s) => StringRuntime.str_replace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef)));
+      if (countRef && typeof countRef.set === "function") await countRef.set(replaceCount);
       return res;
     }
     let s = String(subject ?? "");
@@ -161,16 +161,16 @@ export class StringRuntime {
     });
 
     if (countRef && typeof countRef.set === "function") {
-      countRef.set(replaceCount);
+      await countRef.set(replaceCount);
     }
     return s;
   }
 
   /** Translate characters or replace substrings. */
-  public static strtr(ctx: PHPContext, subjectArg?: PHPReference, fromArg?: PHPReference, toArg?: PHPReference): string {
-    let result = String(subjectArg?.get() ?? "");
-    const from = fromArg?.get();
-    const to = toArg?.get();
+  public static async strtr(ctx: PHPContext, subjectArg?: PHPReference, fromArg?: PHPReference, toArg?: PHPReference): Promise<string>{
+    let result = String(await subjectArg?.get() ?? "");
+    const from = await fromArg?.get();
+    const to = await toArg?.get();
 
     if (from && typeof from === "object" && !Array.isArray(from)) {
       for (const [search, replacement] of Object.entries(from)) result = result.split(search).join(String(replacement));
@@ -182,13 +182,13 @@ export class StringRuntime {
   }
 
   /** Case-insensitive version of str_replace. */
-  public static str_ireplace(ctx: PHPContext, searchArg?: PHPReference, replaceArg?: PHPReference, subjectArg?: PHPReference, countRef?: PHPReference): any {
-    const search = searchArg?.get();
-    const replace = replaceArg?.get();
-    const subject = subjectArg?.get();
+  public static async str_ireplace(ctx: PHPContext, searchArg?: PHPReference, replaceArg?: PHPReference, subjectArg?: PHPReference, countRef?: PHPReference): Promise<any>{
+    const search = await searchArg?.get();
+    const replace = await replaceArg?.get();
+    const subject = await subjectArg?.get();
 
     if (Array.isArray(subject)) {
-      return subject.map((s) => StringRuntime.str_ireplace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef));
+      return Promise.all(subject.map((s) => StringRuntime.str_ireplace(ctx, new PHPLiteral(search), new PHPLiteral(replace), new PHPLiteral(s), countRef)));
     }
     let s = String(subject ?? "");
     const searches = Array.isArray(search) ? search : [search];
@@ -203,11 +203,21 @@ export class StringRuntime {
   }
 
   /** Return a formatted string. */
-  public static sprintf(ctx: PHPContext, fmtArg?: PHPReference, ...args: PHPReference[]): string {
-    const fmt = String(fmtArg?.get() ?? "");
+  public static async sprintf(ctx: PHPContext, fmtArg?: PHPReference, ...args: PHPReference[]): Promise<string>{
+    const fmt = String(await fmtArg?.get() ?? "");
     let argIndex = 0;
-    return fmt.replace(/%(\d+\$)?([-+0' ])?(\d+)?(\.\d+)?([%sbcdeufFoghxX])/g, (match, param, flags, width, precision, type) => {
-      if (type === "%") return "%";
+    const formatPattern = /%(\d+\$)?([-+0' ])?(\d+)?(\.\d+)?([%sbcdeufFoghxX])/g;
+    let output = "";
+    let previousIndex = 0;
+    for (const match of fmt.matchAll(formatPattern)) {
+      const [whole, param, flags, width, precision, type] = match;
+      const matchIndex = match.index!;
+      output += fmt.slice(previousIndex, matchIndex);
+      previousIndex = matchIndex + whole.length;
+      if (type === "%") {
+        output += "%";
+        continue;
+      }
 
       let idx = argIndex;
       if (param) {
@@ -216,7 +226,7 @@ export class StringRuntime {
         argIndex++;
       }
 
-      let val = args[idx]?.get();
+      const val = await args[idx]?.get();
       let str = "";
 
       const numWidth = width ? parseInt(width, 10) : 0;
@@ -256,22 +266,24 @@ export class StringRuntime {
         str = leftAlign ? str + padding : padding + str;
       }
 
-      return str;
-    });
+      output += str;
+    }
+    return output + fmt.slice(previousIndex);
   }
 
   /** Output a formatted string. */
   public static async printf(ctx: PHPContext, fmtArg?: PHPReference, ...args: PHPReference[]): Promise<number> {
-    const output = StringRuntime.sprintf(ctx, fmtArg, ...args);
+    const output = await StringRuntime.sprintf(ctx, fmtArg, ...args);
     await ctx.echo(output);
     return output.length;
   }
 
   /** Split a string by a string. */
-  public static explode(ctx: PHPContext, delimiterArg?: PHPReference, stringArg?: PHPReference, limitArg?: PHPReference): string[] {
-    const delimiter = String(delimiterArg?.get() ?? "");
-    const string = String(stringArg?.get() ?? "");
-    const limit = limitArg?.get() !== undefined ? Number(limitArg.get()) : undefined;
+  public static async explode(ctx: PHPContext, delimiterArg?: PHPReference, stringArg?: PHPReference, limitArg?: PHPReference): Promise<string[]>{
+    const delimiter = String(await delimiterArg?.get() ?? "");
+    const string = String(await stringArg?.get() ?? "");
+    const rawLimit = await limitArg?.get();
+    const limit = rawLimit !== undefined ? Number(rawLimit) : undefined;
     const res = string.split(delimiter);
     if (limit !== undefined && limit > 0 && res.length > limit) {
       return [...res.slice(0, limit - 1), res.slice(limit - 1).join(delimiter)];
@@ -280,9 +292,9 @@ export class StringRuntime {
   }
 
   /** Join array elements with a string. */
-  public static implode(ctx: PHPContext, glueArg?: PHPReference, piecesArg?: PHPReference): string {
-    const val1 = glueArg?.get();
-    const val2 = piecesArg?.get();
+  public static async implode(ctx: PHPContext, glueArg?: PHPReference, piecesArg?: PHPReference): Promise<string>{
+    const val1 = await glueArg?.get();
+    const val2 = await piecesArg?.get();
 
     let glue = "";
     let pieces: any[] = [];
@@ -295,40 +307,40 @@ export class StringRuntime {
       glue = val1 !== undefined && val1 !== null ? String(val1) : "";
     }
 
-    return pieces.map((p) => String(p ?? "")).join(glue);
+    return (await Promise.all(pieces.map(async (piece) => String(await ctx.toVal(piece) ?? "")))).join(glue);
   }
 
   /** Strip whitespace (or other characters) from the beginning and end of a string. */
-  public static trim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = ctx.str(strArg?.get());
-    const charlist = charlistArg?.get();
+  public static async trim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): Promise<string>{
+    const s = await ctx.str(await strArg?.get());
+    const charlist = await charlistArg?.get();
     if (!charlist) return s.trim();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`^[${mask}]+|[${mask}]+$`, "g"), "");
   }
 
   /** Strip whitespace (or other characters) from the beginning of a string. */
-  public static ltrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = ctx.str(strArg?.get());
-    const charlist = charlistArg?.get();
+  public static async ltrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): Promise<string>{
+    const s = await ctx.str(await strArg?.get());
+    const charlist = await charlistArg?.get();
     if (!charlist) return s.trimStart();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`^[${mask}]+`, "g"), "");
   }
 
   /** Strip whitespace (or other characters) from the end of a string. */
-  public static rtrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    let s = ctx.str(strArg?.get());
-    const charlist = charlistArg?.get();
+  public static async rtrim(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): Promise<string>{
+    const s = await ctx.str(await strArg?.get());
+    const charlist = await charlistArg?.get();
     if (!charlist) return s.trimEnd();
     const mask = String(charlist).replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     return s.replace(new RegExp(`[${mask}]+$`, "g"), "");
   }
 
   /** Strip HTML and PHP tags from a string. */
-  public static strip_tags(ctx: PHPContext, strArg?: PHPReference, allowable_tagsArg?: PHPReference): string {
-    const s = String(strArg?.get() ?? "");
-    const allowable_tags = allowable_tagsArg?.get();
+  public static async strip_tags(ctx: PHPContext, strArg?: PHPReference, allowable_tagsArg?: PHPReference): Promise<string>{
+    const s = String(await strArg?.get() ?? "");
+    const allowable_tags = await allowable_tagsArg?.get();
     if (!allowable_tags) {
       return s.replace(/<!--[\s\S]*?-->|<\?(?:php)?[\s\S]*?\?>|<[^>]*>/gi, "");
     }
@@ -343,71 +355,71 @@ export class StringRuntime {
   }
 
   /** Make a string lowercase. */
-  public static strtolower(ctx: PHPContext, strArg?: PHPReference): string { return String(strArg?.get() ?? "").toLowerCase(); }
+  public static async strtolower(ctx: PHPContext, strArg?: PHPReference): Promise<string>{ return String(await strArg?.get() ?? "").toLowerCase(); }
   /** Make a string uppercase. */
-  public static strtoupper(ctx: PHPContext, strArg?: PHPReference): string { return String(strArg?.get() ?? "").toUpperCase(); }
+  public static async strtoupper(ctx: PHPContext, strArg?: PHPReference): Promise<string>{ return String(await strArg?.get() ?? "").toUpperCase(); }
   /** Make a string's first character uppercase. */
-  public static ucfirst(ctx: PHPContext, strArg?: PHPReference): string {
-    const s = String(strArg?.get() ?? "");
+  public static async ucfirst(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    const s = String(await strArg?.get() ?? "");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
   /** Make a string's first character lowercase. */
-  public static lcfirst(ctx: PHPContext, strArg?: PHPReference): string {
-    const s = String(strArg?.get() ?? "");
+  public static async lcfirst(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    const s = String(await strArg?.get() ?? "");
     return s.charAt(0).toLowerCase() + s.slice(1);
   }
   /** Uppercase the first character of each word in a string. */
-  public static ucwords(ctx: PHPContext, strArg?: PHPReference): string {
-    return String(strArg?.get() ?? "").replace(/\b\w/g, (l) => l.toUpperCase());
+  public static async ucwords(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    return String(await strArg?.get() ?? "").replace(/\b\w/g, (l) => l.toUpperCase());
   }
 
   /** Binary safe string comparison. */
-  public static strcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number {
-    const s1 = String(str1Arg?.get() ?? "");
-    const s2 = String(str2Arg?.get() ?? "");
+  public static async strcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): Promise<number>{
+    const s1 = String(await str1Arg?.get() ?? "");
+    const s2 = String(await str2Arg?.get() ?? "");
     return s1.localeCompare(s2);
   }
 
   /** Binary safe string comparison of the first n characters. */
-  public static strncmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number {
-    const length = Number(lengthArg?.get()) || 0;
-    return StringRuntime.strcmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
+  public static async strncmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): Promise<number>{
+    const length = Number(await lengthArg?.get()) || 0;
+    return StringRuntime.strcmp(ctx, new PHPLiteral(String(await str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(await str2Arg?.get() ?? "").slice(0, length)));
   }
 
   /** Binary safe case-insensitive string comparison. */
-  public static strcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number {
-    const s1 = String(str1Arg?.get() ?? "").toLowerCase();
-    const s2 = String(str2Arg?.get() ?? "").toLowerCase();
+  public static async strcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): Promise<number>{
+    const s1 = String(await str1Arg?.get() ?? "").toLowerCase();
+    const s2 = String(await str2Arg?.get() ?? "").toLowerCase();
     if (s1 === s2) return 0;
     return s1 < s2 ? -1 : 1;
   }
 
   /** Binary safe case-insensitive string comparison of the first n characters. */
-  public static strncasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): number {
-    const length = Number(lengthArg?.get()) || 0;
-    return StringRuntime.strcasecmp(ctx, new PHPLiteral(String(str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(str2Arg?.get() ?? "").slice(0, length)));
+  public static async strncasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference, lengthArg?: PHPReference): Promise<number>{
+    const length = Number(await lengthArg?.get()) || 0;
+    return StringRuntime.strcasecmp(ctx, new PHPLiteral(String(await str1Arg?.get() ?? "").slice(0, length)), new PHPLiteral(String(await str2Arg?.get() ?? "").slice(0, length)));
   }
 
-  public static strnatcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number {
-    const s1 = ctx.str(str1Arg?.get());
-    const s2 = ctx.str(str2Arg?.get());
+  public static async strnatcmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): Promise<number>{
+    const s1 = await ctx.str(await str1Arg?.get());
+    const s2 = await ctx.str(await str2Arg?.get());
     return s1.localeCompare(s2, undefined, { numeric: true });
   }
 
-  public static strnatcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): number {
-    const s1 = ctx.str(str1Arg?.get()).toLowerCase();
-    const s2 = ctx.str(str2Arg?.get()).toLowerCase();
+  public static async strnatcasecmp(ctx: PHPContext, str1Arg?: PHPReference, str2Arg?: PHPReference): Promise<number>{
+    const s1 = (await ctx.str(await str1Arg?.get())).toLowerCase();
+    const s2 = (await ctx.str(await str2Arg?.get())).toLowerCase();
     return s1.localeCompare(s2, undefined, { numeric: true, sensitivity: "base" });
   }
 
   /** Quote string with slashes. */
-  public static addslashes(ctx: PHPContext, strArg?: PHPReference): string {
-    return ctx.str(strArg).replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
+  public static async addslashes(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    return (await ctx.str(strArg)).replace(/[\\\"']/g, "\\$&").replace(/\u0000/g, "\\0");
   }
 
-  public static addcslashes(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): string {
-    const string = String(strArg?.get() ?? "");
-    const list = String(charlistArg?.get() ?? "");
+  public static async addcslashes(ctx: PHPContext, strArg?: PHPReference, charlistArg?: PHPReference): Promise<string>{
+    const string = String(await strArg?.get() ?? "");
+    const list = String(await charlistArg?.get() ?? "");
     const chars = new Set<string>();
     for (let i = 0; i < list.length; i++) {
       if (list[i] === "\\" && i + 1 < list.length) {
@@ -439,17 +451,17 @@ export class StringRuntime {
   }
 
   /** Un-quotes a quoted string. */
-  public static stripslashes(ctx: PHPContext, strArg?: PHPReference): string {
-    return ctx.str(strArg).replace(/\\(['"\\0])/g, "$1");
+  public static async stripslashes(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    return (await ctx.str(strArg)).replace(/\\(['"\\0])/g, "$1");
   }
 
-  public static stripcslashes(ctx: PHPContext, strArg?: PHPReference): string {
+  public static async stripcslashes(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
     return StringRuntime.stripslashes(ctx, strArg);
   }
 
   /** Convert special characters to HTML entities. */
-  public static htmlspecialchars(ctx: PHPContext, strArg?: PHPReference): string {
-    return ctx.str(strArg)
+  public static async htmlspecialchars(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    return (await ctx.str(strArg))
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -458,8 +470,8 @@ export class StringRuntime {
   }
 
   /** Convert special HTML entities back to characters. */
-  public static htmlspecialchars_decode(ctx: PHPContext, strArg?: PHPReference): string {
-    return String(strArg?.get() ?? "")
+  public static async htmlspecialchars_decode(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
+    return String(await strArg?.get() ?? "")
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
@@ -467,18 +479,18 @@ export class StringRuntime {
       .replace(/&#039;/g, "'");
   }
 
-  public static htmlentities(ctx: PHPContext, strArg?: PHPReference): string {
+  public static async htmlentities(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
     return StringRuntime.htmlspecialchars(ctx, strArg);
   }
 
-  public static html_entity_decode(ctx: PHPContext, strArg?: PHPReference): string {
+  public static async html_entity_decode(ctx: PHPContext, strArg?: PHPReference): Promise<string>{
     return StringRuntime.htmlspecialchars_decode(ctx, strArg);
   }
 
-  public static unpack(ctx: PHPContext, formatArg?: PHPReference, stringArg?: PHPReference, offsetArg?: PHPReference): Record<string, number> | false {
-    const format = String(formatArg?.get() ?? "");
-    const rawStr = stringArg?.get();
-    const offset = Number(offsetArg?.get()) || 0;
+  public static async unpack(ctx: PHPContext, formatArg?: PHPReference, stringArg?: PHPReference, offsetArg?: PHPReference): Promise<Record<string, number> | false>{
+    const format = String(await formatArg?.get() ?? "");
+    const rawStr = await stringArg?.get();
+    const offset = Number(await offsetArg?.get()) || 0;
     if (rawStr === undefined || rawStr === null || !format) return false;
 
     const buffer = Buffer.isBuffer(rawStr) ? rawStr : Buffer.from(String(rawStr), "binary");
@@ -522,9 +534,9 @@ export class StringRuntime {
     return Object.keys(result).length > 0 ? result : false;
   }
 
-  public static pack(ctx: PHPContext, formatArg?: PHPReference, ...args: PHPReference[]): string {
-    const format = String(formatArg?.get() ?? "");
-    const values = args.map((a) => a?.get());
+  public static async pack(ctx: PHPContext, formatArg?: PHPReference, ...args: PHPReference[]): Promise<string>{
+    const format = String(await formatArg?.get() ?? "");
+    const values = await Promise.all(args.map((arg) => arg?.get()));
     const buffer = Buffer.alloc(1024);
     let offset = 0;
     let valIdx = 0;
@@ -554,15 +566,15 @@ export class StringRuntime {
 
   private static strtokState: { str: string; token: string; index: number } | null = null;
 
-  public static strtok(ctx: PHPContext, strArg?: PHPReference, tokenArg?: PHPReference): string | false {
+  public static async strtok(ctx: PHPContext, strArg?: PHPReference, tokenArg?: PHPReference): Promise<string | false>{
     let str: string | undefined;
     let token: string | undefined;
 
     if (tokenArg === undefined) {
-      token = String(strArg?.get() ?? "");
+      token = String(await strArg?.get() ?? "");
     } else {
-      str = String(strArg?.get() ?? "");
-      token = String(tokenArg?.get() ?? "");
+      str = String(await strArg?.get() ?? "");
+      token = String(await tokenArg?.get() ?? "");
     }
 
     if (str !== undefined) {
@@ -590,26 +602,29 @@ export class StringRuntime {
   }
 
   /** Inserts HTML line breaks before all newlines in a string. */
-  public static nl2br(ctx: PHPContext, strArg?: PHPReference, isXhtmlArg?: PHPReference): string {
-    const isXhtml = isXhtmlArg?.get() !== undefined ? Boolean(isXhtmlArg.get()) : true;
+  public static async nl2br(ctx: PHPContext, strArg?: PHPReference, isXhtmlArg?: PHPReference): Promise<string>{
+    const rawXhtml = await isXhtmlArg?.get();
+    const isXhtml = rawXhtml !== undefined ? Boolean(rawXhtml) : true;
     const breakTag = isXhtml ? "<br />" : "<br>";
-    return String(strArg?.get() ?? "").replace(/(\r\n|\n\r|\r|\n)/g, breakTag + "$1");
+    return String(await strArg?.get() ?? "").replace(/(\r\n|\n\r|\r|\n)/g, breakTag + "$1");
   }
 
   /** Repeat a string. */
-  public static str_repeat(ctx: PHPContext, inputArg?: PHPReference, multiplierArg?: PHPReference): string {
-    const input = String(inputArg?.get() ?? "");
-    const multiplier = Number(multiplierArg?.get()) || 0;
+  public static async str_repeat(ctx: PHPContext, inputArg?: PHPReference, multiplierArg?: PHPReference): Promise<string>{
+    const input = String(await inputArg?.get() ?? "");
+    const multiplier = Number(await multiplierArg?.get()) || 0;
     if (multiplier > 1000000) throw new PHPWarning("str_repeat(): multiplier is too large");
     return input.repeat(Math.max(0, multiplier));
   }
 
   /** Pad a string to a certain length with another string. */
-  public static str_pad(ctx: PHPContext, inputArg?: PHPReference, padLengthArg?: PHPReference, padStringArg?: PHPReference, padTypeArg?: PHPReference): string {
-    let s = String(inputArg?.get() ?? "");
-    const padLength = Number(padLengthArg?.get()) || 0;
-    const padString = padStringArg?.get() !== undefined ? String(padStringArg.get()) : " ";
-    const padType = padTypeArg?.get() !== undefined ? Number(padTypeArg.get()) : 1;
+  public static async str_pad(ctx: PHPContext, inputArg?: PHPReference, padLengthArg?: PHPReference, padStringArg?: PHPReference, padTypeArg?: PHPReference): Promise<string>{
+    let s = String(await inputArg?.get() ?? "");
+    const padLength = Number(await padLengthArg?.get()) || 0;
+    const rawPadString = await padStringArg?.get();
+    const padString = rawPadString !== undefined ? String(rawPadString) : " ";
+    const rawPadType = await padTypeArg?.get();
+    const padType = rawPadType !== undefined ? Number(rawPadType) : 1;
     if (s.length >= padLength || !padString) return s;
     const needed = padLength - s.length;
     const pStr = padString.repeat(Math.ceil(needed / padString.length)).substring(0, needed);
@@ -623,9 +638,9 @@ export class StringRuntime {
   }
 
   /** Convert a string to an array. */
-  public static str_split(ctx: PHPContext, stringArg?: PHPReference, lengthArg?: PHPReference): string[] {
-    const s = String(stringArg?.get() ?? "");
-    let length = Number(lengthArg?.get());
+  public static async str_split(ctx: PHPContext, stringArg?: PHPReference, lengthArg?: PHPReference): Promise<string[]>{
+    const s = String(await stringArg?.get() ?? "");
+    let length = Number(await lengthArg?.get());
     if (isNaN(length) || length < 1) length = 1;
     const res: string[] = [];
     for (let i = 0; i < s.length; i += length) {
@@ -635,51 +650,45 @@ export class StringRuntime {
   }
 
   /** Reverse a string. */
-  public static strrev(ctx: PHPContext, stringArg?: PHPReference): string {
-    return String(stringArg?.get() ?? "").split("").reverse().join("");
+  public static async strrev(ctx: PHPContext, stringArg?: PHPReference): Promise<string>{
+    return String(await stringArg?.get() ?? "").split("").reverse().join("");
   }
 
   /** Generate a single-byte string from a number. */
-  public static chr(ctx: PHPContext, asciiArg?: any): string {
-    let val = asciiArg?.get !== undefined ? asciiArg.get() : asciiArg;
-    while (val instanceof PHPReference) val = val.get();
+  public static async chr(ctx: PHPContext, asciiArg?: any): Promise<string>{
+    const val = await ctx.toVal(asciiArg);
     const ascii = (Number(val) || 0) & 0xff;
     return String.fromCharCode(ascii);
   }
 
   /** Convert the first byte of a string to a value between 0 and 255. */
-  public static ord(ctx: PHPContext, characterArg?: any): number {
-    let val = characterArg?.get !== undefined ? characterArg.get() : characterArg;
-    while (val instanceof PHPReference) val = val.get();
+  public static async ord(ctx: PHPContext, characterArg?: any): Promise<number>{
+    const val = await ctx.toVal(characterArg);
     if (typeof val === "number") return val & 0xff;
     if (Buffer.isBuffer(val)) return val.length > 0 ? val[0] : 0;
-    const str = ctx.str(val);
+    const str = await ctx.str(val);
     return str.length > 0 ? str.charCodeAt(0) & 0xff : 0;
   }
 
   /** Format a number with grouped thousands. */
-  public static number_format(
+  public static async number_format(
     ctx: PHPContext,
     numArg?: any,
     decimalsArg?: any,
     decPointArg?: any,
     thousandsSepArg?: any
-  ): string {
-    let numVal = numArg?.get !== undefined ? numArg.get() : numArg;
-    while (numVal instanceof PHPReference) numVal = numVal.get();
+  ): Promise<string>{
+    let numVal = await ctx.toVal(numArg);
     const num = Number(numVal) || 0;
 
-    let decimalsVal = decimalsArg?.get !== undefined ? decimalsArg.get() : decimalsArg;
-    while (decimalsVal instanceof PHPReference) decimalsVal = decimalsVal.get();
+    let decimalsVal = await ctx.toVal(decimalsArg);
     const decimals = decimalsVal !== undefined && decimalsVal !== null ? Math.max(0, Math.trunc(Number(decimalsVal))) : 0;
 
-    let decPointVal = decPointArg?.get !== undefined ? decPointArg.get() : decPointArg;
-    while (decPointVal instanceof PHPReference) decPointVal = decPointVal.get();
-    const decPoint = decPointVal !== undefined && decPointVal !== null ? ctx.str(decPointVal) : ".";
+    let decPointVal = await ctx.toVal(decPointArg);
+    const decPoint = decPointVal !== undefined && decPointVal !== null ? await ctx.str(decPointVal) : ".";
 
-    let thousandsSepVal = thousandsSepArg?.get !== undefined ? thousandsSepArg.get() : thousandsSepArg;
-    while (thousandsSepVal instanceof PHPReference) thousandsSepVal = thousandsSepVal.get();
-    const thousandsSep = thousandsSepVal !== undefined && thousandsSepVal !== null ? ctx.str(thousandsSepVal) : ",";
+    let thousandsSepVal = await ctx.toVal(thousandsSepArg);
+    const thousandsSep = thousandsSepVal !== undefined && thousandsSepVal !== null ? await ctx.str(thousandsSepVal) : ",";
 
     const fixed = num.toFixed(decimals);
     const parts = fixed.split(".");
@@ -688,24 +697,25 @@ export class StringRuntime {
   }
 
   /** Convert binary data into hexadecimal representation. */
-  public static bin2hex(ctx: PHPContext, stringArg?: PHPReference): string {
-    return Buffer.from(String(stringArg?.get() ?? "")).toString("hex");
+  public static async bin2hex(ctx: PHPContext, stringArg?: PHPReference): Promise<string>{
+    return Buffer.from(String(await stringArg?.get() ?? "")).toString("hex");
   }
 
   /** Decodes a hexadecimally encoded binary string. */
-  public static hex2bin(ctx: PHPContext, hexStringArg?: PHPReference): string {
-    return Buffer.from(String(hexStringArg?.get() ?? ""), "hex").toString("utf8");
+  public static async hex2bin(ctx: PHPContext, hexStringArg?: PHPReference): Promise<string>{
+    return Buffer.from(String(await hexStringArg?.get() ?? ""), "hex").toString("utf8");
   }
 
-  public static substr_compare(ctx: PHPContext, mainStrArg?: PHPReference, strArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference, caseInsensitiveArg?: PHPReference): number {
-    const mainStr = ctx.str(mainStrArg?.get());
-    const str = ctx.str(strArg?.get());
-    let offset = Number(offsetArg?.get()) || 0;
+  public static async substr_compare(ctx: PHPContext, mainStrArg?: PHPReference, strArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference, caseInsensitiveArg?: PHPReference): Promise<number>{
+    const mainStr = await ctx.str(await mainStrArg?.get());
+    const str = await ctx.str(await strArg?.get());
+    let offset = Number(await offsetArg?.get()) || 0;
     if (offset < 0) offset = mainStr.length + offset;
     if (offset < 0 || offset >= mainStr.length) return -1;
 
-    const length = lengthArg?.get() !== undefined && lengthArg.get() !== null ? Number(lengthArg.get()) : str.length;
-    const caseInsensitive = Boolean(caseInsensitiveArg?.get());
+    const rawLength = await lengthArg?.get();
+    const length = rawLength !== undefined && rawLength !== null ? Number(rawLength) : str.length;
+    const caseInsensitive = Boolean(await caseInsensitiveArg?.get());
 
     let sub1 = mainStr.slice(offset, offset + length);
     let sub2 = str.slice(0, length);
@@ -717,28 +727,27 @@ export class StringRuntime {
     return sub1 < sub2 ? -1 : (sub1 > sub2 ? 1 : 0);
   }
 
-  public static base64_encode(ctx: PHPContext, stringArg?: any): string {
-    let val = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
-    while (val instanceof PHPReference) val = val.get();
+  public static async base64_encode(ctx: PHPContext, stringArg?: any): Promise<string>{
+    const val = await ctx.toVal(stringArg);
     if (Buffer.isBuffer(val)) {
       return val.toString("base64");
     }
-    const str = ctx.str(val);
+    const str = await ctx.str(val);
     return Buffer.from(str, "binary").toString("base64");
   }
 
-  public static base64_decode(ctx: PHPContext, stringArg?: any): string {
-    let val = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
-    while (val instanceof PHPReference) val = val.get();
-    const str = ctx.str(val);
+  public static async base64_decode(ctx: PHPContext, stringArg?: any): Promise<string>{
+    const val = await ctx.toVal(stringArg);
+    const str = await ctx.str(val);
     return Buffer.from(str, "base64").toString("binary");
   }
 
   /** Compares two "PHP-standardized" version number strings. */
-  public static version_compare(ctx: PHPContext, v1Arg?: PHPReference, v2Arg?: PHPReference, opArg?: PHPReference): any {
-    const v1 = String(v1Arg?.get() ?? "");
-    const v2 = String(v2Arg?.get() ?? "");
-    const op = opArg?.get() !== undefined ? String(opArg.get()) : undefined;
+  public static async version_compare(ctx: PHPContext, v1Arg?: PHPReference, v2Arg?: PHPReference, opArg?: PHPReference): Promise<any>{
+    const v1 = String(await v1Arg?.get() ?? "");
+    const v2 = String(await v2Arg?.get() ?? "");
+    const rawOp = await opArg?.get();
+    const op = rawOp !== undefined ? String(rawOp) : undefined;
     const parse = (v: string) => (v || "").split(".").map((n) => parseInt(n, 10) || 0);
     const p1 = parse(v1);
     const p2 = parse(v2);
@@ -766,8 +775,8 @@ export class StringRuntime {
    * Parses encoded query string into variables.
    * @param result Output variable passed by reference to receive parsed key-value pairs.
    */
-  public static parse_str(ctx: PHPContext, queryArg?: PHPReference, result?: PHPReference): void {
-    const query = String(queryArg?.get() ?? "");
+  public static async parse_str(ctx: PHPContext, queryArg?: PHPReference, result?: PHPReference): Promise<void>{
+    const query = String(await queryArg?.get() ?? "");
     const parsed: Record<string, any> = Object.create(null);
     for (const [name, value] of new URLSearchParams(query)) {
       const bracket = name.indexOf("[");
@@ -810,21 +819,22 @@ export class StringRuntime {
     ctx.setInternalVar("lastParseStrResult", output);
 
     if (result && typeof result.set === "function") {
-      result.set(output);
+      await result.set(output);
     } else {
       for (const [k, v] of Object.entries(output)) {
-        ctx.setVar(k, v);
+        await ctx.setVar(k, v);
       }
     }
   }
 
-  public static strspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number {
-    const str = String(stringArg?.get() ?? "");
-    const mask = String(charactersArg?.get() ?? "");
-    let offset = Number(offsetArg?.get()) || 0;
+  public static async strspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): Promise<number>{
+    const str = String(await stringArg?.get() ?? "");
+    const mask = String(await charactersArg?.get() ?? "");
+    let offset = Number(await offsetArg?.get()) || 0;
     if (offset < 0) offset += str.length;
     if (offset < 0) offset = 0;
-    let len = lengthArg?.get() !== undefined && lengthArg?.get() !== null ? Number(lengthArg.get()) : str.length - offset;
+    const rawLength = await lengthArg?.get();
+    let len = rawLength !== undefined && rawLength !== null ? Number(rawLength) : str.length - offset;
     if (len < 0) len += str.length - offset;
     const sub = str.substring(offset, offset + Math.max(0, len));
     const maskSet = new Set(mask);
@@ -836,13 +846,14 @@ export class StringRuntime {
     return count;
   }
 
-  public static strcspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): number {
-    const str = String(stringArg?.get() ?? "");
-    const mask = String(charactersArg?.get() ?? "");
-    let offset = Number(offsetArg?.get()) || 0;
+  public static async strcspn(ctx: PHPContext, stringArg?: PHPReference, charactersArg?: PHPReference, offsetArg?: PHPReference, lengthArg?: PHPReference): Promise<number>{
+    const str = String(await stringArg?.get() ?? "");
+    const mask = String(await charactersArg?.get() ?? "");
+    let offset = Number(await offsetArg?.get()) || 0;
     if (offset < 0) offset += str.length;
     if (offset < 0) offset = 0;
-    let len = lengthArg?.get() !== undefined && lengthArg?.get() !== null ? Number(lengthArg.get()) : str.length - offset;
+    const rawLength = await lengthArg?.get();
+    let len = rawLength !== undefined && rawLength !== null ? Number(rawLength) : str.length - offset;
     if (len < 0) len += str.length - offset;
     const sub = str.substring(offset, offset + Math.max(0, len));
     const maskSet = new Set(mask);
@@ -854,44 +865,42 @@ export class StringRuntime {
     return count;
   }
 
-  public static vsprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): string {
-    const format = String(formatArg?.get() ?? "");
-    const values = valuesArg?.get();
+  public static async vsprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): Promise<string>{
+    const format = String(await formatArg?.get() ?? "");
+    const values = await valuesArg?.get();
     const arr = Array.isArray(values) ? values : (typeof values === "object" && values !== null ? Object.values(values) : []);
     const argsRefs = arr.map((v) => new PHPLiteral(v));
     return StringRuntime.sprintf(ctx, new PHPLiteral(format), ...argsRefs);
   }
 
-  public static str_starts_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
-    const haystack = String(haystackArg?.get() ?? "");
-    const needle = String(needleArg?.get() ?? "");
+  public static async str_starts_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): Promise<boolean>{
+    const haystack = String(await haystackArg?.get() ?? "");
+    const needle = String(await needleArg?.get() ?? "");
     if (needle === "") return true;
     return haystack.startsWith(needle);
   }
 
-  public static str_ends_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
-    const haystack = String(haystackArg?.get() ?? "");
-    const needle = String(needleArg?.get() ?? "");
+  public static async str_ends_with(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): Promise<boolean>{
+    const haystack = String(await haystackArg?.get() ?? "");
+    const needle = String(await needleArg?.get() ?? "");
     if (needle === "") return true;
     return haystack.endsWith(needle);
   }
 
-  public static str_contains(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): boolean {
-    const haystack = String(haystackArg?.get() ?? "");
-    const needle = String(needleArg?.get() ?? "");
+  public static async str_contains(ctx: PHPContext, haystackArg?: PHPReference, needleArg?: PHPReference): Promise<boolean>{
+    const haystack = String(await haystackArg?.get() ?? "");
+    const needle = String(await needleArg?.get() ?? "");
     if (needle === "") return true;
     return haystack.includes(needle);
   }
 
   /** Search a string for any of a set of characters. */
-  public static strpbrk(ctx: PHPContext, stringArg?: any, charlistArg?: any): string | false {
-    let s = stringArg instanceof PHPReference ? stringArg.get() : stringArg;
-    while (s instanceof PHPReference) s = s.get();
-    let charlist = charlistArg instanceof PHPReference ? charlistArg.get() : charlistArg;
-    while (charlist instanceof PHPReference) charlist = charlist.get();
+  public static async strpbrk(ctx: PHPContext, stringArg?: any, charlistArg?: any): Promise<string | false>{
+    const s = await ctx.toVal(stringArg);
+    const charlist = await ctx.toVal(charlistArg);
 
-    const str = ctx.str(s);
-    const chars = ctx.str(charlist);
+    const str = await ctx.str(s);
+    const chars = await ctx.str(charlist);
 
     for (let i = 0; i < str.length; i++) {
       if (chars.includes(str[i])) {
@@ -901,9 +910,9 @@ export class StringRuntime {
     return false;
   }
 
-  public static vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): number {
-    const res = StringRuntime.vsprintf(ctx, formatArg, valuesArg);
-    ctx.echo(res);
+  public static async vprintf(ctx: PHPContext, formatArg?: PHPReference, valuesArg?: PHPReference): Promise<number>{
+    const res = await StringRuntime.vsprintf(ctx, formatArg, valuesArg);
+    await ctx.echo(res);
     return res.length;
   }
 

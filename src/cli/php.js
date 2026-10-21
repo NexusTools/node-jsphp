@@ -1,8 +1,9 @@
 import { Command } from "commander";
 import * as readline from "readline";
 import * as path from "path";
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import { PHPEngine, getDefaultExtensions } from "../PHPEngine.js";
+import { normalizePhpRegistryName } from "../runtime/Reflection.js";
 import { NodeJSExtension } from "../extensions/nodejs.js";
 export async function runCLI(rawArgs) {
     const disabledExts = new Set();
@@ -55,7 +56,7 @@ export async function runCLI(rawArgs) {
     if (options.modules) {
         console.log("[PHP Modules]");
         console.log("Core");
-        const moduleNames = Array.from(engine.extensions.keys()).sort();
+        const moduleNames = Object.keys(engine.extensions).sort();
         for (const mod of moduleNames) {
             console.log(mod);
         }
@@ -81,7 +82,7 @@ export async function runCLI(rawArgs) {
         return;
     }
     if (options.reflectionFunction) {
-        const fnName = String(options.reflectionFunction).toLowerCase();
+        const fnName = normalizePhpRegistryName(String(options.reflectionFunction));
         const fn = engine.functions[fnName];
         if (fn !== undefined) {
             console.log(`Function [ <internal:${fnName}> function ${fnName} ] { }`);
@@ -93,7 +94,7 @@ export async function runCLI(rawArgs) {
         return;
     }
     if (options.reflectionClass) {
-        const clsName = String(options.reflectionClass).toLowerCase();
+        const clsName = normalizePhpRegistryName(String(options.reflectionClass));
         const cls = engine.classes[clsName];
         if (cls) {
             console.log(`Class [ <user> class ${cls.name || options.reflectionClass} ] { }`);
@@ -106,7 +107,7 @@ export async function runCLI(rawArgs) {
     }
     if (options.reflectionExtension || options.reflectionInfo) {
         const extName = String(options.reflectionExtension || options.reflectionInfo).toLowerCase();
-        const ext = engine.extensions.get(extName);
+        const ext = engine.extensions[extName];
         if (ext) {
             console.log(`Extension [ <persistent> extension # ${ext.name} version ${ext.version} ] { }`);
         }
@@ -124,7 +125,7 @@ export async function runCLI(rawArgs) {
         }
         const resolvedPath = path.resolve(fileToLint);
         try {
-            const code = fs.readFileSync(resolvedPath, "utf8");
+            const code = await fs.readFile(resolvedPath, "utf8");
             await engine.compileCode(code, resolvedPath);
             console.log(`No syntax errors detected in ${resolvedPath}`);
             return;

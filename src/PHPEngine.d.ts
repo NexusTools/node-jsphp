@@ -3,11 +3,10 @@ import { PHPContext, PHPContextOptions } from "./PHPContext.js";
 import { PHPVariable, PHPLiteral, PHPReference, PHPPropertyReference, PHPArrayOffsetReference } from "./runtime/PHPVariable.js";
 import { PHPInterface } from "./runtime/PHPInterface.js";
 import { PHPError, PHPFatalError } from "./runtime/PHPError.js";
-export declare const PROXY_HANDLER: {
-    get(target: any, prop: any, receiver: any): any;
-    set(target: any, prop: any, value: any, receiver: any): boolean;
-};
-export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => any;
+import { encodePhpIdentifier, normalizePhpRegistryName, encodePhpMethodName, encodePhpPropertyName } from "./runtime/Reflection.js";
+export declare function PROXY_HANDLER(ctx: PHPContext): ProxyHandler<any>;
+export declare function STATIC_PROXY_HANDLER(ctx: PHPContext): ProxyHandler<any>;
+export type PHPFunction = (ctx: PHPContext, ...args: PHPReference[]) => Promise<any>;
 export interface PHPEngineOptions {
     extensions?: PHPExtension[];
     disabledExtensions?: string[];
@@ -19,12 +18,12 @@ export interface PHPEngineOptions {
 }
 export declare function getDefaultExtensions(): PHPExtension[];
 export declare class PHPEngine {
-    static readonly REVISION = 444;
+    static readonly REVISION = 447;
     static readonly VERSION = "8.5.0";
     static readonly TRUE: PHPLiteral;
     static readonly FALSE: PHPLiteral;
     static readonly NULL: PHPLiteral;
-    extensions: Map<string, PHPExtension>;
+    extensions: Record<string, PHPExtension>;
     constants: Record<string, any>;
     functions: Record<string, PHPFunction>;
     classes: Record<string, any>;
@@ -36,16 +35,28 @@ export declare class PHPEngine {
         PHPFatalError: typeof PHPFatalError;
         PHPError: typeof PHPError;
         SYMBOL_PHP_NAME: symbol;
+        SYMBOL_PHP_META: symbol;
+        SYMBOL_PHP_CONSTANTS: symbol;
+        SYMBOL_PHP_PROPERTIES: symbol;
+        SYMBOL_PHP_METHODS: symbol;
+        SYMBOL_PHP_CLASS: symbol;
+        SYMBOL_PHP_PARENT: symbol;
+        SYMBOL_PHP_NEW: symbol;
+        SYMBOL_PHP_INIT: symbol;
         SYMBOL_PHP_CLASS_HAS_MAGIC_METHODS: symbol;
         SYMBOL_PHP_CLASS_INTERFACES: symbol;
+        SYMBOL_PHP_METHOD_THEN: symbol;
+        SYMBOL_PHP_STATIC_METHOD_PROTOTYPE: symbol;
+        encodePhpIdentifier: typeof encodePhpIdentifier;
+        normalizePhpRegistryName: typeof normalizePhpRegistryName;
+        encodePhpMethodName: typeof encodePhpMethodName;
+        encodePhpPropertyName: typeof encodePhpPropertyName;
         PHPReference: typeof PHPReference;
         PHPInterface: typeof PHPInterface;
         PHPPropertyReference: typeof PHPPropertyReference;
         PHPArrayOffsetReference: typeof PHPArrayOffsetReference;
-        PROXY_HANDLER: {
-            get(target: any, prop: any, receiver: any): any;
-            set(target: any, prop: any, value: any, receiver: any): boolean;
-        };
+        PROXY_HANDLER: typeof PROXY_HANDLER;
+        STATIC_PROXY_HANDLER: typeof STATIC_PROXY_HANDLER;
     };
     private classResolvers;
     private resolvingClasses;
@@ -63,13 +74,7 @@ export declare class PHPEngine {
      * Sets an internal variable value. The `name` parameter must be provided in lowercase.
      */
     setInternalVar(name: string, value: any): void;
-    /**
-     * Registers a function. The `name` parameter must be provided in lowercase.
-     */
-    registerFunction(name: string, fn: Function): void;
-    /**
-     * Registers multiple functions using Object.assign. All keys must be provided in lowercase.
-     */
+    registerFunction(name: string, fn: PHPFunction): void;
     registerFunctions(functions: Record<string, PHPFunction>): void;
     registerConstant(name: string, value: any): void;
     registerConstants(constants: Record<string, any>): void;

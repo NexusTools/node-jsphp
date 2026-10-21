@@ -1,34 +1,44 @@
 import mysql from "mysql2/promise";
 import { PHPExtension } from "../PHPExtension.js";
 import { PHPVariable, PHPLiteral, PHPReference } from "../runtime/PHPVariable.js";
+import { SYMBOL_PHP_NAME, SYMBOL_PHP_NEW } from "../runtime/Reflection.js";
 export class MySQLiResult {
+    static [SYMBOL_PHP_NAME] = "mysqli_result";
     rows;
     index = 0;
     $num_rows;
-    constructor(rows) {
-        this.rows = rows || [];
-        this.$num_rows = new PHPVariable(this.rows.length);
+    static async [SYMBOL_PHP_NEW](ctx, rowsArg) {
+        const obj = Object.create(this.prototype);
+        obj.rows = [];
+        obj.index = 0;
+        obj.$num_rows = new PHPVariable(0);
+        await obj.__construct(ctx, rowsArg);
+        return obj;
+    }
+    async __construct(ctx, rowsArg) {
+        this.rows = (await rowsArg?.get()) || [];
+        await this.$num_rows.set(this.rows.length);
     }
     get num_rows() {
-        return this.$num_rows.get();
+        return this.rows.length;
     }
-    fetch_assoc(ctx) {
+    async fetch_assoc(ctx) {
         if (this.index >= this.rows.length)
             return null;
         return this.rows[this.index++];
     }
-    fetch_row(ctx) {
+    async fetch_row(ctx) {
         if (this.index >= this.rows.length)
             return null;
         const row = this.rows[this.index++];
         return Object.values(row);
     }
-    fetch_array(ctx, resulttypeArg) {
+    async fetch_array(ctx, resulttypeArg) {
         if (this.index >= this.rows.length)
             return null;
         let resulttype = 3;
         if (resulttypeArg !== undefined) {
-            const val = resulttypeArg instanceof PHPReference ? resulttypeArg.get() : resulttypeArg;
+            const val = resulttypeArg instanceof PHPReference ? await resulttypeArg.get() : resulttypeArg;
             if (val !== undefined && val !== null)
                 resulttype = Number(val);
         }
@@ -43,7 +53,7 @@ export class MySQLiResult {
         Object.values(row).forEach((v, i) => { res[i] = v; });
         return res;
     }
-    fetch_object(ctx, classArg, paramsArg) {
+    async fetch_object(ctx, classArg, paramsArg) {
         if (this.index >= this.rows.length)
             return null;
         const row = this.rows[this.index++];
@@ -53,24 +63,24 @@ export class MySQLiResult {
         }
         return obj;
     }
-    fetch_all(ctx, resulttypeArg) {
-        const type = resulttypeArg ? (resulttypeArg instanceof PHPReference ? resulttypeArg.get() : resulttypeArg) : 1;
+    async fetch_all(ctx, resulttypeArg) {
+        const type = resulttypeArg ? (resulttypeArg instanceof PHPReference ? await resulttypeArg.get() : resulttypeArg) : 1;
         const all = [];
         while (this.index < this.rows.length) {
             if (type === 1)
-                all.push(this.fetch_assoc(ctx));
+                all.push(await this.fetch_assoc(ctx));
             else if (type === 2)
-                all.push(this.fetch_row(ctx));
+                all.push(await this.fetch_row(ctx));
             else
-                all.push(this.fetch_array(ctx, new PHPLiteral(type)));
+                all.push(await this.fetch_array(ctx, new PHPLiteral(type)));
         }
         return all;
     }
     free() { }
     free_result() { }
     close() { }
-    data_seek(ctx, offsetArg) {
-        const offset = Number(offsetArg?.get ? offsetArg.get() : offsetArg) || 0;
+    async data_seek(ctx, offsetArg) {
+        const offset = Number(offsetArg instanceof PHPReference ? await offsetArg.get() : offsetArg) || 0;
         if (offset >= 0 && offset < this.rows.length) {
             this.index = offset;
             return true;
@@ -79,6 +89,7 @@ export class MySQLiResult {
     }
 }
 export class MySQLiObject {
+    static [SYMBOL_PHP_NAME] = "mysqli";
     connection;
     $connect_error = new PHPVariable(null);
     $connect_errno = new PHPVariable(0);
@@ -86,16 +97,16 @@ export class MySQLiObject {
     $affected_rows = new PHPVariable(0);
     $error = new PHPVariable("");
     $errno = new PHPVariable(0);
-    static async __$$__new(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
+    static async [SYMBOL_PHP_NEW](ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
         const obj = Object.create(this.prototype);
+        MySQLiExtension.activeObjects.add(obj);
         obj.$connect_error = new PHPVariable(null);
         obj.$connect_errno = new PHPVariable(0);
         obj.$insert_id = new PHPVariable(0);
         obj.$affected_rows = new PHPVariable(0);
         obj.$error = new PHPVariable("");
         obj.$errno = new PHPVariable(0);
-        if (typeof obj.__construct === "function")
-            await obj.__construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
+        await obj.__construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
         return obj;
     }
     async __construct(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) {
@@ -104,11 +115,11 @@ export class MySQLiObject {
         }
     }
     async real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) {
-        let actualHost = String(hostArg?.get() ?? "127.0.0.1") || "127.0.0.1";
-        let user = String(userArg?.get() ?? "root") || "root";
-        let password = String(passwordArg?.get() ?? "");
-        let database = String(databaseArg?.get() ?? "");
-        let actualPort = Number(portArg?.get()) || 3306;
+        let actualHost = String(await hostArg?.get() ?? "127.0.0.1") || "127.0.0.1";
+        let user = String(await userArg?.get() ?? "root") || "root";
+        let password = String(await passwordArg?.get() ?? "");
+        let database = String(await databaseArg?.get() ?? "");
+        let actualPort = Number(await portArg?.get()) || 3306;
         if (actualHost.includes(":")) {
             const [h, p] = actualHost.split(":");
             actualHost = h || "127.0.0.1";
@@ -135,62 +146,65 @@ export class MySQLiObject {
                     await this.close(ctx);
                 });
             }
-            this.$connect_error.set(null);
-            this.$connect_errno.set(0);
-            this.$error.set("");
-            this.$errno.set(0);
+            await this.$connect_error.set(null);
+            await this.$connect_errno.set(0);
+            await this.$error.set("");
+            await this.$errno.set(0);
             return true;
         }
         catch (err) {
-            this.$connect_error.set(err.message);
-            this.$connect_errno.set(err.errno || 1045);
-            this.$error.set(err.message);
-            this.$errno.set(err.errno || 1045);
+            await this.$connect_error.set(err.message);
+            await this.$connect_errno.set(err.errno || 1045);
+            await this.$error.set(err.message);
+            await this.$errno.set(err.errno || 1045);
             return false;
         }
     }
     async query(ctx, sqlArg) {
         if (!this.connection)
             return false;
-        const sql = String(sqlArg?.get() ?? "");
+        const sql = String(await sqlArg?.get() ?? "");
         try {
             const [results] = await this.connection.query(sql);
-            this.$error.set("");
-            this.$errno.set(0);
+            await this.$error.set("");
+            await this.$errno.set(0);
             if (Array.isArray(results)) {
-                if (results.length > 0 && !Array.isArray(results[0]) && typeof results[0] === "object" && results[0] !== null && "affectedRows" in results[0]) {
-                    const lastHeader = results[results.length - 1];
-                    this.$insert_id.set(lastHeader.insertId || 0);
-                    this.$affected_rows.set(lastHeader.affectedRows || 0);
+                const isSelectQuery = /^\s*(select|show|describe|desc|explain)\s/i.test(sql);
+                if (!isSelectQuery) {
+                    const lastHeader = Array.isArray(results[0]) ? results[0][results[0].length - 1] : results[results.length - 1];
+                    if (lastHeader && typeof lastHeader === "object") {
+                        await this.$insert_id.set(lastHeader.insertId || 0);
+                        await this.$affected_rows.set(lastHeader.affectedRows || 0);
+                    }
                     return true;
                 }
-                return new MySQLiResult(results);
+                return await MySQLiResult[SYMBOL_PHP_NEW](ctx, new PHPVariable(results));
             }
             else {
-                this.$insert_id.set(results.insertId || 0);
-                this.$affected_rows.set(results.affectedRows || 0);
+                await this.$insert_id.set(results.insertId || 0);
+                await this.$affected_rows.set(results.affectedRows || 0);
                 return true;
             }
         }
         catch (err) {
-            this.$error.set(err.message);
-            this.$errno.set(err.errno || 1064);
+            await this.$error.set(err.message);
+            await this.$errno.set(err.errno || 1064);
             return false;
         }
     }
-    escape_string(ctx, strArg) {
-        const str = String(strArg?.get() ?? "");
+    async escape_string(ctx, strArg) {
+        const str = await ctx.str(await strArg?.get());
         if (!this.connection)
             return str.replace(/'/g, "\\'");
         return this.connection.escape(str).slice(1, -1);
     }
-    real_escape_string(ctx, strArg) {
+    async real_escape_string(ctx, strArg) {
         return this.escape_string(ctx, strArg);
     }
     async select_db(ctx, dbArg) {
         if (!this.connection)
             return false;
-        const db = String(dbArg?.get() ?? "");
+        const db = String(await dbArg?.get() ?? "");
         try {
             await this.connection.query(`USE \`${db}\``);
             return true;
@@ -202,7 +216,7 @@ export class MySQLiObject {
     async set_charset(ctx, charsetArg) {
         if (!this.connection)
             return false;
-        const charset = String(charsetArg?.get() ?? "");
+        const charset = String(await charsetArg?.get() ?? "");
         try {
             await this.connection.query(`SET NAMES '${charset}'`);
             return true;
@@ -212,8 +226,20 @@ export class MySQLiObject {
         }
     }
     async close(ctx) {
+        MySQLiExtension.activeObjects.delete(this);
         if (this.connection) {
-            await this.connection.end();
+            try {
+                if (this.connection.stream) {
+                    this.connection.stream.destroy();
+                }
+                await this.connection.end();
+            }
+            catch {
+                try {
+                    this.connection.destroy();
+                }
+                catch { }
+            }
             this.connection = undefined;
         }
         return true;
@@ -221,6 +247,16 @@ export class MySQLiObject {
 }
 export class MySQLiExtension extends PHPExtension {
     name = "mysqli";
+    static activeObjects = new Set();
+    async onClose(engine) {
+        for (const obj of Array.from(MySQLiExtension.activeObjects)) {
+            try {
+                await obj.close();
+            }
+            catch { }
+        }
+        MySQLiExtension.activeObjects.clear();
+    }
     onInit(engine) {
         this.constants = {
             mysqli_assoc: 1,
@@ -238,40 +274,40 @@ export class MySQLiExtension extends PHPExtension {
             mysqli_result: MySQLiResult,
         };
         this.functions = {
-            mysqli_init: async (ctx) => await MySQLiObject.__$$__new(ctx),
+            mysqli_init: async (ctx) => await MySQLiObject[SYMBOL_PHP_NEW](ctx),
             mysqli_connect: async (ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg) => {
-                const conn = await MySQLiObject.__$$__new(ctx);
+                const conn = await MySQLiObject[SYMBOL_PHP_NEW](ctx);
                 const res = await conn.real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg);
                 return res ? conn : false;
             },
             mysqli_real_connect: async (ctx, connArg, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) => {
-                const conn = connArg?.get();
+                const conn = await connArg?.get();
                 return conn ? await conn.real_connect(ctx, hostArg, userArg, passwordArg, databaseArg, portArg, socketArg, flagsArg) : false;
             },
             mysqli_select_db: async (ctx, connArg, dbArg) => {
-                const conn = connArg?.get();
+                const conn = await connArg?.get();
                 return conn ? await conn.select_db(ctx, dbArg) : false;
             },
             mysqli_set_charset: async (ctx, connArg, charsetArg) => {
-                const conn = connArg?.get();
+                const conn = await connArg?.get();
                 return conn ? await conn.set_charset(ctx, charsetArg) : false;
             },
             mysqli_query: async (ctx, connArg, sqlArg) => {
-                const conn = connArg?.get();
+                const conn = await connArg?.get();
                 return conn ? await conn.query(ctx, sqlArg) : false;
             },
-            mysqli_report: (ctx, flagsArg) => true,
-            mysqli_character_set_name: (ctx, connArg) => "utf8mb4",
-            mysqli_fetch_assoc: (ctx, resultArg) => {
-                const result = resultArg?.get();
-                return result && typeof result.fetch_assoc === "function" ? result.fetch_assoc(ctx) : null;
+            mysqli_report: async (ctx, flagsArg) => true,
+            mysqli_character_set_name: async (ctx, connArg) => "utf8mb4",
+            mysqli_fetch_assoc: async (ctx, resultArg) => {
+                const result = await resultArg?.get();
+                return result && typeof result.fetch_assoc === "function" ? await result.fetch_assoc(ctx) : null;
             },
-            mysqli_fetch_object: (ctx, resultArg, classArg, paramsArg) => {
-                const result = resultArg?.get();
-                return result && typeof result.fetch_object === "function" ? result.fetch_object(ctx, classArg, paramsArg) : null;
+            mysqli_fetch_object: async (ctx, resultArg, classArg, paramsArg) => {
+                const result = await resultArg?.get();
+                return result && typeof result.fetch_object === "function" ? await result.fetch_object(ctx, classArg, paramsArg) : null;
             },
-            mysqli_fetch_field: (ctx, resultArg) => {
-                const result = resultArg?.get();
+            mysqli_fetch_field: async (ctx, resultArg) => {
+                const result = await resultArg?.get();
                 if (!result || !result.rows || result.rows.length === 0)
                     return false;
                 const keys = Object.keys(result.rows[0]);
@@ -296,63 +332,63 @@ export class MySQLiExtension extends PHPExtension {
                     decimals: 0,
                 };
             },
-            mysqli_fetch_array: (ctx, resultArg, resulttypeArg) => {
-                const result = resultArg?.get();
-                return result && typeof result.fetch_array === "function" ? result.fetch_array(ctx, resulttypeArg) : null;
+            mysqli_fetch_array: async (ctx, resultArg, resulttypeArg) => {
+                const result = await resultArg?.get();
+                return result && typeof result.fetch_array === "function" ? await result.fetch_array(ctx, resulttypeArg) : null;
             },
-            mysqli_fetch_row: (ctx, resultArg) => {
-                const result = resultArg?.get();
-                return result && typeof result.fetch_row === "function" ? result.fetch_row(ctx) : null;
+            mysqli_fetch_row: async (ctx, resultArg) => {
+                const result = await resultArg?.get();
+                return result && typeof result.fetch_row === "function" ? await result.fetch_row(ctx) : null;
             },
-            mysqli_real_escape_string: (ctx, connArg, strArg) => {
-                const conn = connArg?.get();
-                return conn ? conn.escape_string(ctx, strArg) : String(strArg?.get() ?? "");
+            mysqli_real_escape_string: async (ctx, connArg, strArg) => {
+                const conn = await connArg?.get();
+                return conn ? conn.escape_string(ctx, strArg) : String(await strArg?.get() ?? "");
             },
             mysqli_close: async (ctx, connArg) => {
-                const conn = connArg?.get();
+                const conn = await connArg?.get();
                 return conn ? await conn.close(ctx) : true;
             },
-            mysqli_error: (ctx, connArg) => {
-                const conn = connArg?.get();
-                return conn ? conn.$error.get() : "";
+            mysqli_error: async (ctx, connArg) => {
+                const conn = await connArg?.get();
+                return conn ? await conn.$error.get() : "";
             },
-            mysqli_connect_errno: (ctx) => 0,
-            mysqli_connect_error: (ctx) => "",
-            mysqli_errno: (ctx, connArg) => {
-                const conn = connArg?.get();
-                return conn ? conn.$errno.get() : 0;
+            mysqli_connect_errno: async (ctx) => 0,
+            mysqli_connect_error: async (ctx) => "",
+            mysqli_errno: async (ctx, connArg) => {
+                const conn = await connArg?.get();
+                return conn ? await conn.$errno.get() : 0;
             },
-            mysqli_sqlstate: (ctx, connArg) => {
-                const conn = connArg?.get();
-                return conn ? (conn.$errno.get() ? "HY000" : "00000") : "00000";
+            mysqli_sqlstate: async (ctx, connArg) => {
+                const conn = await connArg?.get();
+                return conn ? (await conn.$errno.get() ? "HY000" : "00000") : "00000";
             },
-            mysqli_free_result: (ctx, res) => true,
-            mysqli_more_results: (ctx, conn) => false,
-            mysqli_next_result: (ctx, conn) => false,
-            mysqli_get_server_info: (ctx, connArg) => "8.0.35-MySQL",
-            mysqli_get_server_version: (ctx, connArg) => 80035,
-            mysqli_get_client_info: (ctx) => "mysqlnd 8.0.35",
-            mysqli_get_client_version: (ctx) => 80035,
-            mysqli_num_rows: (ctx, resultArg) => {
-                const result = resultArg?.get();
+            mysqli_free_result: async (ctx, res) => true,
+            mysqli_more_results: async (ctx, conn) => false,
+            mysqli_next_result: async (ctx, conn) => false,
+            mysqli_get_server_info: async (ctx, connArg) => "8.0.35-MySQL",
+            mysqli_get_server_version: async (ctx, connArg) => 80035,
+            mysqli_get_client_info: async (ctx) => "mysqlnd 8.0.35",
+            mysqli_get_client_version: async (ctx) => 80035,
+            mysqli_num_rows: async (ctx, resultArg) => {
+                const result = await resultArg?.get();
                 return result ? result.num_rows || 0 : 0;
             },
-            mysqli_num_fields: (ctx, resultArg) => {
-                const result = resultArg?.get();
+            mysqli_num_fields: async (ctx, resultArg) => {
+                const result = await resultArg?.get();
                 return (result && result.rows && result.rows.length > 0) ? Object.keys(result.rows[0]).length : 0;
             },
-            mysqli_insert_id: (ctx, connArg) => {
-                const conn = connArg?.get();
-                return conn ? conn.$insert_id.get() : 0;
+            mysqli_insert_id: async (ctx, connArg) => {
+                const conn = await connArg?.get();
+                return conn ? await conn.$insert_id.get() : 0;
             },
-            mysqli_affected_rows: (ctx, connArg) => {
-                const conn = connArg?.get();
-                return conn ? conn.$affected_rows.get() : 0;
+            mysqli_affected_rows: async (ctx, connArg) => {
+                const conn = await connArg?.get();
+                return conn ? await conn.$affected_rows.get() : 0;
             },
-            mysqli_ping: (ctx, connArg) => true,
-            mysqli_autocommit: (ctx, connArg, modeArg) => true,
-            mysqli_commit: (ctx, connArg) => true,
-            mysqli_rollback: (ctx, connArg) => true,
+            mysqli_ping: async (ctx, connArg) => true,
+            mysqli_autocommit: async (ctx, connArg, modeArg) => true,
+            mysqli_commit: async (ctx, connArg) => true,
+            mysqli_rollback: async (ctx, connArg) => true,
         };
     }
 }

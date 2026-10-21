@@ -13,20 +13,20 @@ describe("Reflection Runtime Tests", () => {
         await ctx.eval("function my_fn($a, $b = 'default') { return $a; }");
         const fn = ctx.functions["my_fn"] || engine.functions["my_fn"];
         expect(fn).toBeDefined();
-        const refFn = await ReflectionFunction.__$$__new(ctx, new PHPLiteral("my_fn"), new PHPLiteral(fn));
+        const refFn = await ReflectionFunction[engine.symbols.SYMBOL_PHP_NEW](ctx, new PHPLiteral("my_fn"), new PHPLiteral(fn));
         expect(refFn.getName(ctx)).toBe("my_fn");
         expect(refFn.getNumberOfParameters(ctx)).toBe(2);
         expect(refFuncRequired(ctx, refFn)).toBe(1);
-        const refCls = await ReflectionClass.__$$__new(ctx, new PHPLiteral("ReflectionClass"));
+        const refCls = await ReflectionClass[engine.symbols.SYMBOL_PHP_NEW](ctx, new PHPLiteral("ReflectionClass"));
         expect(refCls.getName(ctx)).toBe("ReflectionClass");
         expect(refCls.isInstantiable(ctx)).toBe(true);
     });
-    test("ReflectionFunction fallback parsing for raw JavaScript function without .phpMeta", async () => {
+    test("ReflectionFunction fallback parsing for raw JavaScript function without symbol metadata", async () => {
         const ctx = engine.createContext();
         function rawJsFunction(ctx, paramOne, paramTwo = "hello", paramThree = 42) {
             return paramOne;
         }
-        const refFn = await ReflectionFunction.__$$__new(ctx, new PHPLiteral("rawJsFunction"), new PHPLiteral(rawJsFunction));
+        const refFn = await ReflectionFunction[engine.symbols.SYMBOL_PHP_NEW](ctx, new PHPLiteral("rawJsFunction"), new PHPLiteral(rawJsFunction));
         expect(refFn.getName(ctx)).toBe("rawJsFunction");
         expect(refFn.getNumberOfParameters(ctx)).toBe(3);
         expect(refFn.getNumberOfRequiredParameters(ctx)).toBe(1);

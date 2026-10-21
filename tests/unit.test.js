@@ -65,7 +65,7 @@ describe("PHPEngine & AST Unit Tests", () => {
     test("Defines integer platform constants", async () => {
         const ctx = engine.createContext();
         await ctx.eval("$values = [PHP_INT_SIZE, PHP_INT_MAX, PHP_INT_MIN];");
-        expect(ctx.getVar("values")).toEqual([8, Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER]);
+        expect(await ctx.getVar("values")).toEqual([8, Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER]);
     });
     test("Keeps runtime constants request-local when reusing compiled code", async () => {
         const configuration = engine.getConfigurationSHA1();
@@ -85,8 +85,39 @@ describe("PHPEngine & AST Unit Tests", () => {
     test("Handles variable assignment and retrieval", async () => {
         const ctx = engine.createContext();
         await ctx.eval("$x = 42; $y = 'PHP';");
-        expect(ctx.getVar("x")).toBe(42);
-        expect(ctx.getVar("y")).toBe("PHP");
+        expect(await ctx.getVar("x")).toBe(42);
+        expect(await ctx.getVar("y")).toBe("PHP");
+    });
+    test("Rebinds an unset top-level variable when a function recreates it globally", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      $shared_value = 'before';
+      function restore_shared_value() {
+        global $shared_value;
+        $shared_value = 'after';
+      }
+      function discard_argument($argument) { unset($argument); }
+      unset($shared_value);
+      restore_shared_value();
+      discard_argument('discarded');
+      echo $shared_value;
+    `);
+        expect(ctx.outputText).toBe("after");
+    });
+    test("Unsets dynamic object properties and invokes asynchronous magic unset", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      class MagicUnsetTarget {
+        public function __unset($name) { $GLOBALS['last_unset'] = $name; }
+      }
+      $plain = new stdClass();
+      $plain->removed = true;
+      unset($plain->removed);
+      $magic = new MagicUnsetTarget();
+      unset($magic->missing);
+      echo (property_exists($plain, 'removed') ? 'present' : 'plain') . ':' . $last_unset;
+    `);
+        expect(ctx.outputText).toBe("plain:missing");
     });
     test("Assigns globals and array appends without evaluating values twice", async () => {
         const ctx = engine.createContext();
@@ -109,10 +140,10 @@ describe("PHPEngine & AST Unit Tests", () => {
       }
       append_global();
     `);
-        expect(ctx.getVar("created")).toBe(1);
-        expect(ctx.getVar("shared")).toBe(ctx.getVar("saved"));
-        expect(ctx.getVar("values")).toEqual(["first", "second", "third"]);
-        expect(ctx.getVar("visible")).toBe("yes");
+        expect(await ctx.getVar("created")).toBe(1);
+        expect(await ctx.getVar("shared")).toBe(await ctx.getVar("saved"));
+        expect(await ctx.getVar("values")).toEqual(["first", "second", "third"]);
+        expect(await ctx.getVar("visible")).toBe("yes");
         expect(ctx.vars.GLOBALS).toBeUndefined();
     });
     test("Handles conditional if/else blocks", async () => {
@@ -221,6 +252,18 @@ describe("PHPEngine & AST Unit Tests", () => {
     `);
         expect(ctx.outputText).toBe("YES");
     });
+    test("Resolves dynamic static members from an object class", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      class DynamicStaticMember {
+        public static $value = 'before';
+      }
+      $instance = new DynamicStaticMember();
+      $instance::$value = 'after';
+      echo DynamicStaticMember::$value;
+    `);
+        expect(ctx.outputText).toBe("after");
+    });
     test("Uses PHP array-union semantics for array addition assignment", async () => {
         const ctx = engine.createContext();
         await ctx.eval(`
@@ -298,7 +341,7 @@ describe("PHPEngine & AST Unit Tests", () => {
       echo $instance->missing();
     `);
         expect(ctx.outputText).toBe("missing");
-        expect(ctx.getVar("instance").then).toBeUndefined();
+        expect((await ctx.getVar("instance")).then).toBeUndefined();
     }, 1000);
     test("Resolves imported parents, inherited methods, and static members", async () => {
         const ctx = engine.createContext();
@@ -326,6 +369,62 @@ describe("PHPEngine & AST Unit Tests", () => {
     `);
         expect(ctx.outputText).toBe("Runtime\\App\\Child;base:child;second");
     });
+    test("Supports parent method calls from closures inside class methods", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      class ClosureParent {
+        public function label($value) { return 'parent:' . $value; }
+      }
+      class ClosureChild extends ClosureParent {
+        public function labelThroughClosure($value) {
+          $callback = function($suffix) { return parent::label($suffix); };
+          return $callback($value);
+        }
+      }
+      echo (new ClosureChild())->labelThroughClosure('value');
+    `);
+        expect(ctx.outputText).toBe("parent:value");
+    });
+    test("Registers namespaced functions and classes with qualified registry keys", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      namespace {
+        function fallback_name() { return 'global'; }
+      }
+      namespace Runtime\\One\\Two {
+        function local_name() { return 'local'; }
+        class RegistryItem {
+          public static function value() { return 'class'; }
+        }
+        echo local_name() . ':' . fallback_name() . ':' . RegistryItem::value();
+        $class_name = 'Runtime\\One\\Two\\RegistryItem';
+        $function_name = 'Runtime\\One\\Two\\local_name';
+        $dynamic_instance = new $class_name();
+        echo ':' . (class_exists($class_name) ? 'class' : 'missing');
+        echo ':' . (function_exists($function_name) ? 'function' : 'missing');
+        echo ':' . $function_name();
+      }
+    `);
+        const functionKey = "runtime$$one$$two$$local_name";
+        const classKey = "runtime$$one$$two$$registryitem";
+        expect(ctx.outputText).toBe("local:global:class:class:function:local");
+        expect(ctx.functions[functionKey]?.[engine.symbols.SYMBOL_PHP_META]?.name).toBe("Runtime\\One\\Two\\local_name");
+        expect(ctx.classes[classKey]?.[engine.symbols.SYMBOL_PHP_NAME]).toBe("Runtime\\One\\Two\\RegistryItem");
+    });
+    test("Resolves namespaced interface constants and self references", async () => {
+        const ctx = engine.createContext();
+        await ctx.eval(`
+      namespace Runtime\\Capabilities {
+        interface Capability {
+          const SSL = 'ssl';
+          const ALL = [self::SSL];
+        }
+        echo Capability::ALL[0];
+      }
+    `);
+        expect(ctx.outputText).toBe("ssl");
+        expect(ctx.interfaces["runtime$$capabilities$$capability"]?.[engine.symbols.SYMBOL_PHP_CONSTANTS]?.all[0]).toBe("ssl");
+    });
     test("Supports core Exception and native exception inheritance", async () => {
         const ctx = engine.createContext();
         await ctx.eval(`
@@ -338,7 +437,7 @@ describe("PHPEngine & AST Unit Tests", () => {
       $is_exception = $exception instanceof Exception;
     `);
         expect(ctx.outputText).toBe("failure;7;marker");
-        expect(ctx.getVar("is_exception")).toBe(true);
+        expect(await ctx.getVar("is_exception")).toBe(true);
         await expect(ctx.eval("throw new ApplicationException('stop');")).rejects.toThrow("stop");
     });
     test("Resolves class constants declared after property defaults", async () => {
@@ -418,11 +517,11 @@ describe("PHPEngine & AST Unit Tests", () => {
     test("Converts PHP casts used by installation state and request parameters", async () => {
         const ctx = engine.createContext();
         await ctx.eval("$installing = (bool) true; $disabled = (bool) '0'; $step = (int) '1'; $classes = (array) 'language-chooser'; $empty = (array) null;");
-        expect(ctx.getVar("installing")).toBe(true);
-        expect(ctx.getVar("disabled")).toBe(false);
-        expect(ctx.getVar("step")).toBe(1);
-        expect(ctx.getVar("classes")).toEqual(["language-chooser"]);
-        expect(ctx.getVar("empty")).toEqual([]);
+        expect(await ctx.getVar("installing")).toBe(true);
+        expect(await ctx.getVar("disabled")).toBe(false);
+        expect(await ctx.getVar("step")).toBe(1);
+        expect(await ctx.getVar("classes")).toEqual(["language-chooser"]);
+        expect(await ctx.getVar("empty")).toEqual([]);
     });
     test.each([["0", "zero"], ["1", "onetwo"], ["2", "two"], ["3", "default"]])("Selects switch step %s with PHP matching and fall-through", async (step, expected) => {
         const ctx = engine.createContext();
@@ -452,10 +551,10 @@ describe("PHPEngine & AST Unit Tests", () => {
       $s = $d->src;
       list($x, $y) = ['foo', 'bar'];
     `);
-        expect(ctx.getVar("h")).toBe("install");
-        expect(ctx.getVar("s")).toBe("install.css");
-        expect(ctx.getVar("x")).toBe("foo");
-        expect(ctx.getVar("y")).toBe("bar");
+        expect(await ctx.getVar("h")).toBe("install");
+        expect(await ctx.getVar("s")).toBe("install.css");
+        expect(await ctx.getVar("x")).toBe("foo");
+        expect(await ctx.getVar("y")).toBe("bar");
     });
     afterAll(() => {
         const defaultCacheDir = process.env.JSPHP_CACHE || path.join(os.tmpdir(), "jsphp_cache");

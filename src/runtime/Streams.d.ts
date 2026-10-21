@@ -11,14 +11,14 @@ export interface PHPFileStream {
     isResource: boolean;
 }
 export declare class StreamRuntime {
-    static stream_context_create(ctx: PHPContext | null, optionsArg?: PHPReference): PHPStreamContext;
+    static stream_context_create(ctx: PHPContext | null, optionsArg?: PHPReference): Promise<PHPStreamContext>;
     static fopen(ctx: PHPContext, filenameArg?: PHPReference, modeArg?: PHPReference): Promise<PHPFileStream | false>;
     static fclose(ctx: PHPContext | null, streamArg?: PHPReference): Promise<boolean>;
     static fread(ctx: PHPContext | null, streamArg?: PHPReference, lengthArg?: PHPReference): Promise<string | false>;
     static fwrite(ctx: PHPContext | null, streamArg?: PHPReference, dataArg?: PHPReference, lengthArg?: PHPReference): Promise<number | false>;
     static stream_get_contents(ctx: PHPContext | null, streamArg?: PHPReference, maxLengthArg?: PHPReference, offsetArg?: PHPReference): Promise<string | false>;
-    static stream_get_wrappers(ctx?: PHPContext): string[];
-    static stream_is_local(ctx: PHPContext | null, streamArg?: PHPReference): boolean;
+    static stream_get_wrappers(ctx?: PHPContext): Promise<string[]>;
+    static stream_is_local(ctx: PHPContext | null, streamArg?: PHPReference): Promise<boolean>;
     static functions: {
         fopen: typeof StreamRuntime.fopen;
         fclose: typeof StreamRuntime.fclose;

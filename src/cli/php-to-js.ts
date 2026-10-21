@@ -1,4 +1,4 @@
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import * as path from "path";
 import { JSTranspiler } from "../parser/JSTranspiler.js";
 
@@ -20,7 +20,11 @@ export async function runPhpToJS(rawArgs: string[]): Promise<void> {
   const inputFile = args[0];
   const inputPath = path.resolve(inputFile);
 
-  if (!fs.existsSync(inputPath)) {
+  try {
+    await fs.access(inputPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
     console.error(`Error: File not found: ${inputFile}`);
     process.exit(1);
   }
@@ -34,7 +38,7 @@ export async function runPhpToJS(rawArgs: string[]): Promise<void> {
 
   let phpCode: string;
   try {
-    phpCode = fs.readFileSync(inputPath, "utf8");
+    phpCode = await fs.readFile(inputPath, "utf8");
   } catch (err: any) {
     console.error(`Error reading file ${inputFile}: ${err.message}`);
     process.exit(1);
@@ -43,15 +47,12 @@ export async function runPhpToJS(rawArgs: string[]): Promise<void> {
   try {
     const transpiler = new JSTranspiler();
     const format = outputPath.endsWith(".cjs") ? "cjs" : "esm";
-    const result = transpiler.transpile(phpCode, inputPath, { format });
+    const result = await transpiler.transpile(phpCode, inputPath, { format });
     const jsCode = result.code;
 
     const outputDir = path.dirname(outputPath);
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    fs.writeFileSync(outputPath, jsCode, "utf8");
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(outputPath, jsCode, "utf8");
     console.log(`Successfully transpiled ${inputFile} -> ${outputFile}`);
   } catch (err: any) {
     console.error(`Transpilation error: ${err.message}`);

@@ -1,6 +1,7 @@
 import type { PHPContext } from "../PHPContext.js";
 import { PHPFatalError } from "./PHPError.js";
 import { PHPReference } from "./PHPVariable.js";
+import { normalizePhpRegistryName } from "./Reflection.js";
 
 export interface PHPParameterMetadata {
   name: string;
@@ -38,10 +39,10 @@ export class PHPClass {
   public nativeConstructor?: Function;
   public readonly interfaces: PHPClass[] = [];
   public readonly traits: any[] = [];
-  public constants: Map<string, any> = new Map();
-  public staticProperties: Map<string, any> = new Map();
-  public properties: Map<string, PHPPropertyMetadata> = new Map();
-  public methods: Map<string, PHPMethodMetadata> = new Map();
+  public constants: Record<string, any> = Object.create(null);
+  public staticProperties: Record<string, any> = Object.create(null);
+  public properties: Record<string, PHPPropertyMetadata> = Object.create(null);
+  public methods: Record<string, PHPMethodMetadata> = Object.create(null);
   public isAbstract: boolean = false;
   public isFinal: boolean = false;
 
@@ -55,14 +56,14 @@ export class PHPClass {
     this.parentClass = parentClass;
     if (parentClass instanceof PHPClass) {
       this.nativeConstructor = parentClass.nativeConstructor;
-      this.properties = new Map(parentClass.properties);
-      this.methods = new Map(parentClass.methods);
-      this.constants = new Map(parentClass.constants);
+      this.properties = Object.assign(Object.create(null), parentClass.properties);
+      this.methods = Object.assign(Object.create(null), parentClass.methods);
+      this.constants = Object.assign(Object.create(null), parentClass.constants);
     }
   }
 
   public isSubclassOf(className: string): boolean {
-    if (this.name.toLowerCase() === className.toLowerCase()) return true;
+    if (normalizePhpRegistryName(this.name) === normalizePhpRegistryName(className)) return true;
     if (this.parentClass && this.parentClass.isSubclassOf(className)) return true;
     return this.interfaces.some((iface) => iface.isSubclassOf(className));
   }
@@ -70,16 +71,16 @@ export class PHPClass {
 
 export class PHPObject {
   public readonly phpClass: PHPClass;
-  public properties: Map<string, any> = new Map();
+  public properties: Record<string, any> = Object.create(null);
   private settingProperties: Set<string> = new Set();
   private gettingProperties: Set<string> = new Set();
 
   constructor(phpClass: PHPClass) {
     this.phpClass = phpClass;
-    for (const [name, metadata] of phpClass.properties) {
+    for (const [name, metadata] of Object.entries(phpClass.properties)) {
       if (metadata.isStatic) continue;
       const value = metadata.defaultValue;
-      this.properties.set(name, Array.isArray(value) ? [...value] : value && typeof value === "object" ? { ...value } : value);
+      this.properties[name] = Array.isArray(value) ? [...value] : value && typeof value === "object" ? { ...value } : value;
     }
   }
 
@@ -87,10 +88,10 @@ export class PHPObject {
     if (!(this.gettingProperties instanceof Set)) {
       this.gettingProperties = new Set();
     }
-    if (this.properties.has(name)) {
-      return this.properties.get(name);
+    if (Object.hasOwn(this.properties, name)) {
+      return this.properties[name];
     }
-    const __getMeta = this.phpClass.methods.get("__get");
+    const __getMeta = this.phpClass.methods["__get"];
     if (__getMeta?.fn && !this.gettingProperties.has(name)) {
       this.gettingProperties.add(name);
       try {
@@ -106,7 +107,7 @@ export class PHPObject {
     if (!(this.settingProperties instanceof Set)) {
       this.settingProperties = new Set();
     }
-    const __setMeta = this.phpClass.methods.get("__set");
+    const __setMeta = this.phpClass.methods["__set"];
     if (__setMeta?.fn && !this.settingProperties.has(name)) {
       this.settingProperties.add(name);
       try {
@@ -115,7 +116,7 @@ export class PHPObject {
         this.settingProperties.delete(name);
       }
     } else {
-      this.properties.set(name, value);
+      this.properties[name] = value;
     }
   }
 
@@ -125,25 +126,21 @@ export class PHPObject {
     try {
       let cls: PHPClass | undefined = this.phpClass;
       while (cls) {
-        if (cls.methods && typeof cls.methods.get === "function") {
-          const methodMeta = cls.methods.get(lowerName);
-          if (methodMeta?.fn) {
-            let res = await methodMeta.fn.apply(this, [ctx, ...args]);
-            if (res && typeof res === "object" && typeof (res as any).get === "function") res = (res as any).get();
-            return res;
-          }
+        const methodMeta = cls.methods[lowerName];
+        if (methodMeta?.fn) {
+          let res = await methodMeta.fn.apply(this, [ctx, ...args]);
+          if (res && typeof res === "object" && typeof (res as any).get === "function") res = await (res as any).get();
+          return res;
         }
         cls = cls.parentClass;
       }
       cls = this.phpClass;
       while (cls) {
-        if (cls.methods && typeof cls.methods.get === "function") {
-          const __callMeta = cls.methods.get("__call");
-          if (__callMeta?.fn) {
-            let res = await __callMeta.fn.call(this, ctx, name, args);
-            if (res instanceof PHPReference) res = res.get();
-            return res;
-          }
+        const __callMeta = cls.methods["__call"];
+        if (__callMeta?.fn) {
+          let res = await __callMeta.fn.call(this, ctx, name, args);
+          if (res instanceof PHPReference) res = await res.get();
+          return res;
         }
         cls = cls.parentClass;
       }
@@ -152,7 +149,7 @@ export class PHPObject {
         for (const propName of Object.getOwnPropertyNames(target)) {
           if (propName.toLowerCase() === lowerName && typeof (this as any)[propName] === "function") {
             let res = await (this as any)[propName].apply(this, args);
-            if (res instanceof PHPReference) res = res.get();
+            if (res instanceof PHPReference) res = await res.get();
             return res;
           }
         }
@@ -165,7 +162,7 @@ export class PHPObject {
   }
 
   public async toString(ctx: PHPContext): Promise<string> {
-    const __toStringMeta = this.phpClass.methods.get("__tostring");
+    const __toStringMeta = this.phpClass.methods["__tostring"];
     if (__toStringMeta?.fn) {
       return String(await __toStringMeta.fn.call(this, ctx));
     }

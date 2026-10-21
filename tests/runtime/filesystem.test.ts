@@ -33,10 +33,10 @@ describe("FileSystem Runtime Tests", () => {
         $directories = glob('*', GLOB_ONLYDIR | GLOB_MARK);
         $permissions = fileperms('alpha.mo');
       `);
-      expect(ctx.getVar("files")).toEqual(["alpha.mo", "beta.l10n.php"]);
-      expect(ctx.getVar("missing")).toEqual(["*.missing"]);
-      expect(ctx.getVar("directories")).toEqual(["nested/"]);
-      expect(ctx.getVar("permissions")).toBe((await fs.stat(path.join(directory, "alpha.mo"))).mode);
+      expect(await ctx.getVar("files")).toEqual(["alpha.mo", "beta.l10n.php"]);
+      expect(await ctx.getVar("missing")).toEqual(["*.missing"]);
+      expect(await ctx.getVar("directories")).toEqual(["nested/"]);
+      expect(await ctx.getVar("permissions")).toBe((await fs.stat(path.join(directory, "alpha.mo"))).mode);
       const fnPerms = ctx.functions["fileperms"] || ctx.functionMissing("fileperms");
       expect(await fnPerms(ctx, new PHPLiteral("missing-file"))).toBe(false);
     } finally {
